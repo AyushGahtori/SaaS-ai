@@ -29,7 +29,12 @@ yarn-error.log*
 
 # vercel
 .vercel
+.env*
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# personal documentation.
+/how_things_work.txt
+/src/lib/auth-workflow-with-page.tsx.txt
