@@ -1,0 +1,26 @@
+User clicks "Sign Up"
+    ↓
+onSubmit runs (async function)
+    ↓
+setLoading(true) → Button shows "Signing up..."
+    ↓
+await authClient.signUp.email(...) → WAITS here for server response
+    ↓
+Server processes signup (creates user in database)
+    ↓
+Server sends back response (success or error)
+    ↓
+await finishes, code continues
+    ↓
+onSuccess or onError callback runs
+    ↓
+setMessage() or setError() updates the UI
+    ↓
+finally block runs → setLoading(false) → Button re-enables
+    ↓
+User sees success/error message
+
+async = "This function will take time, I might need to wait"
+await = "Stop here and wait for the answer before continuing"
+onSuccess/onError = "When the answer comes back, do this"
+Without await, the code would continue immediately without waiting for the response
