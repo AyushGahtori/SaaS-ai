@@ -9,9 +9,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { OctagonAlert } from "lucide-react";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { refine } from "zod";
+import { useRouter } from "next/navigation";
+import { FaGithub, FaGoogle } from "react-icons/fa";
 
 // package imports
 import { Input } from "@/components/ui/input";
@@ -65,11 +65,32 @@ export const SignUpView = () => {
         name: data.name,
         email: data.email,
         password: data.password,
+        callbackURL: "/",
       },
       {
         onSuccess: () => {
           setPending(false);
           router.push("/");
+        },
+        onError: ({ error }) => {
+          setError(error.message);
+          setPending(false);
+        },
+      }
+    );
+  };
+
+    const onSocial = (provider: "github" | "google") => {
+    setError(null);
+    setPending(true);
+    {/*We cannon add the confirmPassword here cause authClient.signUp.email() function dosen't accept that parameter in the backend, confirm passoword validation is done one the frontend by the zod schema */}
+    authClient.signIn.social({
+        provider: provider,
+        callbackURL: "/",
+      },
+      {
+        onSuccess: () => {
+          setPending(false);
         },
         onError: ({ error }) => {
           setError(error.message);
@@ -169,7 +190,6 @@ export const SignUpView = () => {
                 </Alert>
               )}
               <Button disabled={pending} type="submit" className="w-full">
-                Sign Up
               </Button>
               <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:insert-0 after:top-0.5 after:z-0 after:flex after:items-center after:border-t">
                 <span className="bg-card text-muted-foreground relative z-10 px-2">
@@ -178,11 +198,11 @@ export const SignUpView = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 {/* we have to add button type = "button" because or else it will act as a submit button */}
-                <Button disabled={pending} variant="outline" className="w-full" type="button">
-                  Google
+                <Button onClick={() => onSocial("google")} disabled={pending} variant="outline" className="w-full" type="button">
+                  <FaGoogle />
                 </Button>
-                <Button disabled={pending} variant="outline" className="w-full" type="button">
-                  GitHub
+                <Button onClick={() => onSocial("github")} disabled={pending} variant="outline" className="w-full" type="button">
+                  <FaGithub />
                 </Button>
               </div>
               <div className="text-center text-sm">

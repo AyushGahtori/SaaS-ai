@@ -1,86 +1,20 @@
-"use client";
-import { useState } from "react";
-import { authClient } from "@/lib/auth-client";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { HomeView } from "@/modules/home/ui/views/home-view";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
-export default function Home() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+const page = async() => {
 
-  const { data: session } = authClient.useSession();
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
 
-  const onSubmit = async () => {
-    setLoading(true);
-    setMessage("");
-    setError("");
-
-    try {
-      await authClient.signUp.email(
-        {
-          name,
-          email,
-          password,
-        },
-        {
-          onSuccess: () => {
-            setMessage("User signed up successfully!");
-            setName("");
-            setEmail("");
-            setPassword("");
-          },
-          onError: (error) => {
-            setError(typeof error === 'string' ? error : "Error signing up");
-          },
-        },
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (session) {
-    return (
-      <div className="max-w-md mx-auto mt-10">
-        <h2 className="text-2xl font-bold mb-4">Welcome, {session.user?.name || session.user?.email}!</h2>
-        <p>You are logged in.</p>
-        <Button onClick={() => authClient.signOut()}>Sign Out</Button>
-      </div>
-    );
+  if (!session) {
+    redirect("/sign-in"); {/* this wont actively look if the user is signed in it will only look once and if the user is signed out then it will not check again and redirect back to sign in thats why we use fetchOptions in the home-view*/}
   }
 
   return (
-    <div className="flex flex-col gap-4 max-w-md mx-auto mt-10">
-      <Input
-        placeholder="name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        disabled={loading}
-      />
-      <Input
-        placeholder="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        disabled={loading}
-      />
-      <Input
-        placeholder="password"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        disabled={loading}
-      />
-      <Button onClick={onSubmit} disabled={loading}>
-        {loading ? "Signing up..." : "Sign Up"}
-      </Button>
-      {message && <p className="text-green-600">{message}</p>}
-      {error && <p className="text-red-600">{error}</p>}
-    </div>
-  );
+    <HomeView />
+   );
 }
+export default page;
