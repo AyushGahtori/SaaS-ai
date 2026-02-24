@@ -1,0 +1,53 @@
+/**
+ * Search Button Component
+ * 
+ * A search input button integrated into the DashboardNavbar that provides quick access
+ * to the application's search functionality with keyboard shortcut support.
+ * 
+ * @component
+ * 
+ * Features:
+ * - Search input button with icon and placeholder text
+ * - Keyboard shortcut indicator (displayed as "#8984K")
+ * - Responsive layout that adapts to navbar width
+ * - Visual feedback with hover states and muted foreground styling
+ * - Fixed width (w-60) for consistent UI appearance
+ * 
+ * Structure:
+ * - SearchIcon: Leading icon for visual identification
+ * - Placeholder Text: "Search..." to guide user interaction
+ * - Keyboard Shortcut Badge: Right-aligned kbd element showing "#8984K" shortcut
+ *   - Uses monospace font for technical appearance
+ *   - Muted styling to differentiate from main content
+ *   - pointer-events-none prevents interaction with badge itself
+ * 
+ * Current State:
+ * - onClick handler is currently empty: onClick={() => {}}
+ * - TODO: Connect to search modal, command palette, or search page
+ * - TODO: Implement keyboard event listener for "#8984K" shortcut
+ * 
+ * Integration Points:
+ * - Located in: DashboardNavbar component (sibling to sidebar toggle button)
+ * - Parent Container: flex layout with gap and alignment utilities
+ * - Theme Integration: Uses theme-aware colors (muted-foreground, background, border)
+ * - Would typically connect to: Search modal, command palette, or dedicated search page
+ * 
+ * Styling:
+ * - Height: h-9 (fixed height matching navbar)
+ * - Width: w-60 (fixed width for stability)
+ * - Variant: "outline" for subtle appearance
+ * - Content Alignment: justify-start to left-align icon and text
+ * - Badge Styling: ml-auto for right alignment, flex layout for badge contents
+ * 
+ * Dependencies:
+ * - @/components/ui/button - Button component
+ * - lucide-react - SearchIcon from icon library
+ * - Tailwind CSS - For styling and layout
+ * 
+ * Future Enhancement Recommendations:
+ * - Connect onClick handler to search modal or command palette
+ * - Implement keyboard listener for "#8984K" shortcut combination
+ * - Consider adding loading state during search
+ * - Add tooltip explaining the keyboard shortcut
+ * - Integrate with global search provider or API
+ */

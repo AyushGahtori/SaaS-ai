@@ -1,0 +1,42 @@
+/**
+ * DashboardNavbar Component
+ * 
+ * A responsive navigation bar for the dashboard layout that provides sidebar toggle functionality.
+ * 
+ * @component
+ * 
+ * Features:
+ * - Toggle button to collapse/expand the sidebar
+ * - Responsive design that adapts to mobile and desktop views
+ * - Uses Lucide React icons that change based on sidebar state
+ * - Integrated with the SidebarProvider context for state management
+ * 
+ * Sidebar Toggle Logic:
+ * - The component uses the `useSidebar()` hook to access sidebar state and toggle function
+ * - `state`: Current sidebar state ('expanded' or 'collapsed')
+ * - `isMobile`: Boolean flag indicating if device is mobile
+ * - `toggleSidebar()`: Function that triggers sidebar state change
+ * 
+ * Icon Behavior:
+ * - Shows "PanelLeftIcon" (open panel) when sidebar is collapsed OR on mobile devices
+ * - Shows "PanelLeftCloseIcon" (close panel) when sidebar is expanded on desktop
+ * - This provides visual feedback about the current sidebar state
+ * 
+ * Integration:
+ * - Parent: Rendered in `layout.tsx` within the main content area
+ * - Sibling: Works alongside `DashboardSidebar` component
+ * - Context Provider: Depends on `SidebarProvider` wrapping the entire layout
+ * - The sidebar and navbar are coordinated through shared context state
+ * 
+ * Styling:
+ * - Uses Tailwind CSS classes for layout (flex, padding, border, background)
+ * - Button variant: "outline" for subtle appearance
+ * - Size: 9x9 (fixed square button)
+ * - Color/theme: Uses theme-aware background and foreground colors
+ * 
+ * Dependencies:
+ * - @/components/ui/button - Button component
+ * - @/components/ui/sidebar - SidebarProvider and useSidebar hook
+ * - lucide-react - Icon library for panel toggle icons
+ * - React "use" hook - For component interactivity
+ */
