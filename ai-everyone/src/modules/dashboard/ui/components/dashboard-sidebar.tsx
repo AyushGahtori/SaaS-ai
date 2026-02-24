@@ -62,11 +62,14 @@ export const DashboardSidebar = () => {
     <Sidebar>
       <SidebarHeader className="text-sidebar-accent-foreground">
         <Link href="/" className="flex items-center gap-2 px-2 pt-2">
+          {/* logo can get mutated by browser extensions (e.g. Dark Reader) which inject inline styles
+              and cause hydration mismatches; suppress the warning so it doesn't break the layout */}
           <Image
             src="/logo.svg"
             height={36}
             width={36}
             alt="Meet.AI"
+            suppressHydrationWarning
           />
           <p className="text-2xl font-semibold">Meet.AI</p>
         </Link>
@@ -109,8 +112,8 @@ export const DashboardSidebar = () => {
         </SidebarGroup>
 
         <div className="px-4 py-2">
-        <Separator className="opacity-10 text-[#5D6B68]" />
-      </div>
+          <Separator className="opacity-10 text-[#5D6B68]" />
+        </div>
 
         <SidebarGroup>
           <SidebarGroupContent>
