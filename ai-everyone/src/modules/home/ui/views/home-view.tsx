@@ -2,6 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
+import { useTRPC } from "@/trpc/client";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 
 export const HomeView = () => {
@@ -12,17 +14,16 @@ export const HomeView = () => {
     return <div className="p-6">Loading...</div>;
   }
 
+  const trpc = useTRPC();
+  const { data } = useQuery(trpc.hello.queryOptions({ text: "Antonio"}))
+
   return (
-    <div className="h-full w-full bg-black flex flex-col items-center justify-center">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold mb-4 text-white">
-          Welcome, {session.user?.name || session.user?.email}!
-        </h2>
+    <div className="flex flex-col p-4 gap-y-4">
+      <div>
+        {data?.greeting}
+      </div>
 
-        <p className="mb-6 text-gray-400">
-          You are logged in.
-        </p>
-
+      <div>
         <Button
           onClick={() =>
             authClient.signOut({

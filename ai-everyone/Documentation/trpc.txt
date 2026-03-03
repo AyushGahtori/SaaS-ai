@@ -1,0 +1,36 @@
+your-project/
+├── server/
+│   ├── trpc.ts              # tRPC setup & middleware
+│   └── routers/
+│       ├── index.ts         # Main router (combines all routers)
+│       ├── user.router.ts   # User-related procedures
+│       └── post.router.ts   # Post-related procedures
+│
+├── pages/
+│   └── api/
+│       └── trpc/
+│           └── [trpc].ts    # API endpoint that handles all tRPC calls
+│
+└── client/
+    ├── trpc.ts              # tRPC client setup
+    └── components/
+        └── MyComponent.tsx  # Uses tRPC hooks (useQuery, useMutation)
+
+        /**
+         * tRPC is a library that allows you to create type-safe APIs using TypeScript, without needing to write separate API schemas or types.
+         * 
+         * In our project, tRPC is used to define backend procedures (functions) that can be called directly from the frontend.
+         * This means you can call server-side logic from your client code as if you were calling a local function, and TypeScript will ensure that the types match on both sides.
+         * 
+         * How it works:
+         * - You define "routers" and "procedures" on the server using tRPC.
+         * - The client uses tRPC to call these procedures, and gets automatic type safety and autocompletion.
+         * - There is no need to manually write API endpoints or data validation schemas; tRPC uses your TypeScript types.
+         * 
+         * Benefits:
+         * - Type safety: Errors are caught at compile time, reducing bugs.
+         * - No need for REST or GraphQL schemas: You use TypeScript types directly.
+         * - Fast development: You can quickly create and use APIs without extra boilerplate.
+         * 
+         * In summary, tRPC helps us build APIs faster and safer by connecting our frontend and backend with shared TypeScript types, making development easier and more reliable.
+         */
