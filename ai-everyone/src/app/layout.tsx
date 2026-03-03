@@ -1,6 +1,8 @@
 import './globals.css'
 import { Inter } from 'next/font/google'
 
+import { TRPCReactProvider } from '@/trpc/client'
+
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
@@ -14,10 +16,12 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} min-h-screen bg-black text-white`}>
-        {children}
-      </body>
-    </html>
+    <TRPCReactProvider>
+      <html lang="en" suppressHydrationWarning>
+        <body className={`${inter.className} min-h-screen bg-black text-white`}>
+          {children}
+        </body>
+      </html>  
+    </TRPCReactProvider>
   )
 }
