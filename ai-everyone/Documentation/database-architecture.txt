@@ -1,0 +1,34 @@
+Database Architecture Overview
+==============================
+
+Our application utilizes a modern, hybrid database architecture designed for optimal performance, cost-efficiency, and developer experience.
+
+1. Neon Database (SQL / PostgreSQL) - The Core Source of Truth
+--------------------------------------------------------------
+We use Neon, a serverless PostgreSQL database, as our primary relational database. 
+
+Why SQL for Authentication & Core Data?
+* Structured & Repetitive Data: Authentication data (users, emails, password hashes, sessions) is highly structured and repetitive. Relational SQL databases are perfectly optimized for storing this type of tabular data.
+* Data Integrity: SQL enforces strict schemas and relationships (e.g., a session must belong to a valid user). This prevents orphaned data and bugs.
+* `better-auth`: Our authentication system relies on SQL tables to securely manage users and sessions out of the box.
+
+2. Working with SQL via Drizzle ORM
+-----------------------------------
+While working directly with raw SQL commands can be cumbersome and error-prone, we bypass this entirely by using **Drizzle ORM** (Object-Relational Mapper).
+* Drizzle allows us to define our database tables and write queries using pure, type-safe TypeScript.
+* We get auto-completion and instant compile-time error checking in our code editor, giving us the power of SQL without having to write raw SQL strings.
+
+3. External Storage (NoSQL / S3 / Firebase) - Files & Unstructured Data
+-----------------------------------------------------------------------
+While Postgres is incredible for relational text and numbers, it is inefficient and expensive for storing large binary files (like user avatars, PDFs, or generated media) or highly unstructured, real-time data streams.
+
+For these use cases, we can easily run parallel services:
+* Object Storage (Amazon S3 / Firebase Storage / Nextcloud): Best for storing large files. We simply upload the file to this service and save the resulting URL string back into our Neon SQL database.
+* NoSQL (Firebase Firestore / MongoDB): If we ever need to build a real-time chat or a feature with highly volatile, schema-less data, we can spin up a NoSQL database specifically for that feature while keeping our core user data safe in Neon.
+
+4. Cost Benefits of this Split Architecture
+-------------------------------------------
+By splitting our storage needs, we dramatically save on cloud costs:
+* Relational databases charge a premium for storage space because their storage is highly optimized for fast querying and indexing. Filling up a Postgres database with image files will become extremely expensive very quickly.
+* Object storage (like S3) is incredibly cheap per gigabyte because it acts as a "dumb" locker for files.
+* Therefore, storing the *URL pointer* in the expensive SQL database, while storing the *heavy file* in the cheap Object Storage, is the most cost-effective way to scale our SaaS application.
