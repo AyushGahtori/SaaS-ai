@@ -9,13 +9,12 @@ import { useRouter } from "next/navigation";
 export const HomeView = () => {
   const { data: session } = authClient.useSession();
   const router = useRouter();
+  const trpc = useTRPC();
+  const { data } = useQuery(trpc.hello.queryOptions({ text: "Ayush" }));
 
   if (!session) {
     return <div className="p-6">Loading...</div>;
   }
-
-  const trpc = useTRPC();
-  const { data } = useQuery(trpc.hello.queryOptions({ text: "Antonio"}))
 
   return (
     <div className="flex flex-col p-4 gap-y-4">
