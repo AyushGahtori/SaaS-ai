@@ -104,7 +104,7 @@ export const HomeView = () => {
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-3.5rem)] gap-6 px-4">
 
       {/* ── Greeting Text ───────────────────────────────────────────── */}
-      <h1 className="text-foreground text-xl font-normal tracking-wide text-center">
+      <h1 className="text-foreground text-4xl font-semibold tracking-tight text-center">
         {displayGreeting}
       </h1>
 
@@ -119,7 +119,7 @@ export const HomeView = () => {
        *   [ AttachFile (+) | <textarea "Ask anything..."> | TextToSpeech (mic) ]
        */}
       <div
-        className="flex items-center w-full max-w-xl rounded-full border px-2 py-1 gap-1"
+        className="flex items-center w-full max-w-2xl rounded-full border px-4 py-2 gap-2"
         style={{ backgroundColor: "#0C0D0D" }}
       >
         {/* LEFT — Attach File button */}
@@ -140,9 +140,9 @@ export const HomeView = () => {
          */}
         <textarea
           className="
-            flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground
+            flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground
             outline-none border-none resize-none overflow-hidden leading-6
-            py-1 px-1
+            py-1 px-2
           "
           rows={1}
           placeholder="Ask anything..."

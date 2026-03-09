@@ -41,7 +41,7 @@ export const DashboardUserButton = () => {
   if (isMobile) {
     return (
       <Drawer>
-        <DrawerTrigger asChild className="rounded-lg border border-border/10 p-3 w-full flex items-center justify-between bg-white/5 hover:bg-white/10 overflow-hidden gap-x-2">
+        <DrawerTrigger asChild className="rounded-lg border border-border/10 p-3 w-full flex items-center justify-between bg-white/5 hover:bg-[#0C0D0D] hover:border-white/20 hover:shadow-[inset_0_0_12px_2px_rgba(255,255,255,0.06)] transition-all duration-300 overflow-hidden gap-x-2">
           {/* asChild only accepts a single child, so wrap everything in one container */}
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -97,7 +97,7 @@ export const DashboardUserButton = () => {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="rounded-lg border border-border/10 p-3 w-full flex items-center justify-between bg-white/5 hover:bg-white/10 overflow-hidden gap-x-2">
+      <DropdownMenuTrigger className="rounded-lg border border-border/10 p-3 w-full flex items-center justify-between bg-white/5 hover:bg-[#0C0D0D] hover:border-white/20 hover:shadow-[inset_0_0_12px_2px_rgba(255,255,255,0.06)] transition-all duration-300 overflow-hidden gap-x-2">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {data.user.image ? (
             <Avatar>

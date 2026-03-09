@@ -18,8 +18,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { FiCalendar, FiUsers, FiSettings } from "react-icons/fi";
-import { Star } from "lucide-react";
+import { MessageSquare, Search, Settings } from "lucide-react";
 import { DashboardUserButton } from "./dashboard-user-button";
 
 // --------------------
@@ -27,27 +26,22 @@ import { DashboardUserButton } from "./dashboard-user-button";
 // --------------------
 const firstSection = [
   {
-    label: "Meetings",
-    href: "/dashboard",
-    icon: FiCalendar,
+    label: "New Chat",
+    href: "/",
+    icon: MessageSquare,
   },
   {
     label: "Agents",
     href: "/agents",
-    icon: FiUsers,
-  },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: FiSettings,
+    icon: Search,
   },
 ];
 
-const secondSection = [
+const settingsSection = [
   {
-    label: "Upgrade to Pro",
-    href: "/upgrade",
-    icon: Star,
+    label: "Settings",
+    href: "/settings",
+    icon: Settings,
   },
 ];
 
@@ -59,7 +53,7 @@ export const DashboardSidebar = () => {
   const pathname = usePathname();
 
   return (
-    <Sidebar>
+    <Sidebar className="border-r-[2px] border-r-white/10">
       <SidebarHeader className="text-sidebar-accent-foreground">
         <Link href="/" className="flex items-center gap-2 px-2 pt-2">
           {/* logo can get mutated by browser extensions (e.g. Dark Reader) which inject inline styles
@@ -68,15 +62,15 @@ export const DashboardSidebar = () => {
             src="/logo.svg"
             height={36}
             width={36}
-            alt="Meet.AI"
+            alt="SnitchX"
             suppressHydrationWarning
           />
-          <p className="text-2xl font-semibold">Meet.AI</p>
+          <p className="text-2xl font-bold">SnitchX</p>
         </Link>
       </SidebarHeader>
 
       <div className="px-4 py-2">
-        <Separator className="opacity-10 text-[#5D6B68]" />
+        <div className="h-[3px] bg-[#5D6B68]/30 rounded-full w-full" />
       </div>
 
       <SidebarContent>
@@ -89,7 +83,7 @@ export const DashboardSidebar = () => {
                     <Link
                       href={item.href}
                       className={cn(
-                        "h-10 flex items-center gap-2 px-3 rounded-md text-sm font-medium tracking-tight",
+                        "h-10 flex items-center gap-2 px-3 rounded-md text-sm font-bold tracking-tight text-[#E5E5E5]",
                         "hover:bg-sidebar-accent/5",
                         pathname === item.href && "bg-sidebar-accent/10"
                       )}
@@ -112,19 +106,19 @@ export const DashboardSidebar = () => {
         </SidebarGroup>
 
         <div className="px-4 py-2">
-          <Separator className="opacity-10 text-[#5D6B68]" />
+          <div className="h-[3px] bg-[#5D6B68]/30 rounded-full w-full" />
         </div>
 
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {secondSection.map((item) => (
+              {settingsSection.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton asChild>
                     <Link
                       href={item.href}
                       className={cn(
-                        "h-10 flex items-center gap-2 px-3 rounded-md text-sm font-medium tracking-tight",
+                        "h-10 flex items-center gap-2 px-3 rounded-md text-sm font-bold tracking-tight text-[#E5E5E5]",
                         "hover:bg-sidebar-accent/5",
                         pathname === item.href && "bg-sidebar-accent/10"
                       )}
@@ -145,6 +139,10 @@ export const DashboardSidebar = () => {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <div className="px-4 py-2">
+          <div className="h-[3px] bg-[#5D6B68]/30 rounded-full w-full" />
+        </div>
 
       </SidebarContent>
 

@@ -2,10 +2,11 @@
 
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
-import { PanelLeftIcon, PanelLeftCloseIcon, Search, SearchIcon } from "lucide-react";
+import { PanelLeftIcon, PanelLeftCloseIcon, Search, SearchIcon, Star } from "lucide-react";
 import { useState } from "react";
 import { DashboardCommand } from "./dashboard-command";
 import { useEffect } from "react";
+import Link from "next/link";
 
 export const DashboardNavbar = () => {
 
@@ -19,33 +20,42 @@ export const DashboardNavbar = () => {
                 setOpen(open => !open);
             }
         };
-        document.addEventListener("keydown", handleKeyDown);    
+        document.addEventListener("keydown", handleKeyDown);
 
         return () => {
             document.removeEventListener("keydown", handleKeyDown);
         };
     }, []);
 
-    return ( 
+    return (
         <>
             <DashboardCommand open={open} setOpen={setOpen} />
-            <div className="flex px-4 gap-x-2 items-center py-3 border-b bg-background">
-                <Button className="size-9" variant="outline" onClick={toggleSidebar}>
+            <div className="flex px-4 gap-x-2 items-center py-3">
+                <Button className="size-9 border-white/10 hover:bg-white/5 p-0 flex items-center justify-center text-muted-foreground" style={{ backgroundColor: "#0C0D0D" }} variant="outline" onClick={toggleSidebar}>
                     {(state === "collapsed" || isMobile) ? <PanelLeftIcon className="size-5" /> : <PanelLeftCloseIcon className="size-5" />}
                 </Button>
 
                 <Button
-                    className="h-9 w-60 justify-start font-normal text-muted-foreground hover:text-muted-foreground"
+                    className="h-9 w-60 justify-start font-normal text-muted-foreground border-white/10 hover:bg-white/5"
+                    style={{ backgroundColor: "#0C0D0D" }}
                     variant="outline"
                     size="sm"
                     onClick={() => setOpen(open => !open)}
                 >
-                    <SearchIcon />
+                    <SearchIcon className="size-4" />
                     <span className="ml-2">Search...</span>
-                    <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                        <span className="text-xs">#8984</span>K
+                    <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border-none bg-white/10 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                        <span className="text-xs">#8984</span>k
                     </kbd>
                 </Button>
+
+                <div className="ml-auto">
+                    <Button variant="ghost" size="icon" asChild className="hover:bg-white/5 rounded-full">
+                        <Link href="/upgrade">
+                            <Star className="size-5 text-muted-foreground hover:text-white transition-colors" />
+                        </Link>
+                    </Button>
+                </div>
             </div>
         </>
     )
