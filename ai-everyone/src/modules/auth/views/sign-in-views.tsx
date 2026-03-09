@@ -1,5 +1,5 @@
 "use client";
-// Card component is used to wrap the sign-up content in a styled container.
+// Card component is used to wrap the sign-in content in a styled container.
 import { Card, CardContent } from "@/components/ui/card";
 
 // npm imports
@@ -11,7 +11,7 @@ import { useForm } from "react-hook-form";
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FaGithub, FaGoogle } from "react-icons/fa";
+import { FaGoogle } from "react-icons/fa";
 
 // package imports
 import { Input } from "@/components/ui/input";
@@ -24,8 +24,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { authClient } from "@/lib/auth-client";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { signInWithEmail, signInWithGoogle } from "@/lib/firebaseAuth";
+import { Alert, AlertTitle } from "@/components/ui/alert";
 
 const formScehma = z.object({
   email: z.string().min(1, "Email is required").email("Invalid email address"),
@@ -45,49 +45,36 @@ export const SignInView = () => {
       password: "",
     },
   });
-{/* every thing wraped inside the card and cardcontent is just the part of one card other card like google button or input field are not
+  {/* every thing wraped inside the card and cardcontent is just the part of one card other card like google button or input field are not
   the getting the look of the card by the top card content they are getting that look from their on component like Input, Button, Alert etc */}
 
-  const onSubmit = (data: z.infer<typeof formScehma>) => {
+  const onSubmit = async (data: z.infer<typeof formScehma>) => {
     setError(null);
     setPending(true);
-    authClient.signIn.email({
-        email: data.email,
-        password: data.password,
-        callbackURL: "/",
-      },
-      {
-        onSuccess: () => {
-          setPending(false);
-          router.push("/");
-        },
-        onError: ({ error }) => {
-          setError(error.message);
-          setPending(false);
-        },
-      }
-    );
+    try {
+      await signInWithEmail(data.email, data.password);
+      router.push("/");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Sign in failed";
+      setError(message);
+    } finally {
+      setPending(false);
+    }
   };
 
-  const onSocial = (provider: "github" | "google") => {
+  const onGoogle = async () => {
     setError(null);
     setPending(true);
-    {/*We cannon add the confirmPassword here cause authClient.signUp.email() function dosen't accept that parameter in the backend, confirm passoword validation is done one the frontend by the zod schema */}
-    authClient.signIn.social({
-        provider: provider,
-        callbackURL: "/",
-      },
-      {
-        onSuccess: () => {
-          setPending(false);
-        },
-        onError: ({ error }) => {
-          setError(error.message);
-          setPending(false);
-        },
-      }
-    );
-  }
+    try {
+      await signInWithGoogle();
+      router.push("/");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Google sign in failed";
+      setError(message);
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -138,35 +125,32 @@ export const SignInView = () => {
                     )}
                   />
                 </div>
-              {!!error && (
-                <Alert className="bg-destructive/10 border-none">
-                  <OctagonAlert className="h-4 w-4 text-destructive!" />
-                  <AlertTitle>{error}</AlertTitle>
-                </Alert>
-              )}
-              <Button disabled={pending} type="submit" className="w-full">
-                Sign In
-              </Button>
-              <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:insert-0 after:top-0.5 after:z-0 after:flex after:items-center after:border-t">
-                <span className="bg-card text-muted-foreground relative z-10 px-2">
+                {!!error && (
+                  <Alert className="bg-destructive/10 border-none">
+                    <OctagonAlert className="h-4 w-4 text-destructive!" />
+                    <AlertTitle>{error}</AlertTitle>
+                  </Alert>
+                )}
+                <Button disabled={pending} type="submit" className="w-full">
+                  Sign In
+                </Button>
+                <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:insert-0 after:top-0.5 after:z-0 after:flex after:items-center after:border-t">
+                  <span className="bg-card text-muted-foreground relative z-10 px-2">
                     Or continue with
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                {/* we have to add button type = "button" because or else it will act as a submit button */}
-                <Button onClick={() => onSocial("google")} disabled={pending} variant="outline" className="w-full" type="button">
-                  <FaGoogle />
-                </Button>
-                <Button onClick={() => onSocial("github")} disabled={pending} variant="outline" className="w-full" type="button">
-                  <FaGithub />
-                </Button>
-              </div>
-              <div className="text-center text-sm">
-                Don&apos;t have an account?{' '}
-                <Link href="/sign-up" className="text-primary hover:underline">
-                  Sign Up
-                </Link>
-              </div>
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  {/* Google sign-in button */}
+                  <Button onClick={onGoogle} disabled={pending} variant="outline" className="w-full" type="button">
+                    <FaGoogle />
+                  </Button>
+                </div>
+                <div className="text-center text-sm">
+                  Don&apos;t have an account?{' '}
+                  <Link href="/sign-up" className="text-primary hover:underline">
+                    Sign Up
+                  </Link>
+                </div>
               </div>
             </form>
           </Form>
@@ -176,18 +160,18 @@ export const SignInView = () => {
           </div>
         </CardContent>
       </Card>
-    <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
-      © 2024 AI-Everyone. All rights reserved.
-    </div>
-    <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
-      By signing in, you agree to our{' '}
-      <a href="/terms-of-service" target="_blank" rel="noreferrer">
-        Terms of Service
-      </a>{' '}and{' '}
-      <a href="/privacy-policy" target="_blank" rel="noreferrer">
-        Privacy Policy
-      </a>
-    </div>
+      <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
+        © 2024 AI-Everyone. All rights reserved.
+      </div>
+      <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
+        By signing in, you agree to our{' '}
+        <a href="/terms-of-service" target="_blank" rel="noreferrer">
+          Terms of Service
+        </a>{' '}and{' '}
+        <a href="/privacy-policy" target="_blank" rel="noreferrer">
+          Privacy Policy
+        </a>
+      </div>
     </div>
   );
 };
