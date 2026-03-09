@@ -10,7 +10,7 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   /* Primary eg. Buttons */
-  --primary: oklch(34.477% 0.00559 17.044);
+  --primary: oklch(34.221% 0.00695 285.952);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -114,6 +114,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   html,
   body {
     height: 100%;
