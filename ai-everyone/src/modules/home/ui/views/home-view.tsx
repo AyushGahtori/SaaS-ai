@@ -119,7 +119,7 @@ export const HomeView = () => {
        *   [ AttachFile (+) | <textarea "Ask anything..."> | TextToSpeech (mic) ]
        */}
       <div
-        className="flex items-center w-full max-w-2xl rounded-full border px-4 py-2 gap-2"
+        className="flex items-center w-full max-w-2xl rounded-full border border-white/5 px-4 py-2 gap-2"
         style={{ backgroundColor: "#0C0D0D" }}
       >
         {/* LEFT — Attach File button */}

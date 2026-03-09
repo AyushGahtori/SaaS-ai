@@ -65,7 +65,7 @@ export const DashboardSidebar = () => {
             alt="SnitchX"
             suppressHydrationWarning
           />
-          <p className="text-2xl font-bold">SnitchX</p>
+          <p className="text-2xl font-bold text-white">SnitchX</p>
         </Link>
       </SidebarHeader>
 
@@ -92,7 +92,7 @@ export const DashboardSidebar = () => {
                       {item.icon && (() => {
                         const Icon = item.icon as any;
                         return (
-                          <Icon className="w-5 h-5 text-sidebar-accent-foreground/80" aria-hidden="true" />
+                          <Icon className="w-5 h-5" stroke="white" strokeWidth={2} aria-hidden="true" />
                         );
                       })()}
 
@@ -127,7 +127,7 @@ export const DashboardSidebar = () => {
                       {item.icon && (() => {
                         const Icon = item.icon as any;
                         return (
-                          <Icon className="w-5 h-5 text-sidebar-accent-foreground/80" aria-hidden="true" />
+                          <Icon className="w-5 h-5" stroke="white" strokeWidth={2} aria-hidden="true" />
                         );
                       })()}
 

@@ -37,7 +37,7 @@ export const TextToSpeech = ({ onClick }: TextToSpeechProps) => {
             title="Speak your prompt"
         >
             {/* Microphone icon from lucide-react */}
-            <MicIcon className="size-4" />
+            <MicIcon className="size-4" stroke="white" strokeWidth={2} />
         </Button>
     );
 };

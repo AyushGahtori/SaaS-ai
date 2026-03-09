@@ -35,7 +35,7 @@ export const AttachFile = ({ onClick }: AttachFileProps) => {
             title="Attach file"
         >
             {/* Plus / Attach icon from lucide-react */}
-            <PlusIcon className="size-4" />
+            <PlusIcon className="size-4" stroke="white" strokeWidth={2} />
         </Button>
     );
 };

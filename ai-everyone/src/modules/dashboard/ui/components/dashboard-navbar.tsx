@@ -31,18 +31,18 @@ export const DashboardNavbar = () => {
         <>
             <DashboardCommand open={open} setOpen={setOpen} />
             <div className="flex px-4 gap-x-2 items-center py-3">
-                <Button className="size-9 border-white/10 hover:bg-white/5 p-0 flex items-center justify-center text-muted-foreground" style={{ backgroundColor: "#0C0D0D" }} variant="outline" onClick={toggleSidebar}>
-                    {(state === "collapsed" || isMobile) ? <PanelLeftIcon className="size-5" /> : <PanelLeftCloseIcon className="size-5" />}
+                <Button className="size-9 border-white/5 hover:bg-white/5 p-0 flex items-center justify-center" style={{ backgroundColor: "#0C0D0D", borderColor: "rgba(255,255,255,0.05)" }} variant="outline" onClick={toggleSidebar}>
+                    {(state === "collapsed" || isMobile) ? <PanelLeftIcon className="size-5" stroke="white" strokeWidth={2} /> : <PanelLeftCloseIcon className="size-5" stroke="white" strokeWidth={2} />}
                 </Button>
 
                 <Button
-                    className="h-9 w-60 justify-start font-normal text-muted-foreground border-white/10 hover:bg-white/5"
-                    style={{ backgroundColor: "#0C0D0D" }}
+                    className="h-9 w-60 justify-start font-normal text-muted-foreground border-white/5 hover:bg-white/5"
+                    style={{ backgroundColor: "#0C0D0D", borderColor: "rgba(255,255,255,0.05)" }}
                     variant="outline"
                     size="sm"
                     onClick={() => setOpen(open => !open)}
                 >
-                    <SearchIcon className="size-4" />
+                    <SearchIcon className="size-4" stroke="white" strokeWidth={2} />
                     <span className="ml-2">Search...</span>
                     <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border-none bg-white/10 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
                         <span className="text-xs">#8984</span>k
@@ -52,7 +52,7 @@ export const DashboardNavbar = () => {
                 <div className="ml-auto">
                     <Button variant="ghost" size="icon" asChild className="hover:bg-white/5 rounded-full">
                         <Link href="/upgrade">
-                            <Star className="size-5 text-muted-foreground hover:text-white transition-colors" />
+                            <Star className="size-5" stroke="white" fill="white" strokeWidth={2} />
                         </Link>
                     </Button>
                 </div>
