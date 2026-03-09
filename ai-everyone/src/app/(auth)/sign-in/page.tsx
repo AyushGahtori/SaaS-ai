@@ -1,21 +1,28 @@
-// Card component is used to wrap the sign-up content in a styled container.
-import { SignInView } from "@/modules/auth/views/sign-in-views"
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+"use client";
+// Sign-in page — redirects authenticated users to home, shows sign-in form otherwise.
+import { SignInView } from "@/modules/auth/views/sign-in-views";
+import { useSession } from "@/lib/auth-client";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-const Page = async() => {
+const Page = () => {
+  const { data: session, isPending } = useSession();
+  const router = useRouter();
 
-    const session = await auth.api.getSession({
-        headers: await headers(),
-      });
-      if (!!session) {
-        redirect("/"); {/* opposit of the logic used in the home page, if the user is already logged in, redirect to home */}
-      }
+  // If the user is already authenticated, redirect to home.
+  useEffect(() => {
+    if (!isPending && session) {
+      router.push("/");
+    }
+  }, [session, isPending, router]);
 
-    return (
-        <SignInView />
-    );
-}
- 
+  // Show nothing while checking auth state.
+  if (isPending) return null;
+
+  // If already logged in, don't render the sign-in form (redirect will happen).
+  if (session) return null;
+
+  return <SignInView />;
+};
+
 export default Page;

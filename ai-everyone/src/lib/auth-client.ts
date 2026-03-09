@@ -1,5 +1,54 @@
-import { createAuthClient } from "better-auth/react";
+// Firebase auth client hook — drop-in replacement for BetterAuth's useSession.
+// Provides a React hook that listens to Firebase Auth state changes
+// and returns session data in the same shape that the rest of the app expects.
+"use client";
 
-export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL || "http://localhost:3000",
-});
+import { useState, useEffect } from "react";
+import { onAuthStateChanged, type User } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+
+interface SessionUser {
+  name: string;
+  email: string;
+  image: string | null;
+}
+
+interface SessionData {
+  user: SessionUser;
+}
+
+/**
+ * useSession — subscribes to Firebase Auth state.
+ *
+ * Returns:
+ *   data   — `{ user: { name, email, image } }` when authenticated, `null` otherwise.
+ *   isPending — `true` while the initial auth state is being resolved.
+ *
+ * This matches the interface previously provided by BetterAuth's `authClient.useSession()`,
+ * so consumer components can use it without any structural changes.
+ */
+export function useSession(): { data: SessionData | null; isPending: boolean } {
+  const [data, setData] = useState<SessionData | null>(null);
+  const [isPending, setIsPending] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: User | null) => {
+      if (firebaseUser) {
+        setData({
+          user: {
+            name: firebaseUser.displayName || "User",
+            email: firebaseUser.email || "",
+            image: firebaseUser.photoURL || null,
+          },
+        });
+      } else {
+        setData(null);
+      }
+      setIsPending(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  return { data, isPending };
+}

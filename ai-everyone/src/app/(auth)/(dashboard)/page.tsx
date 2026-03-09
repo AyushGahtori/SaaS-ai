@@ -1,20 +1,28 @@
+"use client";
+// Dashboard page — redirects unauthenticated users to sign-in, shows home view otherwise.
 import { HomeView } from "@/modules/home/ui/views/home-view";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { useSession } from "@/lib/auth-client";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-const page = async() => {
+const Page = () => {
+  const { data: session, isPending } = useSession();
+  const router = useRouter();
 
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  // If the user is not authenticated, redirect to sign-in.
+  useEffect(() => {
+    if (!isPending && !session) {
+      router.push("/sign-in");
+    }
+  }, [session, isPending, router]);
 
-  if (!session) {
-    redirect("/sign-in"); {/* this wont actively look if the user is signed in it will only look once and if the user is signed out then it will not check again and redirect back to sign in thats why we use fetchOptions in the home-view*/}
-  }
+  // Show nothing while checking auth state.
+  if (isPending) return null;
 
-  return (
-    <HomeView />
-   );
-}
-export default page;
+  // If not logged in, don't render the home view (redirect will happen).
+  if (!session) return null;
+
+  return <HomeView />;
+};
+
+export default Page;

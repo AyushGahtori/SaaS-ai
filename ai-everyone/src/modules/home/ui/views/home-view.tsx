@@ -18,7 +18,7 @@
 
 "use client";
 
-import { authClient } from "@/lib/auth-client";
+import { useSession } from "@/lib/auth-client";
 import { useTRPC } from "@/trpc/client";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -29,7 +29,7 @@ import { TextToSpeech } from "@/modules/home/ui/components/text-to-speech";
 
 export const HomeView = () => {
   // Get the current authenticated session (user name, etc.)
-  const { data: session } = authClient.useSession();
+  const { data: session } = useSession();
 
   // tRPC query — fetches a personalised greeting from the server.
   // The `hello` procedure accepts { text: string } and returns { greeting: string }.

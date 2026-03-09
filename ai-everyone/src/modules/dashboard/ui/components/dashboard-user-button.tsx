@@ -4,7 +4,8 @@ import {
   Avatar,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { authClient } from "@/lib/auth-client";
+import { useSession } from "@/lib/auth-client";
+import { logOut } from "@/lib/firebaseAuth";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -26,13 +27,13 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, D
 import { Button } from "@/components/ui/button";
 
 export const DashboardUserButton = () => {
-  const { data, isPending } = authClient.useSession();
+  const { data, isPending } = useSession();
   const router = useRouter();
   const isMobile = useIsMobile(); // Example breakpoint for mobile devices
 
   // logout helper must be accessible in both mobile and desktop branches
   const handleLogout = async () => {
-    await authClient.signOut();
+    await logOut();
     router.push("/sign-in");
   };
 

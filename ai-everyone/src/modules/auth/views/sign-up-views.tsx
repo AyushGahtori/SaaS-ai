@@ -11,7 +11,7 @@ import { useForm } from "react-hook-form";
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FaGithub, FaGoogle } from "react-icons/fa";
+import { FaGoogle } from "react-icons/fa";
 
 // package imports
 import { Input } from "@/components/ui/input";
@@ -24,8 +24,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { authClient } from "@/lib/auth-client";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { signUpWithEmail, signInWithGoogle } from "@/lib/firebaseAuth";
+import { Alert, AlertTitle } from "@/components/ui/alert";
 
 const formScehma = z.object({
   name: z.string().min(1, { message: "Name is required" }),
@@ -34,10 +34,10 @@ const formScehma = z.object({
   confirmPassword: z.string().min(1, { message: "Confirm password is required" })
 })
 
-.refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"]
-})
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"]
+  })
 
 // When a user submits the form, react-hook-form uses Zod to validate that the email is a valid email and password is provided. If validation fails, error messages display; if it passes, the data is safe to use.
 
@@ -54,50 +54,36 @@ export const SignUpView = () => {
       confirmPassword: "",
     },
   });
-{/* every thing wraped inside the card and cardcontent is just the part of one card other card like google button or input field are not
+  {/* every thing wraped inside the card and cardcontent is just the part of one card other card like google button or input field are not
   the getting the look of the card by the top card content they are getting that look from their on component like Input, Button, Alert etc */}
 
-  const onSubmit = (data: z.infer<typeof formScehma>) => {
+  const onSubmit = async (data: z.infer<typeof formScehma>) => {
     setError(null);
     setPending(true);
-    {/*We cannon add the confirmPassword here cause authClient.signUp.email() function dosen't accept that parameter in the backend, confirm passoword validation is done one the frontend by the zod schema */}
-    authClient.signUp.email({
-        name: data.name,
-        email: data.email,
-        password: data.password,
-        callbackURL: "/",
-      },
-      {
-        onSuccess: () => {
-          setPending(false);
-          router.push("/");
-        },
-        onError: ({ error }) => {
-          setError(error.message);
-          setPending(false);
-        },
-      }
-    );
+    try {
+      // Confirm password validation is done on the frontend by the Zod schema.
+      await signUpWithEmail(data.name, data.email, data.password);
+      router.push("/");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Sign up failed";
+      setError(message);
+    } finally {
+      setPending(false);
+    }
   };
 
-    const onSocial = (provider: "github" | "google") => {
+  const onGoogle = async () => {
     setError(null);
     setPending(true);
-    {/*We cannon add the confirmPassword here cause authClient.signUp.email() function dosen't accept that parameter in the backend, confirm passoword validation is done one the frontend by the zod schema */}
-    authClient.signIn.social({
-        provider: provider,
-        callbackURL: "/",
-      },
-      {
-        onSuccess: () => {
-          setPending(false);
-        },
-        onError: ({ error }) => {
-          setError(error.message);
-          setPending(false);
-        },
-      }
-    );
+    try {
+      await signInWithGoogle();
+      router.push("/");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Google sign in failed";
+      setError(message);
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -183,34 +169,31 @@ export const SignUpView = () => {
                     )}
                   />
                 </div>
-              {!!error && (
-                <Alert className="bg-destructive/10 border-none">
-                  <OctagonAlert className="h-4 w-4 text-destructive!" />
-                  <AlertTitle>{error}</AlertTitle>
-                </Alert>
-              )}
-              <Button disabled={pending} type="submit" className="w-full">
-              </Button>
-              <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:insert-0 after:top-0.5 after:z-0 after:flex after:items-center after:border-t">
-                <span className="bg-card text-muted-foreground relative z-10 px-2">
+                {!!error && (
+                  <Alert className="bg-destructive/10 border-none">
+                    <OctagonAlert className="h-4 w-4 text-destructive!" />
+                    <AlertTitle>{error}</AlertTitle>
+                  </Alert>
+                )}
+                <Button disabled={pending} type="submit" className="w-full">
+                </Button>
+                <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:insert-0 after:top-0.5 after:z-0 after:flex after:items-center after:border-t">
+                  <span className="bg-card text-muted-foreground relative z-10 px-2">
                     Or continue with
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                {/* we have to add button type = "button" because or else it will act as a submit button */}
-                <Button onClick={() => onSocial("google")} disabled={pending} variant="outline" className="w-full" type="button">
-                  <FaGoogle />
-                </Button>
-                <Button onClick={() => onSocial("github")} disabled={pending} variant="outline" className="w-full" type="button">
-                  <FaGithub />
-                </Button>
-              </div>
-              <div className="text-center text-sm">
-                Already have an account?{' '}
-                <Link href="/sign-in" className="text-primary hover:underline">
-                  Sign In
-                </Link>
-              </div>
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  {/* Google sign-in/sign-up button */}
+                  <Button onClick={onGoogle} disabled={pending} variant="outline" className="w-full" type="button">
+                    <FaGoogle />
+                  </Button>
+                </div>
+                <div className="text-center text-sm">
+                  Already have an account?{' '}
+                  <Link href="/sign-in" className="text-primary hover:underline">
+                    Sign In
+                  </Link>
+                </div>
               </div>
             </form>
           </Form>
@@ -220,18 +203,18 @@ export const SignUpView = () => {
           </div>
         </CardContent>
       </Card>
-    <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
-      © 2024 AI-Everyone. All rights reserved.
-    </div>
-    <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
-      By signing up, you agree to our{' '}
-      <a href="/terms-of-service" target="_blank" rel="noreferrer">
-        Terms of Service
-      </a>{' '}and{' '}
-      <a href="/privacy-policy" target="_blank" rel="noreferrer">
-        Privacy Policy
-      </a>
-    </div>
+      <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
+        © 2024 AI-Everyone. All rights reserved.
+      </div>
+      <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
+        By signing up, you agree to our{' '}
+        <a href="/terms-of-service" target="_blank" rel="noreferrer">
+          Terms of Service
+        </a>{' '}and{' '}
+        <a href="/privacy-policy" target="_blank" rel="noreferrer">
+          Privacy Policy
+        </a>
+      </div>
     </div>
   );
 };
