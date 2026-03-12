@@ -18,7 +18,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { MessageSquare, Search, Settings } from "lucide-react";
+import { MessageSquare, Bot, Settings } from "lucide-react";
 import { DashboardUserButton } from "./dashboard-user-button";
 
 // --------------------
@@ -33,7 +33,7 @@ const firstSection = [
   {
     label: "Agents",
     href: "/agents",
-    icon: Search,
+    icon: Bot,
   },
 ];
 
@@ -89,12 +89,15 @@ export const DashboardSidebar = () => {
                       )}
                     >
                       {/** render icon if present */}
-                      {item.icon && (() => {
-                        const Icon = item.icon as any;
-                        return (
-                          <Icon className="w-5 h-5" stroke="white" strokeWidth={2} aria-hidden="true" />
-                        );
-                      })()}
+                      {item.icon && (
+                        <item.icon 
+                          className="w-5 h-5 shrink-0" 
+                          stroke="white" 
+                          strokeWidth={2} 
+                          aria-hidden="true" 
+                          suppressHydrationWarning 
+                        />
+                      )}
 
                       <span>{item.label}</span>
                     </Link>
@@ -124,12 +127,15 @@ export const DashboardSidebar = () => {
                       )}
                     >
                       {/** render icon if present */}
-                      {item.icon && (() => {
-                        const Icon = item.icon as any;
-                        return (
-                          <Icon className="w-5 h-5" stroke="white" strokeWidth={2} aria-hidden="true" />
-                        );
-                      })()}
+                      {item.icon && (
+                        <item.icon 
+                          className="w-5 h-5 shrink-0" 
+                          stroke="white" 
+                          strokeWidth={2} 
+                          aria-hidden="true" 
+                          suppressHydrationWarning 
+                        />
+                      )}
 
                       <span>{item.label}</span>
                     </Link>

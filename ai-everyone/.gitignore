@@ -1,5 +1,11 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+node_modules/
+.next/
+.env
+dist/
+build/
+
 # dependencies
 /node_modules
 /.pnp
@@ -38,3 +44,5 @@ next-env.d.ts
 # personal documentation.
 /how_things_work.txt
 /src/lib/auth-workflow-with-page.tsx.txt
+
+/serviceAccountKey.json
