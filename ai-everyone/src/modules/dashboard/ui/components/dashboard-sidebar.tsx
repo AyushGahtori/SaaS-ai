@@ -20,16 +20,13 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { MessageSquare, Bot, Settings } from "lucide-react";
 import { DashboardUserButton } from "./dashboard-user-button";
+import { ChatSidebarList } from "@/modules/chat/ui/components/chat-sidebar-list";
+import { useChatContext } from "@/modules/chat/context/chat-context";
 
 // --------------------
 // Sidebar data
 // --------------------
-const firstSection = [
-  {
-    label: "New Chat",
-    href: "/",
-    icon: MessageSquare,
-  },
+const secondSection = [
   {
     label: "Agents",
     href: "/agents",
@@ -51,6 +48,7 @@ const settingsSection = [
 export const DashboardSidebar = () => {
 
   const pathname = usePathname();
+  const { createNewChat } = useChatContext();
 
   return (
     <Sidebar className="border-r-[2px] border-r-white/10">
@@ -74,10 +72,23 @@ export const DashboardSidebar = () => {
       </div>
 
       <SidebarContent>
+        {/* New Chat button — wired to chat context */}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {firstSection.map((item) => (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <button
+                    onClick={createNewChat}
+                    className="h-10 flex items-center gap-2 px-3 rounded-md text-sm font-bold tracking-tight text-[#E5E5E5] hover:bg-sidebar-accent/5 w-full"
+                  >
+                    <MessageSquare className="w-5 h-5" stroke="white" strokeWidth={2} aria-hidden="true" />
+                    <span>New Chat</span>
+                  </button>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {secondSection.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton asChild>
                     <Link
@@ -105,6 +116,22 @@ export const DashboardSidebar = () => {
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <div className="px-4 py-2">
+          <div className="h-[3px] bg-[#5D6B68]/30 rounded-full w-full" />
+        </div>
+
+        {/* Chat history list */}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <div className="px-2 pb-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-white/30">
+                Recent Chats
+              </span>
+            </div>
+            <ChatSidebarList />
           </SidebarGroupContent>
         </SidebarGroup>
 
@@ -158,3 +185,4 @@ export const DashboardSidebar = () => {
     </Sidebar>
   );
 };
+

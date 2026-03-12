@@ -1,6 +1,6 @@
 "use client";
-// Dashboard page — redirects unauthenticated users to sign-in, shows home view otherwise.
-import { HomeView } from "@/modules/home/ui/views/home-view";
+// Dashboard page — redirects unauthenticated users to sign-in, shows chat view otherwise.
+import { ChatView } from "@/modules/chat/ui/views/chat-view";
 import { useSession } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -19,10 +19,10 @@ const Page = () => {
   // Show nothing while checking auth state.
   if (isPending) return null;
 
-  // If not logged in, don't render the home view (redirect will happen).
+  // If not logged in, don't render the chat view (redirect will happen).
   if (!session) return null;
 
-  return <HomeView />;
+  return <ChatView />;
 };
 
 export default Page;
