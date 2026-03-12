@@ -6,6 +6,8 @@ import {
     getDoc,
     updateDoc,
     deleteDoc,
+    arrayUnion,
+    arrayRemove,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -19,6 +21,7 @@ export interface UserProfile {
     email: string;
     image: string | null;
     createdAt: string;
+    installedAgents?: string[]; // array of agent IDs installed by this user
     [key: string]: unknown; // allow additional fields
 }
 
@@ -60,4 +63,39 @@ export async function updateUserProfile(
  */
 export async function deleteUserProfile(uid: string): Promise<void> {
     await deleteDoc(doc(db, "users", uid));
+}
+
+// ---------------------------------------------------------------------------
+// Installed Agents — field on users/{uid}
+// ---------------------------------------------------------------------------
+
+/**
+ * Add an agentId to the user's installedAgents array (atomic arrayUnion).
+ * Calling this with an already-installed agentId is a safe no-op.
+ */
+export async function installAgentForUser(uid: string, agentId: string): Promise<void> {
+    await updateDoc(doc(db, "users", uid), {
+        installedAgents: arrayUnion(agentId),
+    });
+}
+
+/**
+ * Remove an agentId from the user's installedAgents array (atomic arrayRemove).
+ * Calling this when the agent is not installed is a safe no-op.
+ */
+export async function uninstallAgentForUser(uid: string, agentId: string): Promise<void> {
+    await updateDoc(doc(db, "users", uid), {
+        installedAgents: arrayRemove(agentId),
+    });
+}
+
+/**
+ * Return the list of installed agent IDs for a user.
+ * Returns an empty array if the user doc doesn't exist or has no installedAgents.
+ */
+export async function getUserInstalledAgents(uid: string): Promise<string[]> {
+    const snapshot = await getDoc(doc(db, "users", uid));
+    if (!snapshot.exists()) return [];
+    const data = snapshot.data();
+    return (data?.installedAgents as string[]) ?? [];
 }
