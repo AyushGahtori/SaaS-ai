@@ -51,7 +51,7 @@ export const AgentCardFeatured = ({
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/[0.06] via-transparent to-purple-500/[0.04] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
 
       {/* Background Icon (simulating a wide hero image layout) */}
-      <div className="absolute inset-0 z-0 opacity-20 transition-transform duration-700 group-hover:scale-105 group-hover:opacity-30">
+      <div className="absolute inset-0 z-0 scale-125 opacity-20 transition-transform duration-700 group-hover:scale-[1.35] group-hover:opacity-30">
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat blur-[60px]"
           style={{ backgroundImage: `url(${agent.iconUrl})` }}
