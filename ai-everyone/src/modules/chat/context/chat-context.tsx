@@ -39,6 +39,7 @@ import {
     getMessages,
     deleteMessages,
 } from "@/modules/chat/db/messages";
+import { subscribeToTask } from "@/lib/firestore-tasks";
 
 // ---------------------------------------------------------------------------
 // Context shape
@@ -57,6 +58,8 @@ interface ChatContextValue {
     isLoadingChats: boolean;
     /** Error message from the last API call, if any. */
     error: string | null;
+    /** Map of active task statuses for real-time UI updates. */
+    taskStatuses: Record<string, { status: string; result?: Record<string, unknown> }>;
 
     // Actions
     loadChats: () => Promise<void>;
@@ -97,9 +100,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isLoadingChats, setIsLoadingChats] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [taskStatuses, setTaskStatuses] = useState<
+        Record<string, { status: string; result?: Record<string, unknown> }>
+    >({});
 
     // Ref to track whether the user aborted the current generation.
     const abortRef = useRef(false);
+    // Ref to track active task listeners for cleanup.
+    const taskListenersRef = useRef<Record<string, () => void>>({});
 
     // ── Auth listener ────────────────────────────────────────────────────
     useEffect(() => {
@@ -107,6 +115,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setUid(user?.uid ?? null);
         });
         return () => unsub();
+    }, []);
+
+    // Cleanup task listeners on unmount
+    useEffect(() => {
+        return () => {
+            Object.values(taskListenersRef.current).forEach((unsub) => unsub());
+        };
     }, []);
 
     // ── Load chats on login ──────────────────────────────────────────────
@@ -162,6 +177,31 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         [uid]
     );
 
+    // ── Subscribe to a task for real-time status updates ─────────────────
+    const watchTask = useCallback((taskId: string) => {
+        // Don't subscribe twice
+        if (taskListenersRef.current[taskId]) return;
+
+        const unsub = subscribeToTask(taskId, (task) => {
+            if (!task) return;
+            setTaskStatuses((prev) => ({
+                ...prev,
+                [taskId]: {
+                    status: task.status,
+                    result: task.agentOutput as Record<string, unknown> | undefined,
+                },
+            }));
+
+            // Cleanup listener once task is terminal
+            if (task.status === "success" || task.status === "failed") {
+                unsub();
+                delete taskListenersRef.current[taskId];
+            }
+        });
+
+        taskListenersRef.current[taskId] = unsub;
+    }, []);
+
     // ── Send message ─────────────────────────────────────────────────────
     const sendMessage = useCallback(
         async (content: string) => {
@@ -176,7 +216,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             try {
                 // 1. If there's no active chat, create one in Firestore first.
                 if (!currentChatId) {
-                    // Use the first ~40 chars of the user message as the chat title.
                     const title =
                         content.length > 40 ? content.slice(0, 40) + "…" : content;
                     const newChat = await createChat(uid, title);
@@ -195,17 +234,21 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 setMessages((prev) => [...prev, userMsg]);
 
                 // 3. Build message history for the API call.
-                //    Include all previous messages + the new user message.
                 const historyForApi = [
                     ...messages.map((m) => ({ role: m.role, content: m.content })),
                     { role: "user" as const, content },
                 ];
 
-                // 4. Call the /api/chat route.
+                // 4. Call the /api/chat route — now with userId and chatId for
+                //    agent task creation.
                 const res = await fetch("/api/chat", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ messages: historyForApi }),
+                    body: JSON.stringify({
+                        messages: historyForApi,
+                        userId: uid,
+                        chatId: currentChatId,
+                    }),
                 });
 
                 if (!res.ok) {
@@ -216,21 +259,44 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 }
 
                 const data = await res.json();
-                const assistantContent: string =
-                    data.content || "No response received.";
 
-                if (abortRef.current) return; // User may have started a new chat.
+                if (abortRef.current) return;
 
-                // 5. Save the assistant message to Firestore.
-                const assistantMsg = await createMessage(
-                    uid,
-                    currentChatId,
-                    "assistant",
-                    assistantContent
-                );
-                setMessages((prev) => [...prev, assistantMsg]);
+                if (data.type === "agent_task") {
+                    // ── Agent task was created ────────────────────────────
+                    const agentMsg = await createMessage(
+                        uid,
+                        currentChatId,
+                        "agent",
+                        data.content || "Processing agent task...",
+                        data.taskId,
+                        data.agentId
+                    );
+                    setMessages((prev) => [...prev, agentMsg]);
 
-                // 6. Touch the chat's updatedAt so it bubbles to the top of the sidebar.
+                    // Set initial task status
+                    setTaskStatuses((prev) => ({
+                        ...prev,
+                        [data.taskId]: { status: data.status || "queued" },
+                    }));
+
+                    // Start real-time listener for task updates
+                    watchTask(data.taskId);
+                } else {
+                    // ── Normal chat response ─────────────────────────────
+                    const assistantContent: string =
+                        data.content || "No response received.";
+
+                    const assistantMsg = await createMessage(
+                        uid,
+                        currentChatId,
+                        "assistant",
+                        assistantContent
+                    );
+                    setMessages((prev) => [...prev, assistantMsg]);
+                }
+
+                // Touch the chat's updatedAt so it bubbles to the top of the sidebar.
                 await updateChat(uid, currentChatId, {});
             } catch (err: unknown) {
                 console.error("[sendMessage]", err);
@@ -241,7 +307,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 setIsGenerating(false);
             }
         },
-        [uid, activeChatId, messages]
+        [uid, activeChatId, messages, watchTask]
     );
 
     // ── Delete chat ──────────────────────────────────────────────────────
@@ -293,6 +359,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         isGenerating,
         isLoadingChats,
         error,
+        taskStatuses,
         loadChats,
         createNewChat,
         selectChat,
