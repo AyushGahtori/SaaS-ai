@@ -1,67 +1,113 @@
-# API Endpoints (tRPC)
+# Teams Agent — HTTP API Endpoints
 
-The agents marketplace uses a tRPC router at `src/trpc/routers/agents.ts`, merged into the app router at `trpc.agents.*`.
-
----
-
-## Queries
-
-### `agents.getAll`
-**Input**: none  
-**Output**: `Agent[]`  
-Returns all agents from the `agents` Firestore collection.
+The teams-agent runs as a FastAPI server on **port 8100** (Docker-internal).
+It is called directly by `firestore-tasks.server.ts` via the `AGENT_ROUTES` map.
 
 ---
 
-### `agents.getFeatured`
-**Input**: none  
-**Output**: `Agent[]`  
-Returns agents where `isFeatured === true`.
+## POST `/teams/action`
+
+Executes a Teams agent action. Supports three actions:
+
+### Action: `make_call`
+
+**Request:**
+```json
+{
+    "action": "make_call",
+    "contact": "Aaron"
+}
+```
+**Response:**
+```json
+{
+    "status": "success",
+    "type": "teams_call",
+    "url": "msteams://teams.microsoft.com/l/call/0/0?users=aaron@company.com",
+    "displayName": "Aaron Smith",
+    "email": "aaron@company.com"
+}
+```
 
 ---
 
-### `agents.getTrending`
-**Input**: `{ limit: number }` (1–50, default 10)  
-**Output**: `Agent[]`  
-Returns top agents sorted by `trendingScore` descending.
+### Action: `send_message`
+
+**Request:**
+```json
+{
+    "action": "send_message",
+    "contact": "Nandini",
+    "message": "I'll be 10 minutes late"
+}
+```
+**Response:**
+```json
+{
+    "status": "success",
+    "type": "teams_message",
+    "url": "msteams://teams.microsoft.com/l/chat/0/0?users=nandini@company.com&message=...",
+    "displayName": "Nandini Sharma",
+    "email": "nandini@company.com"
+}
+```
 
 ---
 
-### `agents.search`
-**Input**: `{ query: string }`  
-**Output**: `Agent[]`  
-Fetches all agents and filters client-side by name, category, or description matching the query string (case-insensitive).
+### Action: `schedule_meeting`
+
+Uses Microsoft Graph API to resolve attendee names to emails, then generates Teams and Outlook deep-link URLs.
+
+**Request:**
+```json
+{
+    "action": "schedule_meeting",
+    "title": "Sprint Planning",
+    "attendees": ["Aaron", "nandini@company.com"],
+    "date": "2026-03-20",
+    "time": "10:00",
+    "duration": 60,
+    "description": "Review sprint goals for Q2"
+}
+```
+**Response:**
+```json
+{
+    "status": "success",
+    "type": "teams_meeting",
+    "teamsUrl": "https://teams.microsoft.com/l/meeting/new?subject=Sprint+Planning&...",
+    "outlookUrl": "https://outlook.office.com/calendar/action/compose?subject=Sprint+Planning&...",
+    "title": "Sprint Planning",
+    "date": "2026-03-20",
+    "time": "10:00",
+    "duration": 60,
+    "resolvedAttendees": [
+        {"name": "Aaron Smith", "email": "aaron@company.com"},
+        {"name": "nandini@company.com", "email": "nandini@company.com"}
+    ],
+    "unresolvedAttendees": [],
+    "description": "Review sprint goals for Q2"
+}
+```
+
+> [!NOTE]
+> If an attendee name cannot be resolved via Microsoft Graph, it appears in `unresolvedAttendees` and is omitted from the meeting URLs. The UI shows a ⚠ warning for unresolved attendees.
 
 ---
 
-### `agents.getUserInstalled`
-**Input**: `{ userId: string }`  
-**Output**: `string[]`  
-Returns the array of agent IDs installed by the specified user.
+## GET `/health`
+
+**Response:** `{ "status": "healthy", "agent": "teams-agent", "version": "1.0.0" }`
 
 ---
 
-## Mutations
+## Environment Variables
 
-### `agents.install`
-**Input**: `{ userId: string, agentId: string }`  
-**Output**: `{ success: true }`  
-Adds `agentId` to the user's `installedAgents` array and increments the agent's `installCount`.
-
----
-
-### `agents.uninstall`
-**Input**: `{ userId: string, agentId: string }`  
-**Output**: `{ success: true }`  
-Removes `agentId` from the user's `installedAgents` array and decrements the agent's `installCount`.
-
----
-
-## Responsible Files
-
-| File | Role |
-|------|------|
-| `src/trpc/routers/agents.ts` | tRPC router definition |
-| `src/trpc/routers/_app.ts` | Merges agents router into app |
-| `src/trpc/client.tsx` | Client-side tRPC provider |
-| `src/trpc/init.ts` | tRPC initialization |
+| Variable | Value | Description |
+|---|---|---|
+| `OLLAMA_URL` | `http://host.docker.internal:11434/api/chat` | Ollama (for internal LLM use) |
+| `OLLAMA_MODEL_CLOUD` | `qwen3.5:397b-cloud` | Cloud model |
+| `OLLAMA_MODEL_LOCAL` | `qwen2.5:7b` | Local model |
+| `GRAPH_TENANT_ID` | (from .env) | Microsoft Entra tenant ID |
+| `GRAPH_CLIENT_ID` | (from .env) | Microsoft Entra app client ID |
+| `PORT` | `8100` | Server port |

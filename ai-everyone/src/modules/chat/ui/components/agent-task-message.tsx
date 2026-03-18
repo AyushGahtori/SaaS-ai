@@ -12,7 +12,7 @@
 import React from "react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import type { ChatMessage } from "@/modules/chat/types";
-import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink } from "lucide-react";
+import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar } from "lucide-react";
 
 interface AgentTaskMessageProps {
     message: ChatMessage;
@@ -108,6 +108,66 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
                     Message {displayName || email} on Teams
                     <ExternalLink className="w-3 h-3 ml-1 opacity-60" />
                 </button>
+            );
+        }
+
+        if (resultType === "teams_meeting") {
+            const teamsUrl = result.teamsUrl as string | undefined;
+            const outlookUrl = result.outlookUrl as string | undefined;
+            const title = result.title as string | undefined;
+            const date = result.date as string | undefined;
+            const time = result.time as string | undefined;
+            const duration = result.duration as number | undefined;
+            const resolvedAttendees = result.resolvedAttendees as { name: string; email: string }[] | undefined;
+            const unresolvedAttendees = result.unresolvedAttendees as string[] | undefined;
+
+            return (
+                <div className="mt-3 space-y-3">
+                    {/* Meeting summary card */}
+                    <div className="rounded-lg bg-white/5 border border-white/10 px-3 py-2.5 text-sm space-y-1">
+                        {title && <p className="font-semibold text-white">{title}</p>}
+                        {date && time && (
+                            <p className="text-white/60 text-xs">
+                                {date} at {time}{duration ? ` · ${duration} min` : ""}
+                            </p>
+                        )}
+                        {resolvedAttendees && resolvedAttendees.length > 0 && (
+                            <div className="text-xs text-white/50 mt-1">
+                                <span className="text-white/40">Attendees: </span>
+                                {resolvedAttendees.map((a) => a.name).join(", ")}
+                            </div>
+                        )}
+                        {unresolvedAttendees && unresolvedAttendees.length > 0 && (
+                            <p className="text-xs text-yellow-400/70 mt-1">
+                                ⚠ Could not resolve: {unresolvedAttendees.join(", ")}
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap gap-2">
+                        {teamsUrl && (
+                            <button
+                                onClick={() => window.open(teamsUrl, "_blank")}
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 text-sm font-medium transition-colors"
+                            >
+                                <Calendar className="w-4 h-4" />
+                                Open in Teams
+                                <ExternalLink className="w-3 h-3 ml-1 opacity-60" />
+                            </button>
+                        )}
+                        {outlookUrl && (
+                            <button
+                                onClick={() => window.open(outlookUrl, "_blank")}
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-300 text-sm font-medium transition-colors"
+                            >
+                                <Calendar className="w-4 h-4" />
+                                Open in Outlook
+                                <ExternalLink className="w-3 h-3 ml-1 opacity-60" />
+                            </button>
+                        )}
+                    </div>
+                </div>
             );
         }
 

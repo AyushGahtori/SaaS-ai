@@ -74,7 +74,7 @@
 
 ---
 
-## 4. Example parent LLM JSON output (canonical contract)
+## 4. Example parent LLM output (tag-based contract)
 
 ```json
 {
