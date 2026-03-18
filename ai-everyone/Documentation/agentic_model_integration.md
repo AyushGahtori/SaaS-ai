@@ -7,6 +7,7 @@ The system transforms the chat from a simple Ollama Q&A into an **agent orchestr
 
 > [!TIP]
 > For a detailed explanation of why we use the "Direct Execution" model in development versus a "Task Queue" in production, see the [Architecture: Dev vs Prod](file:///e:/SaaS-ai/ai-everyone/Documentation/architecture_dev_vs_prod.md) guide.
+> For a comparison of the old "Raw JSON" vs the current "Tag-Based" intent detection, see [Raw JSON vs Tag-Based](file:///e:/SaaS-ai/ai-everyone/Documentation/raw_json_vs_tag_based.md).
 
 ---
 
@@ -61,7 +62,7 @@ Ollama (qwen2.5:7b)
 
 | File | Changes |
 |------|---------|
-| `src/app/api/chat/route.ts` | Added orchestration system prompt, agent registry, intent detection, Firestore task creation |
+| `src/app/api/chat/route.ts` | Orchestration prompt, agent registry, **tag-based** intent detection, model selection, Firestore task creation |
 | `src/modules/chat/types.ts` | Added `"agent"` role, `taskId`/`agentId` fields, `AgentRegistryEntry` |
 | `src/modules/chat/context/chat-context.tsx` | Handles agent task responses, real-time task listeners, `taskStatuses` state |
 | `src/modules/chat/db/messages.ts` | Stores/retrieves `taskId` and `agentId` for agent messages |
@@ -179,32 +180,35 @@ POST http://localhost:8100/teams/action
 ### Next.js App (.env)
 | Variable | Value | Description |
 |----------|-------|-------------|
+| `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama server (host from Docker) |
+| `OLLAMA_MODEL_CLOUD` | `qwen3.5:397b-cloud` | Cloud model (high accuracy) |
+| `OLLAMA_MODEL_LOCAL` | `qwen2.5:7b` | Local model (fast) |
+| `OLLAMA_DEFAULT_MODEL` | `qwen3.5:397b-cloud` | Fallback if UI doesn't send a model |
 | `AGENT_SERVER_URL` | `http://localhost:8100` | Agent server URL (internal to Docker) |
 | `GRAPH_TENANT_ID` | (optional) | Microsoft Entra tenant ID |
 | `GRAPH_CLIENT_ID` | (optional) | Microsoft Entra app client ID |
-
-### Agent Server (agents/teams-agent/.env)
-| Variable | Value | Description |
-|----------|-------|-------------|
-| `OLLAMA_URL` | `http://localhost:11434/api/chat` | Ollama server (internal to Docker) |
-| `OLLAMA_MODEL` | `qwen2.5:7b` | LLM model name |
-| `GRAPH_TENANT_ID` | Required for Teams | Microsoft Entra tenant ID |
-| `GRAPH_CLIENT_ID` | Required for Teams | Microsoft Entra app client ID |
 | `PORT` | `8100` | Server port |
 
 ---
 
-## How Agent Selection Works
+## How Agent Selection Works (Tag-Based)
 
-1. The user sends a message like "Call Nandini from Teams"
-2. The `/api/chat` route prepends the orchestration system prompt to the message history.
-3. The system prompt tells Ollama: "If the user's request matches an agent's capabilities, return JSON".
-4. Ollama returns a JSON blob (e.g., `{"agent_required": "teams-agent", ...}`).
-5. **Fuzzy Matching**: The backend cleans the ID and performs a fuzzy search. If Ollama outputs `agent_teams` or `Microsoft Teams Agent`, the backend correctly maps it to `teams-agent`.
-6. **JSON Protection**: If Ollama outputs malformed JSON or an unknown agent, the backend catches this and returns a clean fallback error to the UI instead of raw code.
-7. A task document is created in Firestore.
-8. **Direct Execution**: For local dev, `route.ts` immediately triggers `executeAgentTask()` to call the agent directly (bypassing the Cloud Function).
-9. The Python agent resolves the contact and returns a Teams URL.
-10. The task status transitions: `Queued` -> `Running` -> `Success` (or `Failed`).
-11. The frontend, listening to Firestore, updates the UI card in real-time.
-12. The user sees the final result with an "Open Teams Call" button.
+1. The user selects a model from the **dropdown** in the chat input bar (Cloud or Local).
+2. The user sends a message like "Call Nandini from Teams".
+3. The `/api/chat` route receives the message AND the selected model name.
+4. The system prompt tells Ollama: "If the request matches an agent, wrap JSON in `<AGENT_INTENT>` tags."
+5. Ollama returns something like:
+   ```
+   Sure! I'll connect you to Nandini on Teams.
+   <AGENT_INTENT>
+   {"agent_required": "teams-agent", "action": "make_call", "parameters": {"contact": "Nandini"}}
+   </AGENT_INTENT>
+   ```
+6. **Tag Extraction**: The backend uses regex to extract the JSON from inside the tags.
+7. **Fuzzy Matching**: If Ollama outputs `agent_teams` instead of `teams-agent`, the backend corrects it.
+8. **JSON Protection**: If the tags contain invalid JSON, a clean fallback error is shown.
+9. A task document is created in Firestore.
+10. **Direct Execution**: `route.ts` calls `executeAgentTask()` to call the agent directly.
+11. The task status transitions: `Queued` -> `Running` -> `Success` (or `Failed`).
+12. The frontend, listening to Firestore, updates the UI card in real-time.
+13. The user sees the AI's conversational text + the result card with action buttons.

@@ -5,7 +5,7 @@ Adapt the Chatbot-UI chat pipeline into the existing AI Everywhere project. Repl
 ## User Review Required
 
 > [!IMPORTANT]
-> **Ollama must be running** on `localhost:11434` with the `qwen3` model pulled (`ollama pull qwen3`) for the chat to work.
+> **Ollama must be running** on `localhost:11434` with the cloud model pulled (`ollama pull qwen3.5:397b-cloud`) for the chat to work.
 
 > [!IMPORTANT]Markdown:
 > **No streaming initially.** The first version sends `"stream": false` to Ollama and returns the full response at once. Streaming can be added as a follow-up enhancement.
@@ -22,8 +22,10 @@ Adapt the Chatbot-UI chat pipeline into the existing AI Everywhere project. Repl
 
 Add Ollama configuration:
 ```
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=qwen3
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL_CLOUD=qwen3.5:397b-cloud
+OLLAMA_MODEL_LOCAL=qwen2.5:7b
+OLLAMA_DEFAULT_MODEL=qwen3.5:397b-cloud
 ```
 These are server-only env vars (no `NEXT_PUBLIC_` prefix) since the Ollama API is called from the Next.js API route only.
 
@@ -99,7 +101,7 @@ Sends to Ollama:
 ```json
 POST http://localhost:11434/api/chat
 {
-  "model": "qwen3",
+  "model": "qwen3.5:397b-cloud",
   "messages": [{ "role": "user", "content": "Hello" }, ...],
   "stream": false
 }
@@ -232,7 +234,7 @@ users/
 Since this project has no automated test framework (`jest`, `vitest`, etc.) set up, verification will be manual:
 
 1. **Start the dev server**: Run `npm run dev` in `c:\Users\Ayush\Desktop\SaaS-ai\ai-everyone`
-2. **Start Ollama**: Ensure Ollama is running with `qwen3` model available
+2. **Start Ollama**: Ensure Ollama is running with `qwen3.5:397b-cloud` model available
 3. **Login**: Navigate to the app and sign in
 4. **Send a message**: Type a message in the input bar and press Enter. Verify:
    - A user message bubble appears

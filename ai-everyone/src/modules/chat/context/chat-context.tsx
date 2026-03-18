@@ -60,6 +60,10 @@ interface ChatContextValue {
     error: string | null;
     /** Map of active task statuses for real-time UI updates. */
     taskStatuses: Record<string, { status: string; result?: Record<string, unknown> }>;
+    /** Currently selected LLM model. */
+    selectedModel: string;
+    /** Available models the user can pick from. */
+    availableModels: { id: string; label: string }[];
 
     // Actions
     loadChats: () => Promise<void>;
@@ -68,6 +72,7 @@ interface ChatContextValue {
     sendMessage: (content: string) => Promise<void>;
     removeChatById: (chatId: string) => Promise<void>;
     renameChat: (chatId: string, newTitle: string) => Promise<void>;
+    setSelectedModel: (model: string) => void;
     clearError: () => void;
 }
 
@@ -89,6 +94,12 @@ export function useChatContext(): ChatContextValue {
 // Provider
 // ---------------------------------------------------------------------------
 
+// Available models for the selector dropdown
+const AVAILABLE_MODELS = [
+    { id: "qwen3.5:397b-cloud", label: "Cloud · High Accuracy" },
+    { id: "qwen2.5:7b", label: "Local · Fast" },
+];
+
 export function ChatProvider({ children }: { children: React.ReactNode }) {
     // Auth state — we need the UID for all Firestore operations.
     const [uid, setUid] = useState<string | null>(null);
@@ -103,6 +114,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [taskStatuses, setTaskStatuses] = useState<
         Record<string, { status: string; result?: Record<string, unknown> }>
     >({});
+    const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
 
     // Ref to track whether the user aborted the current generation.
     const abortRef = useRef(false);
@@ -239,8 +251,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     { role: "user" as const, content },
                 ];
 
-                // 4. Call the /api/chat route — now with userId and chatId for
-                //    agent task creation.
+                // 4. Call the /api/chat route — now with userId, chatId, and
+                //    the user's selected model.
                 const res = await fetch("/api/chat", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -248,6 +260,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         messages: historyForApi,
                         userId: uid,
                         chatId: currentChatId,
+                        model: selectedModel,
                     }),
                 });
 
@@ -307,7 +320,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 setIsGenerating(false);
             }
         },
-        [uid, activeChatId, messages, watchTask]
+        [uid, activeChatId, messages, watchTask, selectedModel]
     );
 
     // ── Delete chat ──────────────────────────────────────────────────────
@@ -360,12 +373,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         isLoadingChats,
         error,
         taskStatuses,
+        selectedModel,
+        availableModels: AVAILABLE_MODELS,
         loadChats,
         createNewChat,
         selectChat,
         sendMessage,
         removeChatById,
         renameChat,
+        setSelectedModel,
         clearError,
     };
 

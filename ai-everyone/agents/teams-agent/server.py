@@ -37,9 +37,17 @@ app = FastAPI(
 
 class TeamsActionRequest(BaseModel):
     """Request body for the /teams/action endpoint."""
-    action: str  # "make_call" or "send_message"
-    contact: str  # Person name or email
-    message: str | None = None  # Message text (for send_message)
+    action: str  # "make_call", "send_message", or "schedule_meeting"
+    contact: str | None = None   # For make_call / send_message
+    message: str | None = None   # Message text (for send_message) or description (for meeting)
+
+    # Meeting-specific fields
+    title: str | None = None
+    attendees: list[str] | None = None
+    date: str | None = None      # YYYY-MM-DD
+    time: str | None = None      # HH:MM
+    duration: int | None = None  # minutes
+    description: str | None = None
 
     # Additional fields that may come from the Cloud Function
     taskId: str | None = None
@@ -49,11 +57,22 @@ class TeamsActionRequest(BaseModel):
 
 class TeamsActionResponse(BaseModel):
     """Response body from the /teams/action endpoint."""
-    status: str  # "success" or "failed"
-    type: str | None = None  # "teams_call" or "teams_message"
-    url: str | None = None  # msteams:// URL
+    status: str                             # "success" or "failed"
+    type: str | None = None                 # "teams_call" | "teams_message" | "teams_meeting"
+    # Call / Message fields
+    url: str | None = None                  # msteams:// URL for call/message
     displayName: str | None = None
     email: str | None = None
+    # Meeting fields
+    teamsUrl: str | None = None             # https://teams.microsoft.com/l/meeting/...
+    outlookUrl: str | None = None           # https://outlook.office.com/calendar/...
+    title: str | None = None
+    date: str | None = None
+    time: str | None = None
+    duration: int | None = None
+    resolvedAttendees: list[dict] | None = None
+    unresolvedAttendees: list[str] | None = None
+    description: str | None = None
     error: str | None = None
 
 

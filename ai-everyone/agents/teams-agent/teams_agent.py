@@ -204,6 +204,40 @@ def _build_teams_message_url(email: str, message: str) -> str:
     return f"msteams://teams.microsoft.com/l/chat/0/0?users={email}&message={encoded}"
 
 
+def _build_teams_meeting_url(title: str, attendees: list[str], description: str, start_dt_str: str, end_dt_str: str) -> str:
+    """Build a Microsoft Teams deep-link URL to pre-fill a meeting."""
+    subject = urllib.parse.quote(title or "Team Meeting")
+    attendees_str = urllib.parse.quote(",".join(attendees))
+    content = urllib.parse.quote(description or "")
+    # Format for Teams: YYYY-MM-DDTHH:mm:ss
+    start = urllib.parse.quote(start_dt_str)
+    end = urllib.parse.quote(end_dt_str)
+
+    return (
+        f"https://teams.microsoft.com/l/meeting/new?"
+        f"subject={subject}"
+        f"&attendees={attendees_str}"
+        f"&content={content}"
+        f"&startTime={start}"
+        f"&endTime={end}"
+    )
+
+
+def _build_outlook_meeting_url(title: str, attendees: list[str], description: str, start_dt_str: str, end_dt_str: str) -> str:
+    """Fallback: Outlook Web new event with Teams meeting enabled."""
+    subject = urllib.parse.quote(title or "Team Meeting")
+    attendees_str = urllib.parse.quote(";".join(attendees))
+    body = urllib.parse.quote(description or "")
+    start = urllib.parse.quote(start_dt_str)
+    end = urllib.parse.quote(end_dt_str)
+
+    return (
+        f"https://outlook.office.com/calendar/action/compose?"
+        f"subject={subject}&to={attendees_str}&body={body}"
+        f"&startdt={start}&enddt={end}&isonlinemeeting=true"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main agent function — called by the FastAPI server
 # ---------------------------------------------------------------------------
@@ -214,9 +248,17 @@ def run_teams_action(task_data: dict) -> dict:
 
     Input (task_data):
         {
-            "action": "make_call" | "send_message",
+            # For make_call / send_message:
+            "action": "make_call" | "send_message" | "schedule_meeting",
             "contact": "person name or email",
-            "message": "optional message text"
+            "message": "optional message text",
+            # For schedule_meeting:
+            "title": "Meeting Title",
+            "attendees": ["Name", "email@corp.com"],
+            "date": "YYYY-MM-DD",
+            "time": "HH:MM",
+            "duration": 60,
+            "description": "agenda"
         }
 
     Output:
@@ -230,6 +272,11 @@ def run_teams_action(task_data: dict) -> dict:
         }
     """
     action = task_data.get("action", "")
+
+    # Route schedule_meeting before contact validation (it uses different params)
+    if action == "schedule_meeting":
+        return _handle_schedule_meeting(task_data)
+
     contact_query = task_data.get("contact", "")
     message_text = task_data.get("message", "")
 
@@ -289,3 +336,77 @@ def run_teams_action(task_data: dict) -> dict:
         }
 
     return {"status": "failed", "error": "Unexpected state."}
+
+
+def _handle_schedule_meeting(data: dict) -> dict:
+    """Port of assistant.py logic replacing PowerShell with Graph API."""
+    title = data.get("title", "Team Meeting")
+    attendees_raw = data.get("attendees", [])
+    if isinstance(attendees_raw, str):
+        attendees_raw = [attendees_raw]
+    
+    date_str = data.get("date", "")
+    time_str = data.get("time", "")
+    duration = int(data.get("duration", 30))
+    description = data.get("message") or data.get("description", "")
+
+    if not date_str or not time_str:
+        return {"status": "failed", "error": "Missing date or time for meeting."}
+
+    # ── Resolve Attendees ────────────────────────────────────────────────
+    graph = GraphDirectoryClient()
+    resolved_emails = []
+    resolved_details = []
+    unresolved = []
+
+    for name in attendees_raw:
+        if _is_valid_email(name):
+            email = name.strip()
+            resolved_emails.append(email)
+            resolved_details.append({"name": email, "email": email})
+            continue
+        
+        try:
+            matches = graph.search_people(name)
+            if matches:
+                # Take best match
+                match = matches[0]
+                resolved_emails.append(match["email"])
+                resolved_details.append({
+                    "name": match["displayName"],
+                    "email": match["email"]
+                })
+            else:
+                unresolved.append(name)
+        except Exception:
+            unresolved.append(name)
+
+    # ── Calculate Timestamps ─────────────────────────────────────────────
+    # Format: YYYY-MM-DDTHH:mm:ss
+    try:
+        from datetime import datetime, timedelta
+        start_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+        end_dt = start_dt + timedelta(minutes=duration)
+        
+        start_ts = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+        end_ts = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    except Exception as exc:
+        return {"status": "failed", "error": f"Invalid date/time format: {exc}"}
+
+    # ── Build URLs ───────────────────────────────────────────────────────
+    teams_url = _build_teams_meeting_url(title, resolved_emails, description, start_ts, end_ts)
+    outlook_url = _build_outlook_meeting_url(title, resolved_emails, description, start_ts, end_ts)
+
+    return {
+        "status": "success",
+        "type": "teams_meeting",
+        "teamsUrl": teams_url,
+        "outlookUrl": outlook_url,
+        "title": title,
+        "date": date_str,
+        "time": time_str,
+        "duration": duration,
+        "resolvedAttendees": resolved_details,
+        "unresolvedAttendees": unresolved,
+        "description": description
+    }
