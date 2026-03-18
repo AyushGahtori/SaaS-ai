@@ -110,7 +110,7 @@ interface AgentIntent {
     reasoning?: string;
 }
 
-function tryParseAgentIntent(content: string): AgentIntent | null {
+function tryParseAgentIntent(content: string): AgentIntent | { error: true, fallback: string } | null {
     const trimmed = content.trim();
 
     // Strip markdown code fences if present (LLM sometimes adds them despite instructions)
@@ -119,6 +119,9 @@ function tryParseAgentIntent(content: string): AgentIntent | null {
         .replace(/\s*```$/i, "")
         .trim();
 
+    // Heuristic: Does it heavily look like our agent JSON format?
+    const looksLikeAgentJson = cleaned.startsWith("{") && cleaned.includes('"agent_required"');
+
     try {
         const parsed = JSON.parse(cleaned);
 
@@ -126,20 +129,37 @@ function tryParseAgentIntent(content: string): AgentIntent | null {
         if (
             typeof parsed === "object" &&
             parsed !== null &&
-            typeof parsed.agent_required === "string" &&
             typeof parsed.action === "string" &&
             typeof parsed.parameters === "object"
         ) {
-            // Verify the agent exists in our registry
-            const agentExists = AGENT_REGISTRY.some(
-                (a) => a.id === parsed.agent_required
-            );
-            if (!agentExists) return null;
+            const rawAgent = String(parsed.agent_required || "").toLowerCase();
+            
+            // Fuzzy match the agent in the registry
+            const matchedAgent = AGENT_REGISTRY.find((a) => {
+                const id = a.id.toLowerCase();
+                const name = a.name.toLowerCase();
+                return (
+                    rawAgent === id ||
+                    rawAgent === id.replace("-", "_") ||
+                    rawAgent.includes("teams") && id.includes("teams") || // Specific catch for teams agent
+                    rawAgent.includes(id.replace("-", "")) ||
+                    name.includes(rawAgent)
+                );
+            });
 
-            return parsed as AgentIntent;
+            if (matchedAgent) {
+                // Auto-correct the agent_required to the strict ID
+                parsed.agent_required = matchedAgent.id;
+                return parsed as AgentIntent;
+            } else if (looksLikeAgentJson) {
+                 return { error: true, fallback: "The AI attempted to trigger an agent but provided an unrecognized agent ID." };
+            }
         }
     } catch {
-        // Not JSON — this is a normal chat response
+        // Not JSON — this is a normal chat response (or malformed JSON)
+        if (looksLikeAgentJson) {
+            return { error: true, fallback: "The AI attempted to trigger an agent but generated invalid JSON format." };
+        }
     }
     return null;
 }
@@ -205,6 +225,15 @@ export async function POST(req: NextRequest) {
 
         // ── Check if the LLM returned an agent intent ─────────────────────
         const intent = tryParseAgentIntent(assistantContent);
+
+        if (intent && 'error' in intent) {
+            // The LLM tried to output JSON but it's invalid or the agent is unknown.
+            // Don't bleed raw JSON to the user. Show a nice fallback message.
+            return NextResponse.json({
+                type: "chat",
+                content: intent.fallback,
+            });
+        }
 
         if (intent && userId && chatId) {
             // Agent intent detected → create a task in Firestore

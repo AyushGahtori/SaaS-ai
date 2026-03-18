@@ -5,6 +5,9 @@
 This document describes the **agentic model integration** into SnitchX (AI Everywhere).
 The system transforms the chat from a simple Ollama Q&A into an **agent orchestration platform** where the parent LLM can detect user intents and delegate tasks to specialized agents.
 
+> [!TIP]
+> For a detailed explanation of why we use the "Direct Execution" model in development versus a "Task Queue" in production, see the [Architecture: Dev vs Prod](file:///e:/SaaS-ai/ai-everyone/Documentation/architecture_dev_vs_prod.md) guide.
+
 ---
 
 ## Architecture
@@ -26,15 +29,15 @@ Ollama (qwen2.5:7b)
          ↓ Return { type: "agent_task", taskId, agentId }
     Frontend saves "agent" message, starts real-time listener
          ↓
-    Firebase Cloud Function triggers (onDocumentCreated)
-         ↓ Updates status to "running"
-         ↓ POST to Python FastAPI agent server
+    Local Dev (Next.js): executeAgentTask() calls agent server directly
+    Production (GCP): Firebase Cloud Function triggers (onDocumentCreated)
+         ↓
     Agent executes (e.g. Teams contact lookup)
-         ↓ Returns structured result { type, url, ... }
-    Cloud Function updates agentTasks/{taskId}
-         ↓ status → "success" + agentOutput
-    Frontend receives real-time update
-         ↓ Shows result + action button ("Open Teams Call")
+         ↓ Returns structured result { type: "teams_call", url, ... }
+    Task status updated to "success" + agentOutput
+         ↓
+    Frontend receives real-time update via Firestore listener
+         ↓ Shows result card + action buttons
 ```
 
 ---
@@ -46,7 +49,8 @@ Ollama (qwen2.5:7b)
 | File | Purpose |
 |------|---------|
 | `src/lib/firebase-admin.ts` | Firebase Admin SDK init (server-side Firestore) |
-| `src/lib/firestore-tasks.ts` | CRUD for `agentTasks` collection + real-time listener |
+| `src/lib/firestore-tasks.ts` | Client-side real-time listener for tasks |
+| `src/lib/firestore-tasks.server.ts` | Server-side task creation + **Direct Execution (Local Dev)** |
 | `src/modules/chat/ui/components/agent-task-message.tsx` | Agent task status card with action buttons |
 | `agents/teams-agent/teams_agent.py` | Refactored Teams agent (from `assistant_agent.py`) |
 | `agents/teams-agent/server.py` | FastAPI wrapper for the Teams agent |
@@ -175,14 +179,14 @@ POST http://localhost:8100/teams/action
 ### Next.js App (.env)
 | Variable | Value | Description |
 |----------|-------|-------------|
-| `AGENT_SERVER_URL` | `http://host.docker.internal:8100` | Python agent server URL |
+| `AGENT_SERVER_URL` | `http://localhost:8100` | Agent server URL (internal to Docker) |
 | `GRAPH_TENANT_ID` | (optional) | Microsoft Entra tenant ID |
 | `GRAPH_CLIENT_ID` | (optional) | Microsoft Entra app client ID |
 
 ### Agent Server (agents/teams-agent/.env)
 | Variable | Value | Description |
 |----------|-------|-------------|
-| `OLLAMA_URL` | `http://host.docker.internal:11434/api/chat` | Ollama server |
+| `OLLAMA_URL` | `http://localhost:11434/api/chat` | Ollama server (internal to Docker) |
 | `OLLAMA_MODEL` | `qwen2.5:7b` | LLM model name |
 | `GRAPH_TENANT_ID` | Required for Teams | Microsoft Entra tenant ID |
 | `GRAPH_CLIENT_ID` | Required for Teams | Microsoft Entra app client ID |
@@ -193,14 +197,14 @@ POST http://localhost:8100/teams/action
 ## How Agent Selection Works
 
 1. The user sends a message like "Call Nandini from Teams"
-2. The `/api/chat` route prepends the orchestration system prompt to the message history
-3. The system prompt tells Ollama: "If the user's request matches an agent's capabilities, return JSON"
-4. Ollama returns: `{"agent_required": "teams-agent", "action": "make_call", "parameters": {"contact": "Nandini"}}`
-5. The API route parses this JSON, validates the agent exists in the registry
-6. A task document is created in Firestore (`agentTasks` collection)
-7. The Firebase Cloud Function `runAgentTask` triggers automatically
-8. The function calls `POST http://<agent-server>/teams/action` with the task data
-9. The Python agent resolves the contact and returns a Teams URL
-10. The Cloud Function updates the task with the result
-11. The frontend receives the update via real-time Firestore listener
-12. The user sees the result with an "Open Teams Call" button
+2. The `/api/chat` route prepends the orchestration system prompt to the message history.
+3. The system prompt tells Ollama: "If the user's request matches an agent's capabilities, return JSON".
+4. Ollama returns a JSON blob (e.g., `{"agent_required": "teams-agent", ...}`).
+5. **Fuzzy Matching**: The backend cleans the ID and performs a fuzzy search. If Ollama outputs `agent_teams` or `Microsoft Teams Agent`, the backend correctly maps it to `teams-agent`.
+6. **JSON Protection**: If Ollama outputs malformed JSON or an unknown agent, the backend catches this and returns a clean fallback error to the UI instead of raw code.
+7. A task document is created in Firestore.
+8. **Direct Execution**: For local dev, `route.ts` immediately triggers `executeAgentTask()` to call the agent directly (bypassing the Cloud Function).
+9. The Python agent resolves the contact and returns a Teams URL.
+10. The task status transitions: `Queued` -> `Running` -> `Success` (or `Failed`).
+11. The frontend, listening to Firestore, updates the UI card in real-time.
+12. The user sees the final result with an "Open Teams Call" button.
