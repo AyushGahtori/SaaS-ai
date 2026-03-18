@@ -43,18 +43,29 @@ const toISO = (val: unknown): string => {
 /**
  * Create a new message in a chat.
  * Returns the full ChatMessage object with its generated Firestore ID.
+ *
+ * For agent messages, pass optional taskId and agentId to link the
+ * message to its agentTask document.
  */
 export async function createMessage(
     uid: string,
     chatId: string,
     role: MessageRole,
-    content: string
+    content: string,
+    taskId?: string,
+    agentId?: string
 ): Promise<ChatMessage> {
-    const docRef = await addDoc(messagesCol(uid, chatId), {
+    const messageData: Record<string, unknown> = {
         role,
         content,
         createdAt: serverTimestamp(),
-    });
+    };
+
+    // Store agent metadata if present
+    if (taskId) messageData.taskId = taskId;
+    if (agentId) messageData.agentId = agentId;
+
+    const docRef = await addDoc(messagesCol(uid, chatId), messageData);
 
     return {
         id: docRef.id,
@@ -62,6 +73,8 @@ export async function createMessage(
         role,
         content,
         createdAt: new Date().toISOString(),
+        ...(taskId && { taskId }),
+        ...(agentId && { agentId }),
     };
 }
 
@@ -83,6 +96,8 @@ export async function getMessages(
             role: data.role as MessageRole,
             content: data.content ?? "",
             createdAt: toISO(data.createdAt),
+            ...(data.taskId && { taskId: data.taskId }),
+            ...(data.agentId && { agentId: data.agentId }),
         };
     });
 }

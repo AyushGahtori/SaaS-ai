@@ -1,11 +1,9 @@
 /**
  * ChatMessageItem — renders a single chat message bubble.
  *
- * Adapted from Chatbot-UI's components/messages/message.tsx.
- * Simplified for a single-model setup without edit/regenerate/branching.
- *
  * - User messages: right-aligned, subtle background
  * - Assistant messages: left-aligned, with markdown rendering
+ * - Agent messages: delegated to AgentTaskMessage component
  */
 
 "use client";
@@ -15,6 +13,7 @@ import type { ChatMessage } from "@/modules/chat/types";
 import { Bot, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { AgentTaskMessage } from "./agent-task-message";
 
 interface ChatMessageItemProps {
     message: ChatMessage;
@@ -23,6 +22,11 @@ interface ChatMessageItemProps {
 export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     message,
 }) => {
+    // Agent messages get their own specialized renderer
+    if (message.role === "agent") {
+        return <AgentTaskMessage message={message} />;
+    }
+
     const isUser = message.role === "user";
 
     return (
