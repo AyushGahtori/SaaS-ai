@@ -21,13 +21,22 @@ except ImportError:
     pass
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from teams_agent import run_teams_action
+from teams_agent import run_teams_action, auth_store
 
 app = FastAPI(
     title="SnitchX Teams Agent",
     description="Microsoft Teams agent for SnitchX — handles calls and messages.",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -74,6 +83,7 @@ class TeamsActionResponse(BaseModel):
     unresolvedAttendees: list[str] | None = None
     description: str | None = None
     error: str | None = None
+    flow: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +112,44 @@ async def teams_action(data: TeamsActionRequest):
             status_code=500,
             detail=f"Agent execution failed: {str(exc)}",
         )
+
+@app.post("/auth/poll")
+def auth_poll():
+    msal_app = auth_store.get("msal_app")
+    flow = auth_store.get("flow")
+
+    if not msal_app or not flow:
+        raise HTTPException(status_code=400, detail="No active device flow.")
+
+    result = msal_app.acquire_token_by_device_flow(flow, exit_condition=lambda f: True)
+
+    if "access_token" in result:
+        auth_store["token"] = result["access_token"]
+        auth_store["flow"] = None
+        return {"status": "authenticated"}
+
+    error = result.get("error", "")
+    if error == "authorization_pending":
+        return {"status": "pending"}
+    if error == "expired_token":
+        auth_store["flow"] = None
+        return {"status": "expired"}
+
+    return {"status": "pending", "error": result.get("error_description", "")}
+
+@app.get("/auth/status")
+def auth_status():
+    token = auth_store.get("token")
+    if token:
+        return {"authenticated": True}
+    return {"authenticated": False}
+
+@app.post("/auth/logout")
+def auth_logout():
+    auth_store["token"] = None
+    auth_store["flow"] = None
+    return {"status": "logged_out"}
+
 
 
 # ---------------------------------------------------------------------------
