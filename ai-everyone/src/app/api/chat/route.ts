@@ -32,14 +32,14 @@ const AGENT_REGISTRY: AgentRegistryEntry[] = [
         description:
             "Handles Microsoft Teams actions: making voice/video calls, sending messages, " +
             "and scheduling meetings with attendees. Can search contacts by name and resolve " +
-            "their email addresses via Microsoft Graph.",
+            "their email addresses via Microsoft Graph. For meetings, it can notify the user via WhatsApp, SMS, or Call.",
         actions: ["make_call", "send_message", "schedule_meeting"],
         examplePrompts: [
             "Call Nandini on Teams",
             "Send a message to Riya on Teams saying I will be late",
             "Make a Teams call to john@company.com",
             "Schedule a meeting with Aaron and Priya tomorrow at 10 AM about the sprint",
-            "Set up a 30-minute standup with the team on Monday at 9 AM",
+            "Set up a 30-minute standup with the team on Monday at 9 AM and notify me via WhatsApp",
         ],
     },
     // Future agents can be added here:
@@ -105,6 +105,9 @@ Sure! I'll call Aaron on Microsoft Teams for you right away.
      - "time": time as HH:MM in 24-hour format (required)
      - "duration": duration in minutes (default to 30 if not specified)
      - "description": agenda or description (optional)
+     - "notification_preference": (e.g. "whatsapp", "sms", "call", "all", or "none")
+
+   **IMPORTANT for schedule_meeting**: If the user asks to schedule a meeting but does NOT explicitly specify a notification preference (like "whatsapp", "sms", "call", "all", or "none"), you MUST NOT use the <AGENT_INTENT> tag yet. Instead, respond normally by asking them "Would you like to be notified about this meeting via WhatsApp, SMS, Call, All, or None?". Only use <AGENT_INTENT> after they provide their preference!
 
 3. If the user's request does NOT match any agent, respond normally as a helpful AI assistant. Do NOT use <AGENT_INTENT> tags in this case.
 
