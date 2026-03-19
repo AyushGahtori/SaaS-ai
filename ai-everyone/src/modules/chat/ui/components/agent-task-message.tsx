@@ -12,7 +12,7 @@
 import React from "react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import type { ChatMessage } from "@/modules/chat/types";
-import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar, Key } from "lucide-react";
+import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar, Key, ListTodo } from "lucide-react";
 import { TeamsLoginCard, type DeviceFlowData } from "./teams-login-card";
 
 interface AgentTaskMessageProps {
@@ -193,10 +193,54 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             );
         }
 
+        if (resultType === "todo_action") {
+            const msg = result.message as string || "Task updated successfully.";
+            return (
+                <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-sm font-medium">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>{msg}</span>
+                </div>
+            );
+        }
+
+        if (resultType === "todo_list") {
+            const tasks = (result.tasks as any[]) || [];
+            const msg = result.message as string || `Found ${tasks.length} tasks.`;
+            
+            return (
+                <div className="mt-3 space-y-2">
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-sm font-medium mb-2">
+                        <ListTodo className="w-4 h-4" />
+                        <span>{msg}</span>
+                    </div>
+                    {tasks.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                            {tasks.map((t, i) => (
+                                <div key={t._id || i} className="flex flex-col px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">
+                                    <div className="flex items-center justify-between">
+                                        <span className={`font-medium ${t.status === 'done' ? 'text-white/40 line-through' : 'text-white/90'}`}>{t.title}</span>
+                                        <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${t.status === 'done' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                                            {t.status}
+                                        </span>
+                                    </div>
+                                    {t.datetime && (
+                                        <div className="text-xs text-white/50 mt-1 flex items-center gap-1">
+                                            <Calendar className="w-3 h-3" />
+                                            {t.datetime}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         // Generic result
         return (
-            <div className="mt-2 text-xs text-white/50">
-                Result: {JSON.stringify(result)}
+            <div className="mt-2 text-xs text-white/50 break-words whitespace-pre-wrap">
+                Result: {JSON.stringify(result, null, 2)}
             </div>
         );
     };
