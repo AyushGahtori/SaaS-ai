@@ -19,7 +19,7 @@ import type { AgentTask } from "./firestore-tasks";
 
 const AGENT_ROUTES: Record<string, string> = {
     "teams-agent": "/teams/action",
-    // "email-agent": "/email/action",
+    "todo-agent": "/todo/action",
 };
 
 /**
@@ -95,8 +95,17 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     });
 
     // ── 3. Call the agent's FastAPI server ─────────────────────────────
-    const agentServerUrl =
-        process.env.AGENT_SERVER_URL || "http://host.docker.internal:8100";
+    const isTodoAgent = task.agentId === "todo-agent";
+
+    // Default Teams agent to 8100, Todo agent to 8200
+    // Because both Next.js and the Python agents run inside the SAME snitchx container,
+    // they should communicate over localhost, not host.docker.internal
+    const defaultHost = isTodoAgent ? "http://localhost:8200" : "http://localhost:8100";
+    
+    // Allow overriding from .env (e.g. TEAMS_AGENT_URL, TODO_AGENT_URL, or gracefully fallback)
+    const envUrl = isTodoAgent ? process.env.TODO_AGENT_URL : (process.env.TEAMS_AGENT_URL || process.env.AGENT_SERVER_URL);
+    
+    const agentServerUrl = envUrl || defaultHost;
     const agentUrl = `${agentServerUrl}${agentRoute}`;
 
     console.log(`[executeAgentTask] Calling agent at ${agentUrl}`);

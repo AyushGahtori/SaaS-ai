@@ -42,14 +42,19 @@ const AGENT_REGISTRY: AgentRegistryEntry[] = [
             "Set up a 30-minute standup with the team on Monday at 9 AM and notify me via WhatsApp",
         ],
     },
-    // Future agents can be added here:
-    // {
-    //     id: "email-agent",
-    //     name: "Email Agent",
-    //     description: "Compose and send professional emails via Gmail.",
-    //     actions: ["send_email", "draft_email"],
-    //     examplePrompts: ["Send an email to ACME Corp about the project delay"],
-    // },
+    {
+        id: "todo-agent",
+        name: "To-Do List Agent",
+        description: "Manages the user's personal to-do list and tasks.",
+        actions: ["add_task", "list_tasks", "list_tasks_by_date", "delete_task", "mark_done"],
+        examplePrompts: [
+            "Add buy milk tomorrow at 10am to my to-do list",
+            "What are my tasks for today?",
+            "Mark 'buy milk' as done",
+            "Delete the gym task from my list",
+            "Show all pending tasks"
+        ]
+    }
 ];
 
 // ---------------------------------------------------------------------------
@@ -109,13 +114,20 @@ Sure! I'll call Aaron on Microsoft Teams for you right away.
 
    **IMPORTANT for schedule_meeting**: If the user asks to schedule a meeting but does NOT explicitly specify a notification preference (like "whatsapp", "sms", "call", "all", or "none"), you MUST NOT use the <AGENT_INTENT> tag yet. Instead, respond normally by asking them "Would you like to be notified about this meeting via WhatsApp, SMS, Call, All, or None?". Only use <AGENT_INTENT> after they provide their preference!
 
-3. If the user's request does NOT match any agent, respond normally as a helpful AI assistant. Do NOT use <AGENT_INTENT> tags in this case.
+3. For the todo-agent:
+   - For "add_task" action: extract "title" (required) and "datetime" (optional, format YYYY-MM-DD HH:MM)
+   - For "list_tasks" action: extract "status" (optional, "pending" or "done")
+   - For "list_tasks_by_date" action: extract "datetime" (required YYYY-MM-DD)
+   - For "delete_task" action: extract "task_id" (if known) or "title" of the task to delete.
+   - For "mark_done" action: extract "task_id" (if known) or "title" of the task to mark done.
 
-4. NEVER execute actions directly. ALWAYS delegate to the appropriate agent via the <AGENT_INTENT> tags.
+4. If the user's request does NOT match any agent, respond normally as a helpful AI assistant. Do NOT use <AGENT_INTENT> tags in this case.
 
-5. If you are unsure whether an agent is needed, respond normally and ask the user for clarification.
+5. NEVER execute actions directly. ALWAYS delegate to the appropriate agent via the <AGENT_INTENT> tags.
 
-6. The JSON inside <AGENT_INTENT> must be valid and parseable — no trailing commas, no comments.`;
+6. If you are unsure whether an agent is needed, respond normally and ask the user for clarification.
+
+7. The JSON inside <AGENT_INTENT> must be valid and parseable — no trailing commas, no comments.`;
 }
 
 // ---------------------------------------------------------------------------
