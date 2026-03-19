@@ -12,6 +12,8 @@ import json
 import os
 import re
 import urllib.parse
+import threading
+from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 
 import msal
@@ -28,6 +30,16 @@ GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID", "")
 GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID", "")
 GRAPH_SCOPES = ["User.Read", "People.Read", "User.ReadBasic.All"]
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+# Twilio configuration
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+WHATSAPP_TO_NUMBER = os.getenv("WHATSAPP_TO_NUMBER", "")
+TWILIO_CALL_FROM = os.getenv("TWILIO_CALL_FROM", "+18127953318")
+CALL_TO_NUMBER = os.getenv("CALL_TO_NUMBER", "")
+TWILIO_SMS_FROM = os.getenv("TWILIO_SMS_FROM", "+18127953318")
+SMS_TO_NUMBER = os.getenv("SMS_TO_NUMBER", "")
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +409,18 @@ def _handle_schedule_meeting(data: dict) -> dict:
     teams_url = _build_teams_meeting_url(title, resolved_emails, description, start_ts, end_ts)
     outlook_url = _build_outlook_meeting_url(title, resolved_emails, description, start_ts, end_ts)
 
+    # ── Trigger Notifications ─────────────────────────────────────────────
+    pref = data.get("notification_preference", "none").lower()
+    if pref and pref != "none":
+        meeting_data_for_notif = {
+            "title": title,
+            "date": date_str,
+            "time": time_str,
+            "duration": duration,
+            "attendee_labels": [f"{r['name']} <{r['email']}>" for r in resolved_details]
+        }
+        dispatch_notifications(meeting_data_for_notif, teams_url, pref)
+
     return {
         "status": "success",
         "type": "teams_meeting",
@@ -410,3 +434,122 @@ def _handle_schedule_meeting(data: dict) -> dict:
         "unresolvedAttendees": unresolved,
         "description": description
     }
+
+
+# ---------------------------------------------------------------------------
+# Twilio Notification Helpers
+# ---------------------------------------------------------------------------
+
+def get_meeting_window(meeting: dict) -> tuple[datetime, datetime]:
+    start_dt = datetime.strptime(f"{meeting['date']} {meeting['time']}", "%Y-%m-%d %H:%M")
+    end_dt = start_dt + timedelta(minutes=int(meeting.get("duration", 60)))
+    return start_dt, end_dt
+
+def send_whatsapp_message(to_number: str, body: str) -> None:
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN: return
+    import base64; from urllib.parse import urlencode; from urllib import request, error
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
+    credentials = base64.b64encode(f"{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}".encode()).decode()
+    payload = urlencode({
+        "From": TWILIO_WHATSAPP_FROM,
+        "To": f"whatsapp:{to_number}",
+        "Body": body,
+    }).encode("utf-8")
+    req = request.Request(url, data=payload, method="POST", headers={
+        "Authorization": f"Basic {credentials}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    })
+    try:
+        with request.urlopen(req, timeout=30) as resp: pass
+    except error.URLError: pass
+
+def schedule_whatsapp_reminder(meeting: dict, to_number: str, teams_url: str = "") -> None:
+    if not to_number: return
+    start_dt, _ = get_meeting_window(meeting)
+    delay_seconds = (start_dt - timedelta(minutes=1) - datetime.now()).total_seconds()
+    if delay_seconds <= 0: delay_seconds = 0
+    body = (f"⏰ Reminder: '{meeting.get('title','your meeting')}' starts in 1 minute!\n"
+            f"📅 {start_dt.strftime('%A, %B %d, %Y')} at {start_dt.strftime('%I:%M %p')}\n")
+    if teams_url: body += f"🔗 Join now:\n{teams_url}"
+    timer = threading.Timer(delay_seconds, lambda: send_whatsapp_message(to_number, body))
+    timer.daemon = True; timer.start()
+
+def make_ivr_call(to_number: str, twiml_message: str) -> None:
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN: return
+    import base64; from urllib.parse import urlencode; from urllib import request, error
+    twiml = (f"<Response><Say voice='alice' language='en-IN'>{twiml_message}</Say>"
+             f"<Pause length='1'/><Say voice='alice' language='en-IN'>{twiml_message}</Say></Response>")
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Calls.json"
+    credentials = base64.b64encode(f"{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}".encode()).decode()
+    payload = urlencode({"From": TWILIO_CALL_FROM, "To": to_number, "Twiml": twiml}).encode("utf-8")
+    req = request.Request(url, data=payload, method="POST", headers={
+        "Authorization": f"Basic {credentials}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    })
+    try:
+        with request.urlopen(req, timeout=30) as resp: pass
+    except error.URLError: pass
+
+def schedule_call_reminder(meeting: dict, to_number: str) -> None:
+    if not to_number: return
+    start_dt, _ = get_meeting_window(meeting)
+    delay_seconds = (start_dt - timedelta(minutes=1) - datetime.now()).total_seconds()
+    if delay_seconds <= 0: delay_seconds = 0
+    message = (f"Reminder! Your Teams meeting '{meeting.get('title', 'your meeting')}' starts in 1 minute at {start_dt.strftime('%I:%M %p')}. "
+               f"Please join now using the link sent to your WhatsApp. Thank you.")
+    timer = threading.Timer(delay_seconds, lambda: make_ivr_call(to_number, message))
+    timer.daemon = True; timer.start()
+
+def send_sms(to_number: str, body: str) -> None:
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN: return
+    import base64; from urllib.parse import urlencode; from urllib import request, error
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
+    credentials = base64.b64encode(f"{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}".encode()).decode()
+    payload = urlencode({"From": TWILIO_SMS_FROM, "To": to_number, "Body": body}).encode("utf-8")
+    req = request.Request(url, data=payload, method="POST", headers={
+        "Authorization": f"Basic {credentials}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    })
+    try:
+        with request.urlopen(req, timeout=30) as resp: pass
+    except error.URLError: pass
+
+def schedule_sms_reminder(meeting: dict, to_number: str, teams_url: str = "") -> None:
+    if not to_number: return
+    start_dt, _ = get_meeting_window(meeting)
+    delay_seconds = (start_dt - timedelta(minutes=1) - datetime.now()).total_seconds()
+    if delay_seconds <= 0: delay_seconds = 0
+    body = f"Reminder: '{meeting.get('title','meeting')}' starts in 1 minute at {start_dt.strftime('%I:%M %p')}.\n"
+    if teams_url: body += f"Join: {teams_url}"
+    timer = threading.Timer(delay_seconds, lambda: send_sms(to_number, body))
+    timer.daemon = True; timer.start()
+
+def dispatch_notifications(meeting: dict, teams_url: str, preference: str) -> None:
+    start_dt, _ = get_meeting_window(meeting)
+    do_whatsapp = preference in ("whatsapp", "all")
+    do_call     = preference in ("call", "all")
+    do_sms      = preference in ("sms", "all")
+
+    if do_whatsapp and WHATSAPP_TO_NUMBER:
+        body = (f"✅ Meeting Scheduled: '{meeting.get('title', 'Meeting')}'\n"
+                f"📅 {start_dt.strftime('%A, %B %d, %Y')} at {start_dt.strftime('%I:%M %p')}\n"
+                f"⏱️ Duration: {meeting.get('duration', 60)} minutes\n"
+                f"👥 Attendees: {', '.join(meeting.get('attendee_labels', []))}\n"
+                f"🔗 Join Meeting:\n{teams_url}")
+        send_whatsapp_message(WHATSAPP_TO_NUMBER, body)
+        schedule_whatsapp_reminder(meeting, WHATSAPP_TO_NUMBER, teams_url)
+
+    if do_call and CALL_TO_NUMBER:
+        message = (f"Hello! Your Teams meeting has been scheduled. Title: {meeting.get('title', 'your meeting')}. "
+                   f"Date: {start_dt.strftime('%A, %B %d, %Y')}. Time: {start_dt.strftime('%I:%M %p')}. "
+                   f"Duration: {meeting.get('duration', 60)} minutes. Please check your WhatsApp for the meeting link. Thank you.")
+        make_ivr_call(CALL_TO_NUMBER, message)
+        schedule_call_reminder(meeting, CALL_TO_NUMBER)
+
+    if do_sms and SMS_TO_NUMBER:
+        body = (f"Meeting Scheduled: {meeting.get('title', 'Meeting')}\n"
+                f"Date: {start_dt.strftime('%A, %B %d, %Y')}\nTime: {start_dt.strftime('%I:%M %p')}\n"
+                f"Duration: {meeting.get('duration', 60)} min\nAttendees: {', '.join(meeting.get('attendee_labels', []))}\n")
+        if teams_url: body += f"Join: {teams_url}"
+        send_sms(SMS_TO_NUMBER, body)
+        schedule_sms_reminder(meeting, SMS_TO_NUMBER, teams_url)
