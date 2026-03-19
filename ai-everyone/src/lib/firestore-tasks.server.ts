@@ -134,11 +134,11 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         console.log(`[executeAgentTask] Agent result`, result);
 
         // ── 4. Update task with result ────────────────────────────────
-        if (result.status === "success") {
+        if (result.status === "success" || result.status === "action_required") {
             await taskRef.update({
-                status: "success",
+                status: result.status,
                 agentOutput: result,
-                finishedAt: FieldValue.serverTimestamp(),
+                finishedAt: result.status === "success" ? FieldValue.serverTimestamp() : null, // leave unfinished if action_required
             });
         } else {
             await taskRef.update({

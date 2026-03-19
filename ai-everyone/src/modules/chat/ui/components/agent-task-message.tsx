@@ -12,7 +12,8 @@
 import React from "react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import type { ChatMessage } from "@/modules/chat/types";
-import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar } from "lucide-react";
+import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar, Key } from "lucide-react";
+import { TeamsLoginCard, type DeviceFlowData } from "./teams-login-card";
 
 interface AgentTaskMessageProps {
     message: ChatMessage;
@@ -54,6 +55,8 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
                 return <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />;
             case "running":
                 return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
+            case "action_required":
+                return <Key className="w-4 h-4 text-sky-400" />;
             case "success":
                 return <CheckCircle className="w-4 h-4 text-green-400" />;
             case "failed":
@@ -66,6 +69,7 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
     const statusColors: Record<string, string> = {
         queued: "border-yellow-500/20 bg-yellow-500/5",
         running: "border-blue-500/20 bg-blue-500/5",
+        action_required: "border-sky-500/20 bg-sky-500/5",
         success: "border-green-500/20 bg-green-500/5",
         failed: "border-red-500/20 bg-red-500/5",
     };
@@ -73,13 +77,31 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
     const statusLabels: Record<string, string> = {
         queued: "Queued",
         running: "Running...",
+        action_required: "Auth Required",
         success: "Completed",
         failed: "Failed",
     };
 
     // ── Action button based on result type ───────────────────────────────
     const ActionButton = () => {
-        if (status !== "success" || !result) return null;
+        if (!result) return null;
+
+        if (status === "action_required" && result.type === "device_auth" && result.flow) {
+            return (
+                <TeamsLoginCard 
+                    deviceData={result.flow as DeviceFlowData} 
+                    onAuthenticated={() => {
+                        fetch("/api/tasks/retry", {
+                            method: "POST",
+                            body: JSON.stringify({ taskId: message.taskId }),
+                            headers: { "Content-Type": "application/json" }
+                        }).catch(console.error);
+                    }}
+                />
+            );
+        }
+
+        if (status !== "success") return null;
 
         const resultType = result.type as string;
         const displayName = result.displayName as string || "";

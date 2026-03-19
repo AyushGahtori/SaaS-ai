@@ -59,6 +59,19 @@ class ParsedTurn:
 # Microsoft Graph client
 # ---------------------------------------------------------------------------
 
+from typing import Any, Dict
+
+auth_store: Dict[str, Any] = {
+    "flow": None,
+    "token": None,
+    "msal_app": None,
+}
+
+class DeviceFlowRequired(Exception):
+    def __init__(self, flow_data):
+        self.flow_data = flow_data
+        super().__init__("Microsoft sign-in required")
+
 class GraphDirectoryClient:
     """Searches Microsoft Teams contacts via the Graph API."""
 
@@ -69,36 +82,50 @@ class GraphDirectoryClient:
                 "Set it in the agent server's .env file."
             )
 
-        authority = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}"
-        self.app = msal.PublicClientApplication(
-            GRAPH_CLIENT_ID,
-            authority=authority,
-        )
-        self.token: str | None = None
+        if not auth_store.get("msal_app"):
+            authority = f"https://login.microsoftonline.com/{GRAPH_TENANT_ID}"
+            auth_store["msal_app"] = msal.PublicClientApplication(
+                GRAPH_CLIENT_ID,
+                authority=authority,
+            )
+        self.app = auth_store["msal_app"]
 
     def acquire_token(self) -> str:
-        """Acquire a Graph access token via device code flow."""
-        if self.token:
-            return self.token
+        """Acquire a Graph access token. Raises DeviceFlowRequired if a device flow is started."""
+        token = auth_store.get("token")
+        if token and isinstance(token, str):
+            return token
 
-        accounts = self.app.get_accounts()
+        app = self.app
+        if not app:
+            raise RuntimeError("MSAL app not initialized")
+
+        accounts = app.get_accounts()
         if accounts:
-            result = self.app.acquire_token_silent(GRAPH_SCOPES, account=accounts[0])
+            result = app.acquire_token_silent(GRAPH_SCOPES, account=accounts[0])
             if result and "access_token" in result:
-                self.token = result["access_token"]
-                return self.token
+                access_token = result["access_token"]
+                auth_store["token"] = access_token
+                return str(access_token)
 
-        flow = self.app.initiate_device_flow(scopes=GRAPH_SCOPES)
+        # If a flow is already pending, check if it's expired
+        flow = auth_store.get("flow")
+        if flow:
+            import time
+            if time.time() < flow.get("expires_at", 0):
+                raise DeviceFlowRequired(flow)
+            else:
+                # Flow expired, clear it
+                auth_store["flow"] = None
+
+        flow = app.initiate_device_flow(scopes=GRAPH_SCOPES)
         if "user_code" not in flow:
             raise RuntimeError("Could not start Microsoft sign-in device flow.")
 
-        print(f"\nMicrosoft sign-in required: {flow['message']}")
-        result = self.app.acquire_token_by_device_flow(flow)
-        if "access_token" not in result:
-            raise RuntimeError(result.get("error_description", "Microsoft sign-in failed."))
-
-        self.token = result["access_token"]
-        return self.token
+        import time
+        flow["expires_at"] = time.time() + flow.get("expires_in", 900)
+        auth_store["flow"] = flow
+        raise DeviceFlowRequired(flow)
 
     def get(self, path: str, params: dict | None = None) -> dict:
         response = requests.get(
@@ -285,9 +312,16 @@ def run_teams_action(task_data: dict) -> dict:
     """
     action = task_data.get("action", "")
 
-    # Route schedule_meeting before contact validation (it uses different params)
-    if action == "schedule_meeting":
-        return _handle_schedule_meeting(task_data)
+    try:
+        # Route schedule_meeting before contact validation (it uses different params)
+        if action == "schedule_meeting":
+            return _handle_schedule_meeting(task_data)
+    except DeviceFlowRequired as e:
+        return {
+            "status": "action_required",
+            "type": "device_auth",
+            "flow": e.flow_data,
+        }
 
     contact_query = task_data.get("contact", "")
     message_text = task_data.get("message", "")
@@ -305,6 +339,12 @@ def run_teams_action(task_data: dict) -> dict:
     try:
         graph = GraphDirectoryClient()
         matches = graph.search_people(contact_query)
+    except DeviceFlowRequired as e:
+        return {
+            "status": "action_required",
+            "type": "device_auth",
+            "flow": e.flow_data,
+        }
     except Exception as exc:
         # If Graph is not configured, fall back to using the query as-is
         # (assumes user provided an email or we just use it verbatim)
