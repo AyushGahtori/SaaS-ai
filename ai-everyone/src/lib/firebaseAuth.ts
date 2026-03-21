@@ -15,6 +15,18 @@ import { createUserProfile, getUserProfile } from "@/lib/firestore";
 const googleProvider = new GoogleAuthProvider();
 
 /**
+ * Call the server-side API to seed predefined memory skeleton documents
+ * for a brand-new user. Fire-and-forget — doesn't block sign-in flow.
+ */
+function seedNewUserMemory(uid: string): void {
+    fetch("/api/user/seed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: uid }),
+    }).catch((err) => console.error("[AuthClient] Failed to seed user memory:", err));
+}
+
+/**
  * Sign up a new user with email and password.
  * Also sets the displayName on the Firebase Auth profile and
  * creates a corresponding document in the Firestore "users" collection.
@@ -38,7 +50,11 @@ export async function signUpWithEmail(
         email,
         image: userCredential.user.photoURL || null,
         createdAt: new Date().toISOString(),
+        onboardingComplete: false,
     });
+
+    // Seed predefined memory skeleton (fire-and-forget)
+    seedNewUserMemory(userCredential.user.uid);
 
     return userCredential.user;
 }
@@ -73,7 +89,11 @@ export async function signInWithGoogle() {
             email: user.email || "",
             image: user.photoURL || null,
             createdAt: new Date().toISOString(),
+            onboardingComplete: false,
         });
+
+        // Seed predefined memory skeleton (fire-and-forget)
+        seedNewUserMemory(user.uid);
     }
 
     return user;
