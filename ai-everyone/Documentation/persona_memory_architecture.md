@@ -40,32 +40,32 @@ flowchart TD
     InitAuth[Auth Init & Callback]
     Start --> InitAuth
     
-    SeedDB[(Firestore\nSeed empty skeleton\nusers/{uid}/persona/main)]
+    SeedDB[("Firestore\nSeed empty skeleton\nusers/{uid}/persona/main")]
     InitAuth --> SeedDB
     
     ShowGuard[Onboarding Guard UI Loads]
     SeedDB --> ShowGuard
     
-    HasSurvey{Survey\nCompleted?}
+    HasSurvey{"Survey\nCompleted?"}
     ShowGuard --> HasSurvey
     
     HasSurvey -- Yes --> AppStart([Proceed to App])
     
     HasSurvey -- No --> ShowSurvey[Show Onboarding Survey UI]
     
-    ShowSurvey --> Submit[/User submits chip answers/]
+    ShowSurvey --> Submit[/"User submits chip answers"/]
     
-    Submit --> API[POST /api/survey]
+    Submit --> API["POST /api/survey"]
     
-    SaveDB[(Firestore\nSave new facts\nusers/{uid}/memories/{id})]
+    SaveDB[("Firestore\nSave new facts\nusers/{uid}/memories/{id}")]
     API --> SaveDB
     
     Trigger[Trigger Persona Builder]
     SaveDB --> Trigger
     
-    Trigger --> ReadDB[(Firestore\nRead all memories)]
+    Trigger --> ReadDB[("Firestore\nRead all memories")]
     
-    UpdateDB[(Firestore\nUpdate summary\nusers/{uid}/persona/main)]
+    UpdateDB[("Firestore\nUpdate summary\nusers/{uid}/persona/main")]
     ReadDB --> UpdateDB
     
     UpdateDB --> AppStart2([Proceed to App])
@@ -78,62 +78,62 @@ When a user sends a chat message, the main thread responds immediately. In paral
 flowchart TD
     Start([User sends chat message])
     
-    API[POST /api/chat]
+    API["POST /api/chat"]
     Start --> API
     
     API --> MainThread[Main Thread executing]
-    API -.-> BgThread[Background Thread\nsetTimeout 0]
+    API -.-> BgThread["Background Thread\nsetTimeout 0"]
     
     LLM[Ollama LLM]
     MainThread --> LLM
     
-    Return[/Return Reply to User/]
+    Return[/"Return Reply to User"/]
     LLM --> Return
     
     Return --> EndMain([End Main Flow])
     
-    Layer1[Layer 1: Trigger Detector\nRegex Patterns]
+    Layer1["Layer 1: Trigger Detector\nRegex Patterns"]
     BgThread --> Layer1
     
-    IsTriggered{Memory-worthy\nsignal?}
+    IsTriggered{"Memory-worthy\nsignal?"}
     Layer1 --> IsTriggered
     
     IsTriggered -- No --> EndBg1([End Background Task])
     
-    Layer2[Layer 2: Rule-based Extractor\nSlot Extractors]
+    Layer2["Layer 2: Rule-based Extractor\nSlot Extractors"]
     IsTriggered -- Yes --> Layer2
     
-    IsComplex{Ambiguous or\nComplex?}
+    IsComplex{"Ambiguous or\nComplex?"}
     Layer2 --> IsComplex
     
-    Layer3[Layer 3: LLM Extractor\nOllama Strict JSON]
+    Layer3["Layer 3: LLM Extractor\nOllama Strict JSON"]
     IsComplex -- Yes --> Layer3
     
     Extract[Extracted JSON Array]
     Layer3 --> Extract
     IsComplex -- No --> Extract
     
-    Deduper[Deduper & Cap Enforcer]
+    Deduper["Deduper & Cap Enforcer"]
     Extract --> Deduper
     
-    ReadDB[(Firestore\nCheck existing memories)]
+    ReadDB[("Firestore\nCheck existing memories")]
     Deduper --> ReadDB
     
-    IsNew{Is New or\nUpdated Memory?}
+    IsNew{"Is New or\nUpdated Memory?"}
     ReadDB --> IsNew
     
     IsNew -- No --> EndBg2([End Background Task])
     
-    SaveDB[(Firestore\nWrite new records)]
+    SaveDB[("Firestore\nWrite new records")]
     IsNew -- Yes --> SaveDB
     
     Builder[Persona Builder]
     SaveDB --> Builder
     
-    ReadAllDB[(Firestore\nRead current memories)]
+    ReadAllDB[("Firestore\nRead current memories")]
     Builder --> ReadAllDB
     
-    UpdateSumm[(Firestore\nUpdate Persona Summary)]
+    UpdateSumm[("Firestore\nUpdate Persona Summary")]
     ReadAllDB --> UpdateSumm
     
     UpdateSumm --> EndBg3([End Background Task])
@@ -149,7 +149,7 @@ flowchart TD
     Route[Chat Request Routing]
     Start --> Route
     
-    NeedsCtx{Needs Personal\nContext?}
+    NeedsCtx{"Needs Personal\nContext?"}
     Route --> NeedsCtx
     
     NeedsCtx -- No --> PromptBuild[System Prompt Builder]
@@ -157,13 +157,13 @@ flowchart TD
     Ranker[TF-IDF Cosine Similarity Ranking]
     NeedsCtx -- Yes --> Ranker
     
-    FetchMem[(Firestore\nFetch & rank items)]
+    FetchMem[("Firestore\nFetch & rank items")]
     Ranker --> FetchMem
     
     Filter[Filter Top N Relevant Memories]
     FetchMem --> Filter
     
-    FetchSumm[(Firestore\nFetch Persona Summary)]
+    FetchSumm[("Firestore\nFetch Persona Summary")]
     Filter --> FetchSumm
     
     FetchSumm --> PromptBuild
@@ -174,7 +174,7 @@ flowchart TD
     CallLLM[Sys Context + Query to Ollama]
     Inject --> CallLLM
     
-    Output[/Stream LLM Output to User/]
+    Output[/"Stream LLM Output to User"/]
     CallLLM --> Output
     
     Output --> End([Response Sent])
