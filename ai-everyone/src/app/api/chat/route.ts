@@ -19,6 +19,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAgentTask, executeAgentTask } from "@/lib/firestore-tasks.server";
 import type { AgentRegistryEntry } from "@/modules/chat/types";
+import { isTriggerMessage, isPersonalContextQuery } from "@/lib/memory/trigger-detector";
+import { extractMemories } from "@/lib/memory/extractor";
+import { processExtractedMemories } from "@/lib/memory/deduper";
+import { rebuildPersona, formatPersonaForPrompt } from "@/lib/memory/persona-builder";
+import { getPersona } from "@/lib/memory/memory-repository.server";
+import { getTopKMemories, formatMemoriesForPrompt } from "@/lib/memory/retrieval";
 
 // ---------------------------------------------------------------------------
 // Agent Registry — describes all agents the parent LLM can choose from.
@@ -237,6 +243,84 @@ function fuzzyMatchAgent(rawAgent: string) {
 // Route Handler
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Memory extraction — fire-and-forget background pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * Runs the full 3-layer memory extraction pipeline for a user message.
+ * This is ALWAYS called asynchronously — it never blocks the chat response.
+ */
+function triggerMemoryExtraction(
+    uid: string,
+    chatId: string | undefined,
+    messageId: string | undefined,
+    content: string,
+): void {
+    // Kick off in next tick so the response is already sent
+    Promise.resolve().then(async () => {
+        try {
+            // Layer 1 — trigger detection (instant, no cost)
+            if (!isTriggerMessage(content)) {
+                console.log("[MemoryTrigger] not triggered");
+                return;
+            }
+            console.log("[MemoryTrigger] triggered for message:", content.slice(0, 60));
+
+            // Layers 2+3 — extraction
+            const extracted = await extractMemories(content);
+            if (extracted.length === 0) {
+                console.log("[MemoryExtractor] nothing extracted");
+                return;
+            }
+
+            // Dedup + save
+            const saved = await processExtractedMemories(
+                uid,
+                extracted,
+                "chat",
+                chatId ?? null,
+                messageId ?? null,
+            );
+
+            if (saved > 0) {
+                // Rebuild persona after new memories (fire-and-forget)
+                rebuildPersona(uid).catch((err) =>
+                    console.error("[MemoryPipeline] persona rebuild error:", err)
+                );
+            }
+        } catch (err) {
+            console.error("[MemoryPipeline] error:", err);
+        }
+    }).catch((err) => console.error("[MemoryPipeline] unhandled:", err));
+}
+
+// ---------------------------------------------------------------------------
+// Persona context — only fetched when the query needs personal context
+// ---------------------------------------------------------------------------
+
+async function buildPersonaContext(uid: string | undefined, userMessage: string): Promise<string> {
+    if (!uid) return "";
+    if (!isPersonalContextQuery(userMessage)) return "";
+
+    try {
+        const [persona, topMemories] = await Promise.all([
+            getPersona(uid),
+            getTopKMemories(uid, userMessage, 7),
+        ]);
+        const personaSection = formatPersonaForPrompt(persona);
+        const memoriesSection = formatMemoriesForPrompt(topMemories);
+        return [personaSection, memoriesSection].filter(Boolean).join("\n\n");
+    } catch (err) {
+        console.error("[PersonaContext] failed to fetch:", err);
+        return "";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Route Handler
+// ---------------------------------------------------------------------------
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
@@ -254,8 +338,24 @@ export async function POST(req: NextRequest) {
         const selectedModel = body.model || process.env.OLLAMA_DEFAULT_MODEL || "qwen3.5:397b-cloud";
         const model = selectedModel;
 
-        // Build the orchestration system prompt
-        const systemPrompt = buildOrchestrationPrompt();
+        // Get the last user message for trigger detection + persona context
+        const lastUserMessage = [...messages].reverse().find(
+            (m: { role: string; content: string }) => m.role === "user"
+        )?.content ?? "";
+
+        // Fire-and-forget memory extraction (runs after response is sent, never blocks)
+        if (userId && lastUserMessage) {
+            triggerMemoryExtraction(userId, chatId, undefined, lastUserMessage);
+        }
+
+        // Conditionally fetch persona context (only if query needs personal context)
+        const personaContext = await buildPersonaContext(userId, lastUserMessage);
+
+        // Build the orchestration system prompt, optionally with persona context
+        const basePrompt = buildOrchestrationPrompt();
+        const systemPrompt = personaContext
+            ? `${basePrompt}\n\n${personaContext}`
+            : basePrompt;
 
         // Prepend the system prompt to the message history
         const messagesForOllama = [
