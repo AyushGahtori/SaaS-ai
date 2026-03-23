@@ -60,6 +60,31 @@ const AGENT_REGISTRY: AgentRegistryEntry[] = [
             "Delete the gym task from my list",
             "Show all pending tasks"
         ]
+    },
+    {
+        id: "calendar-agent",
+        name: "Microsoft Calendar Agent",
+        description: "Manages the user's Microsoft Outlook Calendar. Can view existing events, check for scheduling conflicts, create new events, and cancel events.",
+        actions: ["get_calendar_events", "create_calendar_event", "check_conflicts", "delete_event", "find_person_email"],
+        examplePrompts: [
+            "What is on my calendar for today?",
+            "Schedule a meeting with Ayush tomorrow at 3 PM",
+            "Am I free next Monday at 10 AM?",
+            "Delete the meeting I have at 4 PM tomorrow",
+        ]
+    },
+    {
+        id: "email-agent",
+        name: "Microsoft Email Agent",
+        description: "Manages the user's Microsoft Outlook Email Inbox. Can read inbox, summarize emails, search emails by keyword, send emails, forward, reply, move, and mark emails.",
+        actions: ["read_inbox", "read_email", "summarize_email", "search_emails", "reply_to_email", "forward_email", "send_email", "mark_email", "move_email", "find_person_email"],
+        examplePrompts: [
+            "Read my latest emails",
+            "Send an email to John saying the report is ready",
+            "Summarize the email I got from Alice yesterday",
+            "Search for emails about the Q3 budget",
+            "Mark all unread emails as read"
+        ]
     }
 ];
 

@@ -10,12 +10,12 @@ export interface DeviceFlowData {
   expires_in: number
 }
 
-interface TeamsLoginCardProps {
+interface MicrosoftLoginCardProps {
   deviceData: DeviceFlowData
   onAuthenticated?: () => void
 }
 
-export function TeamsLoginCard({ deviceData, onAuthenticated }: TeamsLoginCardProps) {
+export function MicrosoftLoginCard({ deviceData, onAuthenticated }: MicrosoftLoginCardProps) {
   const [phase, setPhase] = useState<'device_code' | 'polling' | 'success' | 'error'>('device_code')
   const [error, setError] = useState('')
   const [countdown, setCountdown] = useState(0)
@@ -57,7 +57,7 @@ export function TeamsLoginCard({ deviceData, onAuthenticated }: TeamsLoginCardPr
         })
         if (!res.ok) throw new Error("Poll failed")
         const result = await res.json()
-        
+
         if (result.status === 'authenticated') {
           clearInterval(interval)
           setPhase('success')

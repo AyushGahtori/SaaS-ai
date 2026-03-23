@@ -24,7 +24,7 @@ import { db } from "@/lib/firebase";
 // Types
 // ---------------------------------------------------------------------------
 
-export type TaskStatus = "queued" | "running" | "success" | "failed";
+export type TaskStatus = "queued" | "running" | "success" | "failed" | "action_required";
 
 export interface AgentTask {
     taskId: string;
@@ -32,6 +32,8 @@ export interface AgentTask {
     chatId: string;
     agentId: string;
     status: TaskStatus;
+    type?: string;
+    flow?: Record<string, unknown>;
     parentLLMRequest: Record<string, unknown>;
     agentInput: Record<string, unknown>;
     agentOutput: Record<string, unknown> | null;
@@ -67,6 +69,8 @@ export function subscribeToTask(
             chatId: data.chatId,
             agentId: data.agentId,
             status: data.status,
+            type: data.type,
+            flow: data.flow,
             parentLLMRequest: data.parentLLMRequest || {},
             agentInput: data.agentInput || {},
             agentOutput: data.agentOutput || null,

@@ -69,7 +69,7 @@ interface ChatContextValue {
     loadChats: () => Promise<void>;
     createNewChat: () => void;
     selectChat: (chatId: string) => Promise<void>;
-    sendMessage: (content: string) => Promise<void>;
+    sendMessage: (content: string, isVoice?: boolean) => Promise<{ type: string; content?: string; taskId?: string } | undefined>;
     removeChatById: (chatId: string) => Promise<void>;
     renameChat: (chatId: string, newTitle: string) => Promise<void>;
     setSelectedModel: (model: string) => void;
@@ -216,8 +216,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     // ── Send message ─────────────────────────────────────────────────────
     const sendMessage = useCallback(
-        async (content: string) => {
-            if (!uid || !content.trim()) return;
+        async (content: string, isVoice?: boolean): Promise<{ type: string; content?: string; taskId?: string } | undefined> => {
+            if (!uid || !content.trim()) return undefined;
 
             setIsGenerating(true);
             setError(null);
@@ -241,14 +241,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     uid,
                     currentChatId,
                     "user",
-                    content
+                    content,
+                    undefined,
+                    undefined,
+                    isVoice
                 );
                 setMessages((prev) => [...prev, userMsg]);
 
                 // 3. Build message history for the API call.
                 const historyForApi = [
-                    ...messages.map((m) => ({ role: m.role, content: m.content })),
-                    { role: "user" as const, content },
+                    ...messages.map((m) => ({ role: m.role, content: m.content, isVoice: m.isVoice })),
+                    { role: "user" as const, content, isVoice },
                 ];
 
                 // 4. Call the /api/chat route — now with userId, chatId, and
@@ -283,7 +286,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         "agent",
                         data.content || "Processing agent task...",
                         data.taskId,
-                        data.agentId
+                        data.agentId,
+                        isVoice
                     );
                     setMessages((prev) => [...prev, agentMsg]);
 
@@ -304,20 +308,26 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         uid,
                         currentChatId,
                         "assistant",
-                        assistantContent
+                        assistantContent,
+                        undefined,
+                        undefined,
+                        isVoice
                     );
                     setMessages((prev) => [...prev, assistantMsg]);
                 }
 
                 // Touch the chat's updatedAt so it bubbles to the top of the sidebar.
                 await updateChat(uid, currentChatId, {});
+                
+                setIsGenerating(false);
+                return data; // Return data so callers (like VoiceModal) can handle audio feedback
             } catch (err: unknown) {
                 console.error("[sendMessage]", err);
                 setError(
                     err instanceof Error ? err.message : "Failed to send message."
                 );
-            } finally {
                 setIsGenerating(false);
+                return undefined;
             }
         },
         [uid, activeChatId, messages, watchTask, selectedModel]

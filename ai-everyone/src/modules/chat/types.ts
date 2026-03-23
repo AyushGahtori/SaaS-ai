@@ -29,11 +29,13 @@ export interface ChatMessage {
     taskId?: string;
     /** If role === "agent", which agent executed this task. */
     agentId?: string;
+    /** If true, this message was part of a Voice Session. */
+    isVoice?: boolean;
 }
 
 /** Payload sent from the frontend to the /api/chat route. */
 export interface ChatRequestPayload {
-    messages: { role: MessageRole; content: string }[];
+    messages: { role: MessageRole; content: string; isVoice?: boolean }[];
     chatId?: string;
     userId?: string;
 }

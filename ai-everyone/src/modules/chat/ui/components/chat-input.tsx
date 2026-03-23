@@ -16,6 +16,10 @@ import { useChatContext } from "@/modules/chat/context/chat-context";
 import { AttachFile } from "@/modules/home/ui/components/attach-file";
 import { TextToSpeech } from "@/modules/home/ui/components/text-to-speech";
 import { SendHorizonal, ChevronDown, ChevronUp, Cloud, Cpu } from "lucide-react";
+import { useSession } from "@/lib/auth-client";
+import VoiceModal, { type VoiceTranscriptEntry } from "@/modules/home/ui/components/VoiceModal";
+import type { DeviceFlowData } from "@/modules/chat/ui/components/microsoft-login-card";
+import { subscribeToTask } from "@/lib/firestore-tasks";
 
 interface ChatInputProps {
     /** Optional: called when a message is submitted but no active chat exists (new chat flow). */
@@ -24,8 +28,13 @@ interface ChatInputProps {
 
 export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
     const { sendMessage, isGenerating, selectedModel, setSelectedModel, availableModels } = useChatContext();
+    const { data: session } = useSession();
     const [value, setValue] = useState("");
     const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+    const [showVoiceModal, setShowVoiceModal] = useState(false);
+    const [authFlowData, setAuthFlowData] = useState<DeviceFlowData | null>(null);
+    const [activeVoiceTaskId, setActiveVoiceTaskId] = useState<string | null>(null);
+    const [voiceChatId] = useState(() => `voice_${Math.random().toString(36).substring(7)}`);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const modelMenuRef = useRef<HTMLDivElement>(null);
 
@@ -62,6 +71,49 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleSend();
+        }
+    };
+
+    const handleVoiceTranscript = async (
+        text: string,
+        callback: (response: string, actionUrl?: string) => void
+    ) => {
+        try {
+            // Send message and get the response block
+            onFirstMessage?.();
+            const responseData = await sendMessage(text, true);
+
+            if (!responseData) {
+                callback("Sorry, I could not send the message.");
+                return;
+            }
+
+            if (responseData.type === "agent_task") {
+                const taskId = responseData.taskId as string;
+                setActiveVoiceTaskId(taskId);
+
+                const unsub = subscribeToTask(taskId, (task) => {
+                    if (!task) return;
+
+                    if (task.status === "action_required" && task.type === "device_auth") {
+                        setAuthFlowData(task.flow as unknown as DeviceFlowData);
+                    } else if (task.status === "success") {
+                        unsub();
+                        setActiveVoiceTaskId(null);
+                        const resultMsg = task.agentOutput?.message || "I have completed the task.";
+                        callback(resultMsg as string);
+                    } else if (task.status === "failed") {
+                        unsub();
+                        setActiveVoiceTaskId(null);
+                        callback("Sorry, I encountered an error while performing that task.");
+                    }
+                });
+            } else {
+                callback(responseData.content || "I'm not sure what to say.");
+            }
+        } catch (err) {
+            console.error("Voice chat error:", err);
+            callback("Sorry, there was a problem connecting to the server.");
         }
     };
 
@@ -175,11 +227,25 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
                                 <SendHorizonal className="w-4 h-4 text-white" />
                             </button>
                         ) : (
-                            <TextToSpeech onClick={() => { }} />
+                            <TextToSpeech onClick={() => setShowVoiceModal(true)} />
                         )}
                     </div>
                 </div>
             </div>
+
+            {/* Voice Modal Overlay */}
+            {showVoiceModal && (
+                <VoiceModal
+                    onTranscript={handleVoiceTranscript}
+                    onClose={() => {
+                        setShowVoiceModal(false);
+                        setAuthFlowData(null);
+                        setActiveVoiceTaskId(null);
+                    }}
+                    authFlowData={authFlowData}
+                    onAuthComplete={() => setAuthFlowData(null)}
+                />
+            )}
         </div>
     );
 };

@@ -182,13 +182,44 @@ flowchart TD
 
 ---
 
-## Sub-Architecture Documents
+## Deep Dive: Retrieval Mechanism (TF-IDF)
+
+To ensure high performance and low cost, the system uses a **Local TF-IDF (Term Frequency-Inverse Document Frequency)** ranking engine rather than a global vector database.
+
+### 1. Why TF-IDF?
+- **Zero Cost**: No external embedding APIs (OpenAI/HuggingFace) or managed Vector DB subscriptions.
+- **Privacy**: All text data remains on your server; no third-party data processing.
+- **Horizontal Scaling**: Since ranking is performed **per-user** on their local 20-50 memory items, the operation is $O(k)$ where $k$ is small. It scales perfectly to millions of users.
+
+### 2. The 4-Step Vectorization Process
+The retrieval logic in `src/lib/memory/retrieval.ts` follows these steps:
+
+1.  **Tokenization**: The user query and candidate memories are converted to lowercase and stripped of punctuation.
+2.  **Vocabulary Building**: A unique set of all distinct words across the input documents is built (the "Feature Space").
+3.  **Vectorization (TF)**: Each document is transformed into a numerical vector where each position is the frequency of that word in the document.
+4.  **Cosine Similarity**: The system calculates the mathematical "angle" between the query vector and each memory vector.
+    - Score of `1.0`: Identical word distribution.
+    - Score of `0.0`: No overlapping words.
+
+### 3. Execution Flow
+When a user sends a message:
+1.  We fetch the user's `Persona Summary` and `MemoryItems` from Firestore.
+2.  We perform the TF-IDF ranking (takes < 2ms).
+3.  The Top **K** (default: 7) most relevant items are formatted as context.
+4.  This context is prepended to the System Prompt before calling the LLM.
+
+See [persona_memory_cost_analysis.md](./persona_memory_cost_analysis.md) for detailed scale calculations (1M+ users).
+
+---
+
+## File Map
 
 | Document | Content |
 |----------|---------|
 | [persona_memory_database_schema.md](./persona_memory_database_schema.md) | Firestore collections, fields, types |
 | [persona_memory_extraction_pipeline.md](./persona_memory_extraction_pipeline.md) | 3-layer extraction detail, regex patterns, LLM prompt |
 | [persona_memory_onboarding_survey.md](./persona_memory_onboarding_survey.md) | Survey UX, steps, chip options, skip policy |
+| [persona_memory_cost_analysis.md](./persona_memory_cost_analysis.md) | Performance at scale (1M users), Firestore costs vs Vector DBs |
 
 ---
 
