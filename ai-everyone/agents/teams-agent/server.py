@@ -23,7 +23,10 @@ except ImportError:
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from teams_agent import run_teams_action, auth_store
+from teams_agent import run_teams_action
+from email_agent import run_email_action
+from calendar_agent import run_calendar_action
+from graph_client import auth_store
 
 app = FastAPI(
     title="SnitchX Teams Agent",
@@ -112,6 +115,31 @@ async def teams_action(data: TeamsActionRequest):
             status_code=500,
             detail=f"Agent execution failed: {str(exc)}",
         )
+
+@app.post("/email/action")
+async def email_action(data: dict):
+    """Execute an Email action."""
+    try:
+        result = run_email_action(data)
+        return result
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Agent execution failed: {str(exc)}",
+        )
+
+@app.post("/calendar/action")
+async def calendar_action(data: dict):
+    """Execute a Calendar action."""
+    try:
+        result = run_calendar_action(data)
+        return result
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Agent execution failed: {str(exc)}",
+        )
+
 
 @app.post("/auth/poll")
 def auth_poll():

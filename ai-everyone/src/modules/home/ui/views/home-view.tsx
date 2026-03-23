@@ -26,6 +26,9 @@ import { useState } from "react";
 // Import the two new action-button components
 import { AttachFile } from "@/modules/home/ui/components/attach-file";
 import { TextToSpeech } from "@/modules/home/ui/components/text-to-speech";
+import VoiceModal, { type VoiceTranscriptEntry } from "@/modules/home/ui/components/VoiceModal";
+import type { DeviceFlowData } from "@/modules/chat/ui/components/microsoft-login-card";
+import { subscribeToTask } from "@/lib/firestore-tasks";
 
 export const HomeView = () => {
   // Get the current authenticated session (user name, etc.)
@@ -47,6 +50,12 @@ export const HomeView = () => {
    * TODO: Wire this up to the LLM API call (e.g., OpenAI, Gemini, Claude, etc.)
    */
   const [promptValue, setPromptValue] = useState("");
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [authFlowData, setAuthFlowData] = useState<DeviceFlowData | null>(null);
+  const [activeVoiceTaskId, setActiveVoiceTaskId] = useState<string | null>(null);
+
+  // A random session ID for the voice conversation
+  const [voiceChatId] = useState(() => `voice_${Math.random().toString(36).substring(7)}`);
 
   // Show a loading state while the session is being fetched
   if (!session) {
@@ -84,13 +93,72 @@ export const HomeView = () => {
     // Intentionally left empty — implementation lives in attach-file.tsx
   };
 
-  /**
-   * handleTextToSpeech — triggered when the user clicks the microphone button.
-   * TODO: Implement speech-to-text logic in text-to-speech.tsx
-   *       (e.g., use Web Speech API / cloud STT to populate promptValue)
-   */
   const handleTextToSpeech = () => {
-    // Intentionally left empty — implementation lives in text-to-speech.tsx
+    setShowVoiceModal(true);
+  };
+
+  /**
+   * handleVoiceTranscript — triggered when VoiceModal finishes listening to an utterance.
+   */
+  const handleVoiceTranscript = async (
+    text: string,
+    callback: (response: string, actionUrl?: string) => void
+  ) => {
+    const userId = (session?.user as any)?.id || (session?.user as any)?.uid;
+    if (!userId) {
+      callback("Please sign in to use voice chat.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: userId,
+          chatId: voiceChatId,
+          messages: [{ role: "user", content: text }],
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("API request failed");
+      }
+
+      const data = await res.json();
+
+      if (data.type === "agent_task") {
+        // Task created, observe it in Firestore
+        const taskId = data.taskId;
+        setActiveVoiceTaskId(taskId);
+
+        const unsub = subscribeToTask(taskId, (task) => {
+          if (!task) return;
+
+          if (task.status === "action_required" && task.type === "device_auth") {
+            setAuthFlowData(task.flow as unknown as DeviceFlowData);
+          } else if (task.status === "success") {
+            unsub();
+            setActiveVoiceTaskId(null);
+
+            // The agent finished. Now we typically want the LLM to summarize it.
+            // But for voice, we can just say "I have completed that for you."
+            const resultMsg = task.agentOutput?.message || "I have completed the task.";
+            callback(resultMsg as string);
+          } else if (task.status === "failed") {
+            unsub();
+            setActiveVoiceTaskId(null);
+            callback("Sorry, I encountered an error while performing that task.");
+          }
+        });
+      } else {
+        // Direct LLM response
+        callback(data.content || "I'm not sure what to say.");
+      }
+    } catch (err) {
+      console.error("Voice chat error:", err);
+      callback("Sorry, there was a problem connecting to the server.");
+    }
   };
 
   return (
@@ -164,6 +232,20 @@ export const HomeView = () => {
         {/* RIGHT — Text To Speech (microphone) button */}
         <TextToSpeech onClick={handleTextToSpeech} />
       </div>
+
+      {/* Voice Modal Overlay */}
+      {showVoiceModal && (
+        <VoiceModal
+          onTranscript={handleVoiceTranscript}
+          onClose={() => {
+            setShowVoiceModal(false);
+            setAuthFlowData(null);
+            setActiveVoiceTaskId(null);
+          }}
+          authFlowData={authFlowData}
+          onAuthComplete={() => setAuthFlowData(null)}
+        />
+      )}
     </div>
   );
 };

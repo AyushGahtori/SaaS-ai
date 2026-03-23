@@ -13,7 +13,7 @@ import React from "react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import type { ChatMessage } from "@/modules/chat/types";
 import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar, Key, ListTodo } from "lucide-react";
-import { TeamsLoginCard, type DeviceFlowData } from "./teams-login-card";
+import { MicrosoftLoginCard, type DeviceFlowData } from "./microsoft-login-card";
 
 interface AgentTaskMessageProps {
     message: ChatMessage;
@@ -88,8 +88,8 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
 
         if (status === "action_required" && result.type === "device_auth" && result.flow) {
             return (
-                <TeamsLoginCard 
-                    deviceData={result.flow as DeviceFlowData} 
+                <MicrosoftLoginCard
+                    deviceData={result.flow as DeviceFlowData}
                     onAuthenticated={() => {
                         fetch("/api/tasks/retry", {
                             method: "POST",
@@ -206,7 +206,7 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
         if (resultType === "todo_list") {
             const tasks = (result.tasks as any[]) || [];
             const msg = result.message as string || `Found ${tasks.length} tasks.`;
-            
+
             return (
                 <div className="mt-3 space-y-2">
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-sm font-medium mb-2">

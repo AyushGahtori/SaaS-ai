@@ -28,7 +28,8 @@ setGlobalOptions({maxInstances: 10});
 
 const AGENT_ROUTES = {
   "teams-agent": "/teams/action",
-  // "email-agent": "/email/action",
+  "email-agent": "/email/action",
+  "calendar-agent": "/calendar/action",
 };
 
 // ---------------------------------------------------------------------------

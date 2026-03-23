@@ -53,7 +53,8 @@ export async function createMessage(
     role: MessageRole,
     content: string,
     taskId?: string,
-    agentId?: string
+    agentId?: string,
+    isVoice?: boolean
 ): Promise<ChatMessage> {
     const messageData: Record<string, unknown> = {
         role,
@@ -61,9 +62,10 @@ export async function createMessage(
         createdAt: serverTimestamp(),
     };
 
-    // Store agent metadata if present
+    // Store optional metadata if present
     if (taskId) messageData.taskId = taskId;
     if (agentId) messageData.agentId = agentId;
+    if (isVoice) messageData.isVoice = isVoice;
 
     const docRef = await addDoc(messagesCol(uid, chatId), messageData);
 
@@ -75,6 +77,7 @@ export async function createMessage(
         createdAt: new Date().toISOString(),
         ...(taskId && { taskId }),
         ...(agentId && { agentId }),
+        ...(isVoice && { isVoice }),
     };
 }
 
@@ -98,6 +101,7 @@ export async function getMessages(
             createdAt: toISO(data.createdAt),
             ...(data.taskId && { taskId: data.taskId }),
             ...(data.agentId && { agentId: data.agentId }),
+            ...(data.isVoice && { isVoice: data.isVoice }),
         };
     });
 }
