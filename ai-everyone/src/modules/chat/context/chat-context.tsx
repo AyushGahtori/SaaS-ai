@@ -64,6 +64,10 @@ interface ChatContextValue {
     selectedModel: string;
     /** Available models the user can pick from. */
     availableModels: { id: string; label: string }[];
+    /** Whether the voice input bar is currently active. */
+    isVoiceActive: boolean;
+    /** Pending voice response text to speak (survives VoiceBar remount). */
+    pendingVoiceResponse: string | null;
 
     // Actions
     loadChats: () => Promise<void>;
@@ -73,6 +77,8 @@ interface ChatContextValue {
     removeChatById: (chatId: string) => Promise<void>;
     renameChat: (chatId: string, newTitle: string) => Promise<void>;
     setSelectedModel: (model: string) => void;
+    setIsVoiceActive: (active: boolean) => void;
+    setPendingVoiceResponse: (text: string | null) => void;
     clearError: () => void;
 }
 
@@ -115,6 +121,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         Record<string, { status: string; result?: Record<string, unknown> }>
     >({});
     const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
+    const [isVoiceActive, setIsVoiceActive] = useState(false);
+    const [pendingVoiceResponse, setPendingVoiceResponse] = useState<string | null>(null);
 
     // Ref to track whether the user aborted the current generation.
     const abortRef = useRef(false);
@@ -385,6 +393,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         taskStatuses,
         selectedModel,
         availableModels: AVAILABLE_MODELS,
+        isVoiceActive,
+        pendingVoiceResponse,
         loadChats,
         createNewChat,
         selectChat,
@@ -392,6 +402,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         removeChatById,
         renameChat,
         setSelectedModel,
+        setIsVoiceActive,
+        setPendingVoiceResponse,
         clearError,
     };
 

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { subscribeToTask } from '@/lib/firestore-tasks'
+import { useChatContext } from '@/modules/chat/context/chat-context'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,9 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
   const [state, setState] = useState<VoiceBarState>('connecting')
   const [statusText, setStatusText] = useState('Starting…')
   const [debugText, setDebugText] = useState('')  // visible debug
+
+  // Access context for pending voice response (survives remount)
+  const { pendingVoiceResponse, setPendingVoiceResponse } = useChatContext()
 
   // Refs
   const recognitionRef = useRef<any>(null)
@@ -227,8 +231,21 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
       onFirstMessageRef.current?.()
 
       onSendMessageRef.current(said, true).then((responseData) => {
-        setDebugText('LLM response: ' + JSON.stringify(responseData)?.slice(0, 80))
-        if (!mountedRef.current || isClosingRef.current) return
+        // If this VoiceBar instance was unmounted (e.g. HomeView→ChatView
+        // transition during first message), save response to context so
+        // the NEW VoiceBar instance can pick it up and speak it.
+        if (!mountedRef.current || isClosingRef.current) {
+          if (responseData) {
+            let textToSpeak = ''
+            if (responseData.type === 'agent_task') {
+              textToSpeak = 'Task has been submitted. Please wait.'
+            } else {
+              textToSpeak = responseData.content || "I'm not sure what to say."
+            }
+            setPendingVoiceResponse(textToSpeak)
+          }
+          return
+        }
 
         if (!responseData) {
           speakResponse('Sorry, I could not process that.')
@@ -312,6 +329,21 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
       speechSynthesis.cancel()
     }
   }, [])
+
+  // ── Pick up pending voice response from a prior VoiceBar instance ─────
+  // Handles: first message from homepage creates new chat, HomeView→ChatView
+  // transition unmounts old VoiceBar mid-response. Response is saved in context.
+  useEffect(() => {
+    if (pendingVoiceResponse && mountedRef.current && !isClosingRef.current) {
+      const t = setTimeout(() => {
+        if (mountedRef.current && !isClosingRef.current) {
+          speakResponse(pendingVoiceResponse)
+          setPendingVoiceResponse(null)
+        }
+      }, 400)
+      return () => clearTimeout(t)
+    }
+  }, [pendingVoiceResponse])
 
   // ── Render ────────────────────────────────────────────────────────────
 

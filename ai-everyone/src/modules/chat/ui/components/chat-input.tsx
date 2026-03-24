@@ -25,10 +25,9 @@ interface ChatInputProps {
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
-    const { sendMessage, isGenerating, selectedModel, setSelectedModel, availableModels } = useChatContext();
+    const { sendMessage, isGenerating, selectedModel, setSelectedModel, availableModels, isVoiceActive, setIsVoiceActive } = useChatContext();
     const [value, setValue] = useState("");
     const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
-    const [isVoiceActive, setIsVoiceActive] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const modelMenuRef = useRef<HTMLDivElement>(null);
 
