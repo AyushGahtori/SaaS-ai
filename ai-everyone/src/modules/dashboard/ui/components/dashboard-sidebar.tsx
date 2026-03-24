@@ -71,7 +71,7 @@ export const DashboardSidebar = () => {
         <div className="h-[3px] bg-[#5D6B68]/30 rounded-full w-full" />
       </div>
 
-      <SidebarContent>
+      <SidebarContent className="overflow-hidden">
         {/* New Chat button — wired to chat context */}
         <SidebarGroup>
           <SidebarGroupContent>
@@ -101,12 +101,12 @@ export const DashboardSidebar = () => {
                     >
                       {/** render icon if present */}
                       {item.icon && (
-                        <item.icon 
-                          className="w-5 h-5 shrink-0" 
-                          stroke="white" 
-                          strokeWidth={2} 
-                          aria-hidden="true" 
-                          suppressHydrationWarning 
+                        <item.icon
+                          className="w-5 h-5 shrink-0"
+                          stroke="white"
+                          strokeWidth={2}
+                          aria-hidden="true"
+                          suppressHydrationWarning
                         />
                       )}
 
@@ -131,7 +131,9 @@ export const DashboardSidebar = () => {
                 Recent Chats
               </span>
             </div>
-            <ChatSidebarList />
+            <div className="sidebar-chat-scroll" style={{ maxHeight: "calc(100vh - 280px)" }}>
+              <ChatSidebarList />
+            </div>
           </SidebarGroupContent>
         </SidebarGroup>
 
@@ -155,12 +157,12 @@ export const DashboardSidebar = () => {
                     >
                       {/** render icon if present */}
                       {item.icon && (
-                        <item.icon 
-                          className="w-5 h-5 shrink-0" 
-                          stroke="white" 
-                          strokeWidth={2} 
-                          aria-hidden="true" 
-                          suppressHydrationWarning 
+                        <item.icon
+                          className="w-5 h-5 shrink-0"
+                          stroke="white"
+                          strokeWidth={2}
+                          aria-hidden="true"
+                          suppressHydrationWarning
                         />
                       )}
 
