@@ -121,3 +121,26 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Sidebar chat list — hover-only thin white scrollbar ──────────────── */
+.sidebar-chat-scroll {
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox: hide by default */
+}
+.sidebar-chat-scroll::-webkit-scrollbar {
+  width: 0; /* Webkit: hide by default */
+}
+.sidebar-chat-scroll:hover {
+  scrollbar-width: thin; /* Firefox: show on hover */
+  scrollbar-color: rgba(255,255,255,0.3) transparent;
+}
+.sidebar-chat-scroll:hover::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-chat-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.3);
+  border-radius: 4px;
+}
+.sidebar-chat-scroll:hover::-webkit-scrollbar-track {
+  background: transparent;
+}
