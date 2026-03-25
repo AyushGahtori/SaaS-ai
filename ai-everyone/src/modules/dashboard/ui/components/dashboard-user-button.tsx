@@ -122,7 +122,7 @@ export const DashboardUserButton = () => {
         </div>
         <ChevronDownIcon className="size-4 text-muted-foreground shrink-0 ml-2" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="right" className="w-72">
+      <DropdownMenuContent align="end" side="right" className="w-72 bg-[#0C0D0D] text-white border-white/10">
         <DropdownMenuLabel>
           <div className="flex flex-col gap-1">
             <span className="text-sm truncate w-full">

@@ -88,7 +88,7 @@ export const SignUpView = () => {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card className="overflow-hidden p-0">
+      <Card className="overflow-hidden p-0 bg-black border-white/10">
         <CardContent className="grid p-0 md:grid-cols-2">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 md:p-8">
@@ -178,7 +178,7 @@ export const SignUpView = () => {
                 <Button disabled={pending} type="submit" className="w-full">
                 </Button>
                 <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:insert-0 after:top-0.5 after:z-0 after:flex after:items-center after:border-t">
-                  <span className="bg-card text-muted-foreground relative z-10 px-2">
+                  <span className="bg-black text-muted-foreground relative z-10 px-2">
                     Or continue with
                   </span>
                 </div>
@@ -197,7 +197,7 @@ export const SignUpView = () => {
               </div>
             </form>
           </Form>
-          <div className="bg-linear-to-br from-gray-800 to-gray-600 relative hidden md:flex flex-col gap-y-4 items-center justify-center">
+          <div className="bg-[#000000] relative hidden md:flex flex-col gap-y-4 items-center justify-center">
             <img src="/logo.svg" alt="Logo" className="h-[92px], w-[92]" />
             <p className="text-2xl font-semibold text-white">AI-Everyone</p>
           </div>

@@ -9,11 +9,12 @@
 
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import type { ChatMessage } from "@/modules/chat/types";
 import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar, Key, ListTodo } from "lucide-react";
 import { MicrosoftLoginCard, type DeviceFlowData } from "./microsoft-login-card";
+import { subscribeToTask, type AgentTask } from "@/lib/firestore-tasks";
 
 interface AgentTaskMessageProps {
     message: ChatMessage;
@@ -27,14 +28,25 @@ const AGENT_NAMES: Record<string, string> = {
 
 export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) => {
     const { taskStatuses } = useChatContext();
+    const [localTask, setLocalTask] = useState<AgentTask | null>(null);
 
     const taskId = message.taskId;
     const agentId = message.agentId || "unknown";
     const agentName = AGENT_NAMES[agentId] || agentId;
 
-    const taskStatus = taskId ? taskStatuses[taskId] : undefined;
-    const status = taskStatus?.status || "queued";
-    const result = taskStatus?.result as Record<string, unknown> | undefined;
+    useEffect(() => {
+        if (!taskId) return;
+        const unsub = subscribeToTask(taskId, (task) => {
+            setLocalTask(task);
+        });
+        return () => unsub();
+    }, [taskId]);
+
+    const globalTaskStatus = taskId ? taskStatuses[taskId] : undefined;
+    
+    // priority local firestore task over global contextual fallback 
+    const status = localTask?.status || globalTaskStatus?.status || "queued";
+    const result = (localTask?.agentOutput || globalTaskStatus?.result) as Record<string, unknown> | undefined;
 
     // ── Handle action buttons based on agent result ──────────────────────
     const handleAction = () => {
