@@ -36,7 +36,7 @@ export const DashboardNavbar = () => {
                 </Button>
 
                 <Button
-                    className="h-9 w-60 justify-start font-normal text-muted-foreground border-white/5 hover:bg-white/5"
+                    className="h-9 w-60 justify-start font-normal text-muted-foreground border-white/5 hover:bg-white/5 hover:text-white"
                     style={{ backgroundColor: "#0C0D0D", borderColor: "rgba(255,255,255,0.05)" }}
                     variant="outline"
                     size="sm"

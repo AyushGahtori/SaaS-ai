@@ -80,7 +80,7 @@ export const DashboardSidebar = () => {
                 <SidebarMenuButton asChild>
                   <button
                     onClick={createNewChat}
-                    className="h-10 flex items-center gap-2 px-3 rounded-md text-sm font-bold tracking-tight text-[#E5E5E5] hover:bg-sidebar-accent/5 w-full"
+                    className="h-10 flex items-center gap-2 px-3 rounded-md text-sm font-bold tracking-tight text-[#E5E5E5] hover:bg-sidebar-accent/5 hover:text-white w-full"
                   >
                     <MessageSquare className="w-5 h-5" stroke="white" strokeWidth={2} aria-hidden="true" />
                     <span>New Chat</span>
@@ -95,7 +95,7 @@ export const DashboardSidebar = () => {
                       href={item.href}
                       className={cn(
                         "h-10 flex items-center gap-2 px-3 rounded-md text-sm font-bold tracking-tight text-[#E5E5E5]",
-                        "hover:bg-sidebar-accent/5",
+                        "hover:bg-sidebar-accent/5 hover:text-white",
                         pathname === item.href && "bg-sidebar-accent/10"
                       )}
                     >
@@ -124,14 +124,14 @@ export const DashboardSidebar = () => {
         </div>
 
         {/* Chat history list */}
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <div className="px-2 pb-1">
+        <SidebarGroup className="flex-1 min-h-0 overflow-hidden">
+          <SidebarGroupContent className="flex flex-col h-full overflow-hidden">
+            <div className="px-2 pb-1 flex-shrink-0">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-white/30">
                 Recent Chats
               </span>
             </div>
-            <div className="sidebar-chat-scroll" style={{ maxHeight: "calc(100vh - 280px)" }}>
+            <div className="sidebar-chat-scroll flex-1 min-h-0 overflow-y-auto w-full relative">
               <ChatSidebarList />
             </div>
           </SidebarGroupContent>
@@ -151,7 +151,7 @@ export const DashboardSidebar = () => {
                       href={item.href}
                       className={cn(
                         "h-10 flex items-center gap-2 px-3 rounded-md text-sm font-bold tracking-tight text-[#E5E5E5]",
-                        "hover:bg-sidebar-accent/5",
+                        "hover:bg-sidebar-accent/5 hover:text-white",
                         pathname === item.href && "bg-sidebar-accent/10"
                       )}
                     >
