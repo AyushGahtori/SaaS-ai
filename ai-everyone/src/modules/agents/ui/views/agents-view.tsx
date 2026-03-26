@@ -158,7 +158,7 @@ export const AgentsView = () => {
   const isSearching = searchQuery.trim().length > 0;
 
   return (
-    <div className="h-[calc(100vh-64px)] overflow-y-auto overflow-x-hidden">
+    <div className="sidebar-chat-scroll h-[calc(100vh-64px)] overflow-y-auto overflow-x-hidden">
       <div className="w-full space-y-10 px-6 py-8">
         {/* Header */}
         <div className="flex items-center gap-3">
