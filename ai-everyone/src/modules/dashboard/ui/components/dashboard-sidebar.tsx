@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 
 import { Separator } from "@/components/ui/separator";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { MessageSquare, Bot, Settings } from "lucide-react";
 import { DashboardUserButton } from "./dashboard-user-button";
@@ -48,6 +48,7 @@ const settingsSection = [
 export const DashboardSidebar = () => {
 
   const pathname = usePathname();
+  const router = useRouter();
   const { createNewChat } = useChatContext();
 
   return (
@@ -79,7 +80,10 @@ export const DashboardSidebar = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <button
-                    onClick={createNewChat}
+                    onClick={() => {
+                      createNewChat();
+                      router.push("/");
+                    }}
                     className="h-10 flex items-center gap-2 px-3 rounded-md text-sm font-bold tracking-tight text-[#E5E5E5] hover:bg-sidebar-accent/5 hover:text-white w-full"
                   >
                     <MessageSquare className="w-5 h-5" stroke="white" strokeWidth={2} aria-hidden="true" />

@@ -11,11 +11,13 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import { Trash2, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const ChatSidebarList: React.FC = () => {
+    const router = useRouter();
     const { chats, activeChatId, selectChat, removeChatById, isLoadingChats } =
         useChatContext();
     const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -46,7 +48,10 @@ export const ChatSidebarList: React.FC = () => {
                                 ? "bg-white/10 text-white"
                                 : "text-[#E5E5E5] hover:bg-white/5"
                         )}
-                        onClick={() => selectChat(chat.id)}
+                        onClick={async () => {
+                            await selectChat(chat.id);
+                            router.push("/");
+                        }}
                         onMouseEnter={() => setHoveredId(chat.id)}
                         onMouseLeave={() => setHoveredId(null)}
                     >
