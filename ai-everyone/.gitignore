@@ -46,3 +46,6 @@ next-env.d.ts
 /src/lib/auth-workflow-with-page.tsx.txt
 
 /serviceAccountKey.json
+
+# EC2 infra code lives in its own git repository
+/EC2/

@@ -41,3 +41,6 @@ next-env.d.ts
 
 
 /serviceAccountKey.json
+
+# Nested infrastructure repo (managed separately)
+/ai-everyone/EC2/
