@@ -24,7 +24,7 @@ export const ChatMessageList: React.FC = () => {
     }, [messages, isGenerating]);
 
     return (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 custom-scrollbar">
             <div className="max-w-3xl mx-auto py-4 px-4">
                 {/* Render all messages uniformly — no voice session grouping */}
                 {messages.map((msg) => (

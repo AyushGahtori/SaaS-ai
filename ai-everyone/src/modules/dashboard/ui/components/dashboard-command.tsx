@@ -76,7 +76,7 @@ export const DashboardCommand = ({ open, setOpen }: Props) => {
                 value={query}
                 onValueChange={setQuery}
             />
-            <CommandList className="sidebar-chat-scroll">
+            <CommandList className="custom-scrollbar">
                 {filteredChats.length === 0 ? (
                     <CommandEmpty>No matching chats found.</CommandEmpty>
                 ) : (
