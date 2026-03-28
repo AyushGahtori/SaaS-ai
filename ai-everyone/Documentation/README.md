@@ -130,3 +130,9 @@ Once the context receives the AI text, it triggers a React Re-render:
 - Install dependencies: `npm install`
 - Start the server: `npm run dev`
 - Open `http://localhost:3000`
+
+---
+
+## 5. EC2 Agent Infrastructure (AWS)
+
+- `aws_ec2_agents_deployment_architecture.md` — detailed EC2 production runbook, command reference, nginx/systemd/deploy.sh deep dive, incident recovery, and IP-to-domain migration plan.

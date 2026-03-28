@@ -85,6 +85,19 @@ const AGENT_REGISTRY: AgentRegistryEntry[] = [
             "Search for emails about the Q3 budget",
             "Mark all unread emails as read"
         ]
+    },
+    {
+        id: "google-agent",
+        name: "Google Workspace Agent",
+        description: "Manages the user's Google Workspace including Gmail, Calendar, Meet, Drive, Tasks, and Web Search.",
+        actions: ["calendar", "gmail", "meet", "drive", "tasks", "web_search"],
+        examplePrompts: [
+            "Send an email to John via Gmail",
+            "Schedule a Google Meet with Alice tomorrow",
+            "Search my Google Drive for the Q3 report",
+            "What's on my Google Calendar?",
+            "Add a new task to my Google Tasks"
+        ]
     }
 ];
 
@@ -152,13 +165,18 @@ Sure! I'll call Aaron on Microsoft Teams for you right away.
    - For "delete_task" action: extract "task_id" (if known) or "title" of the task to delete.
    - For "mark_done" action: extract "task_id" (if known) or "title" of the task to mark done.
 
-4. If the user's request does NOT match any agent, respond normally as a helpful AI assistant. Do NOT use <AGENT_INTENT> tags in this case.
+4. For the google-agent:
+   - Extract "agent_type" (must be one of: "calendar", "gmail", "meet", "drive", "tasks", "web_search")
+   - Extract "action" as a brief string describing the intent (e.g., "send_email", "schedule_meeting", "search_files")
+   - Extract "parameters" as a single plain text string combining all relevant info from the user request (e.g., "to John about the updated report")
 
-5. NEVER execute actions directly. ALWAYS delegate to the appropriate agent via the <AGENT_INTENT> tags.
+5. If the user's request does NOT match any agent, respond normally as a helpful AI assistant. Do NOT use <AGENT_INTENT> tags in this case.
 
-6. If you are unsure whether an agent is needed, respond normally and ask the user for clarification.
+6. NEVER execute actions directly. ALWAYS delegate to the appropriate agent via the <AGENT_INTENT> tags.
 
-7. The JSON inside <AGENT_INTENT> must be valid and parseable — no trailing commas, no comments.`;
+7. If you are unsure whether an agent is needed, respond normally and ask the user for clarification.
+
+8. The JSON inside <AGENT_INTENT> must be valid and parseable — no trailing commas, no comments.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -359,7 +377,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Read Ollama config — model can come from frontend or env.
-        const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+        const baseUrl = process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434";
         const selectedModel = body.model || process.env.OLLAMA_DEFAULT_MODEL || "qwen3.5:397b-cloud";
         const model = selectedModel;
 
@@ -491,7 +509,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
             {
                 error: isConnectionError
-                    ? "Cannot connect to Ollama. Make sure Ollama is running on localhost:11434."
+                    ? `Cannot connect to Ollama. Make sure Ollama is running on ${process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434"}`
                     : `Internal server error: ${message}`,
             },
             { status: isConnectionError ? 503 : 500 }

@@ -14,6 +14,7 @@ import { useChatContext } from "@/modules/chat/context/chat-context";
 import type { ChatMessage } from "@/modules/chat/types";
 import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar, Key, ListTodo } from "lucide-react";
 import { MicrosoftLoginCard, type DeviceFlowData } from "./microsoft-login-card";
+import { GoogleLoginCard } from "./google-login-card";
 import { subscribeToTask, type AgentTask } from "@/lib/firestore-tasks";
 
 interface AgentTaskMessageProps {
@@ -24,6 +25,7 @@ interface AgentTaskMessageProps {
 const AGENT_NAMES: Record<string, string> = {
     "teams-agent": "Microsoft Teams Agent",
     "email-agent": "Email Agent",
+    "google-agent": "Google Workspace Agent",
 };
 
 export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) => {
@@ -102,6 +104,23 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             return (
                 <MicrosoftLoginCard
                     deviceData={result.flow as DeviceFlowData}
+                    onAuthenticated={() => {
+                        fetch("/api/tasks/retry", {
+                            method: "POST",
+                            body: JSON.stringify({ taskId: message.taskId }),
+                            headers: { "Content-Type": "application/json" }
+                        }).catch(console.error);
+                    }}
+                />
+            );
+        }
+
+        if (status === "action_required" && result.type === "google_auth") {
+            const nestedResult = result.result as Record<string, unknown> | undefined;
+            const authUrl = (result.auth_url as string) || (nestedResult?.auth_url as string) || "/api/google-auth/login";
+            return (
+                <GoogleLoginCard
+                    authUrl={authUrl}
                     onAuthenticated={() => {
                         fetch("/api/tasks/retry", {
                             method: "POST",
