@@ -23,9 +23,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Database
-from db.connection import connect_to_mongo, close_mongo_connection
-
 # Agents
 from agents.calendar_agent import CalendarAgent
 from agents.gmail_agent import GmailAgent
@@ -34,7 +31,6 @@ from agents.contacts_agent import ContactsAgent
 from agents.drive_agent import DriveAgent
 from agents.calling_agent import CallingAgent
 from agents.web_search_agent import WebSearchAgent
-from agents.notes_agent import NotesAgent
 from agents.tasks_agent import TasksAgent
 
 logger = logging.getLogger(__name__)
@@ -43,10 +39,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     logger.info("🚀 Starting Google Workspace Agent...")
-    await connect_to_mongo()
     yield
     logger.info("🛑 Shutting down Google Workspace Agent...")
-    await close_mongo_connection()
 
 app = FastAPI(
     title="SnitchX Google Workspace Agent",
@@ -74,6 +68,8 @@ class GoogleActionRequest(BaseModel):
     taskId: str | None = None
     userId: str | None = None
     agentId: str | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
 
 
 class GoogleActionResponse(BaseModel):
@@ -90,6 +86,55 @@ class GoogleActionResponse(BaseModel):
 async def health_check():
     return {"status": "healthy", "agent": "google-agent", "version": "1.0.0"}
 
+from fastapi.responses import HTMLResponse, RedirectResponse
+from google_client import auth_store, exchange_code_for_tokens, build_auth_url
+
+@app.get("/auth/login")
+def auth_login():
+    """Redirect user to Google consent screen."""
+    return RedirectResponse(url=build_auth_url())
+
+@app.get("/auth/callback")
+def auth_callback(code: str = "", error: str = ""):
+    """Google redirects here after user grants consent."""
+    if error:
+        return HTMLResponse(
+            f"<h2>❌ Google Auth Error</h2><p>{error}</p><p>Close this tab and try again.</p>",
+            status_code=400,
+        )
+    if not code:
+        return HTMLResponse(
+            "<h2>❌ Missing authorization code</h2><p>Close this tab and try again.</p>",
+            status_code=400,
+        )
+    try:
+        exchange_code_for_tokens(code)
+        return HTMLResponse(
+            "<h2>✅ Google account connected!</h2>"
+            "<p>You can close this tab and go back to SnitchX.</p>"
+            "<script>setTimeout(()=>window.close(),3000)</script>"
+        )
+    except Exception as exc:
+        return HTMLResponse(
+            f"<h2>❌ Token exchange failed</h2><p>{str(exc)}</p>",
+            status_code=500,
+        )
+
+@app.get("/auth/status")
+def auth_status():
+    """Check if agent is authenticated."""
+    token = auth_store.get("access_token")
+    if token:
+        return {"authenticated": True}
+    return {"authenticated": False}
+
+@app.post("/auth/logout")
+def auth_logout():
+    """Log out from Google."""
+    auth_store["access_token"] = None
+    auth_store["refresh_token"] = None
+    auth_store["expires_at"] = 0
+    return {"status": "logged_out"}
 
 @app.post("/google/action", response_model=GoogleActionResponse)
 async def google_action(data: GoogleActionRequest):
@@ -104,7 +149,6 @@ async def google_action(data: GoogleActionRequest):
         "drive": DriveAgent,
         "calling": CallingAgent,
         "web_search": WebSearchAgent,
-        "notes": NotesAgent,
         "tasks": TasksAgent,
     }
 
@@ -118,9 +162,9 @@ async def google_action(data: GoogleActionRequest):
     # We pass empty for now, assuming the agent implements an internal fallback or default config.
     try:
         agent = agent_class(
-            access_token="",
+            access_token=data.access_token or "",
             user_id=data.userId or "default_user",
-            refresh_token="",
+            refresh_token=data.refresh_token or "",
         )
 
         user_message = f"{data.action} {data.parameters or ''}"
@@ -129,6 +173,17 @@ async def google_action(data: GoogleActionRequest):
             user_message=user_message,
             context={"direct": True, "taskId": data.taskId},
         )
+
+        # If the agent returned action_required with auth_url, signal google_auth
+        if result.get("status") == "action_required" and result.get("auth_url"):
+            return GoogleActionResponse(
+                status="action_required",
+                type="google_auth",
+                agent_type=data.agent_type,
+                action=data.action,
+                result={"auth_url": result["auth_url"]},
+                execution_time_ms=(time.time() - start) * 1000,
+            )
         
         return GoogleActionResponse(
             status=result.get("status", "success"),
@@ -141,6 +196,20 @@ async def google_action(data: GoogleActionRequest):
         )
 
     except Exception as exc:
+        # Check if the agent result itself signaled auth_required
+        # (this happens when the agent catches the error internally and returns a dict)
+        if hasattr(exc, '__class__') and 'GoogleAuthRequired' in type(exc).__name__:
+            from google_client import build_auth_url
+            return GoogleActionResponse(
+                status="action_required",
+                type="google_auth",
+                agent_type=data.agent_type,
+                action=data.action,
+                result={"auth_url": "/api/google-auth/login"},
+                execution_time_ms=(time.time() - start) * 1000,
+            )
+
+        # Check if the result dict contains auth_url (from handle_google_exception)
         raise HTTPException(
             status_code=500,
             detail=f"Google Agent execution failed: {str(exc)}",

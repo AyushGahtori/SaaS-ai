@@ -5,10 +5,6 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
 
-# ── Database ──────────────────────────────────────────────
-motor==3.5.1          # Async MongoDB driver
-pymongo==4.8.0
-
 # ── Authentication & Security ─────────────────────────────
 PyJWT==2.9.0
 python-jose[cryptography]==3.3.0

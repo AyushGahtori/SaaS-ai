@@ -12,7 +12,6 @@ from urllib.parse import parse_qs, unquote, urlparse
 import httpx
 
 from agents.base_agent import BaseAgent
-from services.llm_service import llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +131,7 @@ class WebSearchAgent(BaseAgent):
             for result in results[:5]
         )
 
-        response = await llm_service.complete(
+        response = await self.llm_complete(
             messages=[
                 {
                     "role": "user",

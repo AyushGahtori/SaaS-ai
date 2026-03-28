@@ -89,8 +89,8 @@ const AGENT_REGISTRY: AgentRegistryEntry[] = [
     {
         id: "google-agent",
         name: "Google Workspace Agent",
-        description: "Manages the user's Google Workspace including Gmail, Calendar, Meet, Drive, Tasks, Web Search, and Notes.",
-        actions: ["calendar", "gmail", "meet", "drive", "tasks", "web_search", "notes"],
+        description: "Manages the user's Google Workspace including Gmail, Calendar, Meet, Drive, Tasks, and Web Search.",
+        actions: ["calendar", "gmail", "meet", "drive", "tasks", "web_search"],
         examplePrompts: [
             "Send an email to John via Gmail",
             "Schedule a Google Meet with Alice tomorrow",
@@ -166,7 +166,7 @@ Sure! I'll call Aaron on Microsoft Teams for you right away.
    - For "mark_done" action: extract "task_id" (if known) or "title" of the task to mark done.
 
 4. For the google-agent:
-   - Extract "agent_type" (must be one of: "calendar", "gmail", "meet", "drive", "tasks", "web_search", "notes")
+   - Extract "agent_type" (must be one of: "calendar", "gmail", "meet", "drive", "tasks", "web_search")
    - Extract "action" as a brief string describing the intent (e.g., "send_email", "schedule_meeting", "search_files")
    - Extract "parameters" as a single plain text string combining all relevant info from the user request (e.g., "to John about the updated report")
 
@@ -377,7 +377,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Read Ollama config — model can come from frontend or env.
-        const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+        const baseUrl = process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434";
         const selectedModel = body.model || process.env.OLLAMA_DEFAULT_MODEL || "qwen3.5:397b-cloud";
         const model = selectedModel;
 
@@ -509,7 +509,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
             {
                 error: isConnectionError
-                    ? "Cannot connect to Ollama. Make sure Ollama is running on localhost:11434."
+                    ? `Cannot connect to Ollama. Make sure Ollama is running on ${process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434"}`
                     : `Internal server error: ${message}`,
             },
             { status: isConnectionError ? 503 : 500 }

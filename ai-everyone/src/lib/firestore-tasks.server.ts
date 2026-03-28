@@ -19,6 +19,8 @@ import type { AgentTask } from "./firestore-tasks";
 
 const AGENT_ROUTES: Record<string, string> = {
     "teams-agent": "/teams/action",
+    "email-agent": "/email/action",
+    "calendar-agent": "/calendar/action",
     "todo-agent": "/todo/action",
     "google-agent": "/google/action",
 };

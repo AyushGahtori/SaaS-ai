@@ -11,12 +11,12 @@ from typing import Dict, Any, Optional
 
 import httpx
 
-from services.google_auth_service import (
-    AUTH_REQUIRED_MESSAGE,
-    GoogleAuthRequiredError,
-    google_auth_service,
-)
-from services.llm_service import llm_service
+import os
+
+AUTH_REQUIRED_MESSAGE = "This action requires Google authorization. Please connect your Google account."
+
+class GoogleAuthRequiredError(Exception):
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +94,55 @@ If the current message is continuing a pending request, merge it with the pendin
 
         prompt = "\n\n".join(prompt_sections)
 
-        return await llm_service.complete_json(
-            messages=[{"role": "user", "content": prompt}]
-        )
+        # Call local Ollama directly for json extraction
+        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+        ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+        
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                res = await client.post(
+                    f"{ollama_url}/api/chat",
+                    json={
+                        "model": ollama_model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "stream": False,
+                        "format": "json"
+                    }
+                )
+                if res.status_code == 200:
+                    content = res.json().get("message", {}).get("content", "{}")
+                    return json.loads(content)
+        except Exception as e:
+            logger.error(f"Failed to parse LLM json: {e}")
+        
+        return {}
+
+    async def llm_complete(self, messages: list, system_prompt: str = "") -> str:
+        """Call local Ollama to generate a plain text response."""
+        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+        ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+
+        formatted_messages = []
+        if system_prompt:
+            formatted_messages.append({"role": "system", "content": system_prompt})
+        formatted_messages.extend(messages)
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                res = await client.post(
+                    f"{ollama_url}/api/chat",
+                    json={
+                        "model": ollama_model,
+                        "messages": formatted_messages,
+                        "stream": False
+                    }
+                )
+                if res.status_code == 200:
+                    return res.json().get("message", {}).get("content", "")
+        except Exception as e:
+            logger.error(f"Failed to generate LLM text completion: {e}")
+        
+        return "I could not summarize the results due to an internal error."
 
     def success(self, summary: str, data: Any = None) -> Dict[str, Any]:
         """Return a success response."""
@@ -137,20 +183,9 @@ If the current message is continuing a pending request, merge it with the pendin
 
     async def refresh_google_access_token(self) -> bool:
         """Refresh the Google access token and persist it if possible."""
-        try:
-            token_data = await google_auth_service.ensure_valid_tokens(
-                user_id=self.user_id,
-                access_token=self.access_token,
-                refresh_token=self.refresh_token,
-                force_refresh=True,
-            )
-        except GoogleAuthRequiredError:
-            return False
-
-        self.access_token = token_data["access_token"]
-        if token_data.get("refresh_token"):
-            self.refresh_token = token_data["refresh_token"]
-        return True
+        # For SnitchX, token refresh is handled by Firebase on the frontend.
+        # We simply flag that authentication is required.
+        return False
 
     async def request_google_api(
         self,
@@ -159,25 +194,24 @@ If the current message is continuing a pending request, merge it with the pendin
         retry_on_failure: bool = False,
         **kwargs,
     ) -> httpx.Response:
-        """Send a Google API request with token refresh and optional safe retry."""
+        """Send a Google API request with optional safe retry."""
+        from google_client import acquire_google_token, GoogleAuthRequired
+        
+        try:
+            # Overwrite access token with the memory singleton from google_client
+            self.access_token = acquire_google_token()
+        except GoogleAuthRequired as exc:
+            self.auth_url = exc.auth_url
+            logger.warning("🔒 Auth Error [%s] Google sign-in required", self.agent_name)
+            raise GoogleAuthRequiredError()
+
         extra_headers = kwargs.pop("headers", {})
         max_attempts = 2 if retry_on_failure else 1
 
         for attempt in range(1, max_attempts + 1):
-            headers = await google_auth_service.get_auth_headers(
-                user_id=self.user_id,
-                access_token=self.access_token,
-                refresh_token=self.refresh_token,
-                extra_headers=extra_headers,
-            )
-            self.access_token = headers["Authorization"].replace("Bearer ", "", 1)
+            headers = {**extra_headers, "Authorization": f"Bearer {self.access_token}"}
 
-            logger.info(
-                "?? Google API Call [%s] %s (attempt %s)",
-                method.upper(),
-                url,
-                attempt,
-            )
+            logger.info("🌐 Google API Call [%s] %s (attempt %s)", method.upper(), url, attempt)
 
             try:
                 async with httpx.AsyncClient(timeout=30.0) as client:
@@ -189,28 +223,15 @@ If the current message is continuing a pending request, merge it with the pendin
                 continue
 
             if response.status_code == 401:
-                logger.warning(
-                    "?? Auth Error [%s] %s returned 401, attempting refresh",
-                    method.upper(),
-                    url,
-                )
-                refreshed = await google_auth_service.ensure_valid_tokens(
-                    user_id=self.user_id,
-                    access_token=self.access_token,
-                    refresh_token=self.refresh_token,
-                    force_refresh=True,
-                )
-                self.access_token = refreshed["access_token"]
-                self.refresh_token = refreshed.get("refresh_token") or self.refresh_token
-
-                retry_headers = {**extra_headers, "Authorization": f"Bearer {self.access_token}"}
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.request(method, url, headers=retry_headers, **kwargs)
-
-                if response.status_code == 401:
-                    logger.warning("?? Auth Error [%s] refresh retry also failed", self.agent_name)
+                logger.warning("🔒 Auth Error [%s] %s returned 401", method.upper(), url)
+                # Token expired — try to refresh
+                from google_client import refresh_access_token
+                try:
+                    self.access_token = refresh_access_token()
+                    continue  # retry with new token
+                except GoogleAuthRequired as exc:
+                    self.auth_url = exc.auth_url
                     raise GoogleAuthRequiredError()
-                return response
 
             if retry_on_failure and response.status_code in {429, 500, 502, 503, 504} and attempt < max_attempts:
                 await asyncio.sleep(0.4)
@@ -255,6 +276,14 @@ If the current message is continuing a pending request, merge it with the pendin
     ) -> Dict[str, Any]:
         """Map Google request exceptions to structured agent responses."""
         if isinstance(exc, GoogleAuthRequiredError):
+            auth_url = getattr(self, "auth_url", None)
+            if auth_url:
+                return {
+                    "status": "action_required",
+                    "agent": self.agent_name,
+                    "summary": f"Please connect your Google account first: {auth_url}",
+                    "auth_url": auth_url,
+                }
             return self.auth_required(data=data)
         return self.failure(f"{service_name} request failed: {exc}", data=data)
 
