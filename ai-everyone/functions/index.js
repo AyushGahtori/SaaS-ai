@@ -30,6 +30,8 @@ const AGENT_ROUTES = {
   "teams-agent": "/teams/action",
   "email-agent": "/email/action",
   "calendar-agent": "/calendar/action",
+  "todo-agent": "/todo/action",
+  "google-agent": "/google/action",
 };
 
 // ---------------------------------------------------------------------------
@@ -73,8 +75,13 @@ exports.runAgentTask = onDocumentCreated(
       });
 
       // ── 3. Call the agent's FastAPI server ───────────────────────────
-      const agentServerUrl =
-            process.env.AGENT_SERVER_URL || "http://host.docker.internal:8100";
+      let defaultHost = "http://host.docker.internal:8100";
+      if (task.agentId === "todo-agent") defaultHost = "http://host.docker.internal:8200";
+      if (task.agentId === "google-agent") defaultHost = "http://host.docker.internal:8300";
+
+      let agentServerUrl = process.env.AGENT_SERVER_URL || defaultHost;
+      if (task.agentId === "todo-agent" && process.env.TODO_AGENT_URL) agentServerUrl = process.env.TODO_AGENT_URL;
+      if (task.agentId === "google-agent" && process.env.GOOGLE_AGENT_URL) agentServerUrl = process.env.GOOGLE_AGENT_URL;
 
       const agentUrl = `${agentServerUrl}${agentRoute}`;
       logger.info(`[runAgentTask] Calling agent at ${agentUrl}`);

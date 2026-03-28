@@ -20,6 +20,7 @@ import type { AgentTask } from "./firestore-tasks";
 const AGENT_ROUTES: Record<string, string> = {
     "teams-agent": "/teams/action",
     "todo-agent": "/todo/action",
+    "google-agent": "/google/action",
 };
 
 /**
@@ -96,14 +97,20 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
 
     // ── 3. Call the agent's FastAPI server ─────────────────────────────
     const isTodoAgent = task.agentId === "todo-agent";
+    const isGoogleAgent = task.agentId === "google-agent";
 
-    // Default Teams agent to 8100, Todo agent to 8200
+    // Default Teams agent to 8100, Todo agent to 8200, Google agent to 8300
     // Because both Next.js and the Python agents run inside the SAME snitchx container,
     // they should communicate over localhost, not host.docker.internal
-    const defaultHost = isTodoAgent ? "http://localhost:8200" : "http://localhost:8100";
+    let defaultHost = "http://localhost:8100";
+    if (isTodoAgent) defaultHost = "http://localhost:8200";
+    else if (isGoogleAgent) defaultHost = "http://localhost:8300";
     
-    // Allow overriding from .env (e.g. TEAMS_AGENT_URL, TODO_AGENT_URL, or gracefully fallback)
-    const envUrl = isTodoAgent ? process.env.TODO_AGENT_URL : (process.env.TEAMS_AGENT_URL || process.env.AGENT_SERVER_URL);
+    // Allow overriding from .env
+    let envUrl = process.env.AGENT_SERVER_URL;
+    if (isTodoAgent) envUrl = process.env.TODO_AGENT_URL;
+    else if (isGoogleAgent) envUrl = process.env.GOOGLE_AGENT_URL;
+    else envUrl = process.env.TEAMS_AGENT_URL || process.env.AGENT_SERVER_URL;
     
     const agentServerUrl = envUrl || defaultHost;
     const agentUrl = `${agentServerUrl}${agentRoute}`;
