@@ -33,6 +33,40 @@ class BaseAgent(ABC):
         self.user_id = user_id
         self.agent_name = self.__class__.__name__
 
+    def _resolve_ollama_model(self, context: Optional[Dict[str, Any]] = None) -> str:
+        """Resolve model with cloud/local hybrid routing and safe fallbacks."""
+        context = context or {}
+
+        direct_model = context.get("ollama_model") or context.get("model")
+        if isinstance(direct_model, str) and direct_model.strip():
+            return direct_model.strip()
+
+        mode = context.get("ollama_mode") or context.get("model_mode") or context.get("model_source")
+        if not mode and isinstance(context.get("use_cloud"), bool):
+            mode = "cloud" if context.get("use_cloud") else "local"
+
+        cloud_model = os.getenv("OLLAMA_MODEL_CLOUD", "").strip()
+        local_model = os.getenv("OLLAMA_MODEL_LOCAL", "").strip()
+        default_model = os.getenv("OLLAMA_DEFAULT_MODEL", "").strip()
+        legacy_model = os.getenv("OLLAMA_MODEL", "").strip()
+
+        if isinstance(mode, str):
+            selected_mode = mode.strip().lower()
+            if selected_mode == "cloud" and cloud_model:
+                return cloud_model
+            if selected_mode == "local" and local_model:
+                return local_model
+
+        if default_model:
+            return default_model
+        if legacy_model:
+            return legacy_model
+        if cloud_model:
+            return cloud_model
+        if local_model:
+            return local_model
+        return "qwen2.5:7b"
+
     @abstractmethod
     async def handle(self, user_message: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -96,7 +130,7 @@ If the current message is continuing a pending request, merge it with the pendin
 
         # Call local Ollama directly for json extraction
         ollama_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-        ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+        ollama_model = self._resolve_ollama_model(context)
         
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -117,10 +151,10 @@ If the current message is continuing a pending request, merge it with the pendin
         
         return {}
 
-    async def llm_complete(self, messages: list, system_prompt: str = "") -> str:
+    async def llm_complete(self, messages: list, system_prompt: str = "", context: Optional[Dict[str, Any]] = None) -> str:
         """Call local Ollama to generate a plain text response."""
         ollama_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-        ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+        ollama_model = self._resolve_ollama_model(context)
 
         formatted_messages = []
         if system_prompt:
@@ -183,9 +217,14 @@ If the current message is continuing a pending request, merge it with the pendin
 
     async def refresh_google_access_token(self) -> bool:
         """Refresh the Google access token and persist it if possible."""
-        # For SnitchX, token refresh is handled by Firebase on the frontend.
-        # We simply flag that authentication is required.
-        return False
+        from google_client import GoogleAuthRequired, refresh_access_token
+
+        try:
+            self.access_token = refresh_access_token(self.refresh_token or None)
+            return True
+        except GoogleAuthRequired as exc:
+            self.auth_url = exc.auth_url
+            return False
 
     async def request_google_api(
         self,
@@ -198,8 +237,10 @@ If the current message is continuing a pending request, merge it with the pendin
         from google_client import acquire_google_token, GoogleAuthRequired
         
         try:
-            # Overwrite access token with the memory singleton from google_client
-            self.access_token = acquire_google_token()
+            self.access_token = acquire_google_token(
+                access_token=self.access_token or None,
+                refresh_token=self.refresh_token or None,
+            )
         except GoogleAuthRequired as exc:
             self.auth_url = exc.auth_url
             logger.warning("🔒 Auth Error [%s] Google sign-in required", self.agent_name)
@@ -227,7 +268,7 @@ If the current message is continuing a pending request, merge it with the pendin
                 # Token expired — try to refresh
                 from google_client import refresh_access_token
                 try:
-                    self.access_token = refresh_access_token()
+                    self.access_token = refresh_access_token(self.refresh_token or None)
                     continue  # retry with new token
                 except GoogleAuthRequired as exc:
                     self.auth_url = exc.auth_url

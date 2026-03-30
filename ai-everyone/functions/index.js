@@ -32,6 +32,8 @@ const AGENT_ROUTES = {
   "calendar-agent": "/calendar/action",
   "todo-agent": "/todo/action",
   "google-agent": "/google/action",
+  "notion-agent": "/notion/action",
+  "maps-agent": "/maps/action",
 };
 
 // ---------------------------------------------------------------------------
@@ -68,6 +70,22 @@ exports.runAgentTask = onDocumentCreated(
         return;
       }
 
+      const userSnap = await db.collection("users").doc(task.userId).get();
+      const installedAgents = Array.isArray(userSnap.data()?.installedAgents) ?
+        userSnap.data().installedAgents :
+        [];
+
+      if (!installedAgents.includes(task.agentId)) {
+        await taskRef.update({
+          status: "failed",
+          agentOutput: {
+            error: `Access denied. Agent ${task.agentId} is not installed for this user.`,
+          },
+          finishedAt: FieldValue.serverTimestamp(),
+        });
+        return;
+      }
+
       // ── 2. Update status to "running" ────────────────────────────────
       await taskRef.update({
         status: "running",
@@ -75,15 +93,56 @@ exports.runAgentTask = onDocumentCreated(
       });
 
       // ── 3. Call the agent's FastAPI server ───────────────────────────
-      let defaultHost = "http://host.docker.internal:8100";
-      if (task.agentId === "todo-agent") defaultHost = "http://host.docker.internal:8200";
-      if (task.agentId === "google-agent") defaultHost = "http://host.docker.internal:8300";
+      let defaultHost = "http://13.206.83.175";
 
       let agentServerUrl = process.env.AGENT_SERVER_URL || defaultHost;
       if (task.agentId === "todo-agent" && process.env.TODO_AGENT_URL) agentServerUrl = process.env.TODO_AGENT_URL;
       if (task.agentId === "google-agent" && process.env.GOOGLE_AGENT_URL) agentServerUrl = process.env.GOOGLE_AGENT_URL;
+      if (task.agentId === "notion-agent" && process.env.NOTION_AGENT_URL) agentServerUrl = process.env.NOTION_AGENT_URL;
+      if (task.agentId === "maps-agent" && process.env.MAPS_AGENT_URL) agentServerUrl = process.env.MAPS_AGENT_URL;
 
       const agentUrl = `${agentServerUrl}${agentRoute}`;
+      let providerConnection = {};
+      if (["teams-agent", "email-agent", "calendar-agent"].includes(task.agentId)) {
+        const snap = await db.collection("users").doc(task.userId).collection("providerConnections").doc("microsoft").get();
+        if (snap.exists && snap.data()?.accessToken) {
+          providerConnection = {
+            access_token: snap.data().accessToken,
+            refresh_token: snap.data().refreshToken || undefined,
+          };
+        }
+      } else if (task.agentId === "google-agent") {
+        const snap = await db.collection("users").doc(task.userId).collection("providerConnections").doc("google").get();
+        if (snap.exists && snap.data()?.accessToken) {
+          providerConnection = {
+            access_token: snap.data().accessToken,
+            refresh_token: snap.data().refreshToken || undefined,
+          };
+        }
+      } else if (task.agentId === "notion-agent") {
+        const snap = await db.collection("users").doc(task.userId).collection("providerConnections").doc("notion").get();
+        if (snap.exists && snap.data()?.accessToken) {
+          providerConnection = {
+            access_token: snap.data().accessToken,
+            refresh_token: snap.data().refreshToken || undefined,
+          };
+        }
+      }
+
+      if (
+        ["teams-agent", "email-agent", "calendar-agent", "google-agent", "notion-agent"].includes(task.agentId) &&
+        !providerConnection.access_token
+      ) {
+        await taskRef.update({
+          status: "failed",
+          agentOutput: {
+            error: `Access denied. Provider connection for ${task.agentId} is missing.`,
+          },
+          finishedAt: FieldValue.serverTimestamp(),
+        });
+        return;
+      }
+
       logger.info(`[runAgentTask] Calling agent at ${agentUrl}`);
 
       try {
@@ -95,6 +154,7 @@ exports.runAgentTask = onDocumentCreated(
             userId: task.userId,
             agentId: task.agentId,
             ...task.agentInput,
+            ...providerConnection,
           }),
         });
 
@@ -116,11 +176,11 @@ exports.runAgentTask = onDocumentCreated(
         logger.info(`[runAgentTask] Agent result`, result);
 
         // ── 4. Update task with result ────────────────────────────────
-        if (result.status === "success") {
+        if (result.status === "success" || result.status === "action_required") {
           await taskRef.update({
-            status: "success",
+            status: result.status,
             agentOutput: result,
-            finishedAt: FieldValue.serverTimestamp(),
+            finishedAt: result.status === "success" ? FieldValue.serverTimestamp() : null,
           });
         } else {
           await taskRef.update({

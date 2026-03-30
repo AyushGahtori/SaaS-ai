@@ -6,7 +6,7 @@
  * which is accessible from the host machine.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const SCOPES = [
@@ -18,17 +18,32 @@ const SCOPES = [
     "https://www.googleapis.com/auth/contacts.readonly",
 ].join(" ");
 
-// This callback must be on port 3000 (Next.js) since it's browser-accessible
-const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/google-auth/callback";
+const CALLBACK_PATH = "/api/google-auth/callback";
 
-export async function GET() {
+function getRedirectUri(req: NextRequest): string {
+    const configured = process.env.GOOGLE_REDIRECT_URI?.trim();
+    if (configured && configured.includes(CALLBACK_PATH)) {
+        return configured;
+    }
+
+    const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const proto = forwardedProto || req.nextUrl.protocol.replace(":", "") || "http";
+    const host = forwardedHost || req.headers.get("host") || req.nextUrl.host;
+
+    return `${proto}://${host}${CALLBACK_PATH}`;
+}
+
+export async function GET(req: NextRequest) {
     if (!GOOGLE_CLIENT_ID) {
         return NextResponse.json({ error: "GOOGLE_CLIENT_ID not configured" }, { status: 500 });
     }
 
+    const redirectUri = getRedirectUri(req);
+
     const params = new URLSearchParams({
         client_id: GOOGLE_CLIENT_ID,
-        redirect_uri: REDIRECT_URI,
+        redirect_uri: redirectUri,
         response_type: "code",
         scope: SCOPES,
         access_type: "offline",

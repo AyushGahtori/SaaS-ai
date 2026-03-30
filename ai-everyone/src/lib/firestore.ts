@@ -55,7 +55,7 @@ export async function updateUserProfile(
     uid: string,
     data: Partial<UserProfile>
 ): Promise<void> {
-    await updateDoc(doc(db, "users", uid), data);
+    await setDoc(doc(db, "users", uid), data, { merge: true });
 }
 
 /**

@@ -11,6 +11,12 @@ import { v4 as uuidv4 } from "uuid";
 import { adminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import type { AgentTask } from "./firestore-tasks";
+import {
+    getAccessibleAgentIds,
+    getAgentExecutionAuth,
+    getInstalledAgentIds,
+} from "@/lib/agents/user-access.server";
+import { getInstallHintForAgent } from "@/lib/agents/catalog";
 
 // ---------------------------------------------------------------------------
 // Agent routing map — maps agentId to its API endpoint path.
@@ -23,6 +29,8 @@ const AGENT_ROUTES: Record<string, string> = {
     "calendar-agent": "/calendar/action",
     "todo-agent": "/todo/action",
     "google-agent": "/google/action",
+    "notion-agent": "/notion/action",
+    "maps-agent": "/maps/action",
 };
 
 /**
@@ -91,6 +99,29 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         return;
     }
 
+    const [installedAgentIds, accessibleAgentIds] = await Promise.all([
+        getInstalledAgentIds(task.userId),
+        getAccessibleAgentIds(task.userId),
+    ]);
+
+    if (!installedAgentIds.includes(task.agentId)) {
+        await taskRef.update({
+            status: "failed",
+            agentOutput: { error: `Access denied. ${getInstallHintForAgent(task.agentId)}` },
+            finishedAt: FieldValue.serverTimestamp(),
+        });
+        return;
+    }
+
+    if (!accessibleAgentIds.includes(task.agentId)) {
+        await taskRef.update({
+            status: "failed",
+            agentOutput: { error: `Access denied. ${getInstallHintForAgent(task.agentId)}` },
+            finishedAt: FieldValue.serverTimestamp(),
+        });
+        return;
+    }
+
     // ── 2. Update status to "running" ─────────────────────────────────
     await taskRef.update({
         status: "running",
@@ -100,22 +131,28 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     // ── 3. Call the agent's FastAPI server ─────────────────────────────
     const isTodoAgent = task.agentId === "todo-agent";
     const isGoogleAgent = task.agentId === "google-agent";
+    const isNotionAgent = task.agentId === "notion-agent";
+    const isMapsAgent = task.agentId === "maps-agent";
 
-    // Default Teams agent to 8100, Todo agent to 8200, Google agent to 8300
-    // Because both Next.js and the Python agents run inside the SAME snitchx container,
-    // they should communicate over localhost, not host.docker.internal
-    let defaultHost = "http://localhost:8100";
-    if (isTodoAgent) defaultHost = "http://localhost:8200";
-    else if (isGoogleAgent) defaultHost = "http://localhost:8300";
+    // Default Teams + Todo route through EC2 host root, Google via /google prefix.
+    let defaultHost = "http://13.206.83.175";
+    if (isTodoAgent) defaultHost = "http://13.206.83.175";
+    else if (isGoogleAgent) defaultHost = "http://13.206.83.175";
+    else if (isNotionAgent) defaultHost = "http://13.206.83.175";
+    else if (isMapsAgent) defaultHost = "http://13.206.83.175";
+    else defaultHost = "http://13.206.83.175";
     
     // Allow overriding from .env
     let envUrl = process.env.AGENT_SERVER_URL;
     if (isTodoAgent) envUrl = process.env.TODO_AGENT_URL;
     else if (isGoogleAgent) envUrl = process.env.GOOGLE_AGENT_URL;
+    else if (isNotionAgent) envUrl = process.env.NOTION_AGENT_URL || process.env.AGENT_SERVER_URL;
+    else if (isMapsAgent) envUrl = process.env.MAPS_AGENT_URL || process.env.AGENT_SERVER_URL;
     else envUrl = process.env.TEAMS_AGENT_URL || process.env.AGENT_SERVER_URL;
     
     const agentServerUrl = envUrl || defaultHost;
     const agentUrl = `${agentServerUrl}${agentRoute}`;
+    const executionAuth = await getAgentExecutionAuth(task.userId, task.agentId);
 
     console.log(`[executeAgentTask] Calling agent at ${agentUrl}`);
 
@@ -128,6 +165,7 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
                 userId: task.userId,
                 agentId: task.agentId,
                 ...task.agentInput,
+                ...executionAuth,
             }),
         });
 
