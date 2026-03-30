@@ -1,8 +1,6 @@
 "use client";
-// Main marketplace view — composes search bar, featured section,
-// trending sections, and the all-agents grid.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import {
@@ -11,36 +9,90 @@ import {
   getTrendingAgents,
   type Agent,
 } from "@/lib/firestore-agents";
-import {
-  getUserInstalledAgents,
-  installAgentForUser,
-  uninstallAgentForUser,
-} from "@/lib/firestore";
-import {
-  incrementInstallCount,
-  decrementInstallCount,
-} from "@/lib/firestore-agents";
 import { AgentsSearchBar } from "../components/agents-search-bar";
 import { AgentsFeaturedSection } from "../components/agents-featured-section";
 import { AgentsTrendingSection } from "../components/agents-trending-section";
 import { AgentsGrid } from "../components/agents-grid";
-import { Loader2, Bot } from "lucide-react";
+import { Bot, Loader2 } from "lucide-react";
+
+interface AgentStateResponse {
+  installedAgentIds: string[];
+  accessibleAgentIds: string[];
+  connectedBundleIds: string[];
+  connections: {
+    google: boolean;
+    microsoft: boolean;
+    notion?: boolean;
+  };
+}
+
+async function getAuthHeaders() {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) {
+    throw new Error("Authentication expired. Please sign in again.");
+  }
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+}
 
 export const AgentsView = () => {
-  // -------------------------------------------------------------------------
-  // State
-  // -------------------------------------------------------------------------
   const [allAgents, setAllAgents] = useState<Agent[]>([]);
   const [featuredAgents, setFeaturedAgents] = useState<Agent[]>([]);
   const [trendingAgents, setTrendingAgents] = useState<Agent[]>([]);
   const [installedIds, setInstalledIds] = useState<string[]>([]);
+  const [accessibleIds, setAccessibleIds] = useState<string[]>([]);
+  const [connectedBundleIds, setConnectedBundleIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [uid, setUid] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // -------------------------------------------------------------------------
-  // Auth listener — get current user UID
-  // -------------------------------------------------------------------------
+  const loadMarketplaceState = useCallback(async () => {
+    const headers = await getAuthHeaders();
+    const response = await fetch("/api/agents", {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to load installed agents.");
+    }
+
+    const data = (await response.json()) as AgentStateResponse;
+    setInstalledIds(data.installedAgentIds ?? []);
+    setAccessibleIds(data.accessibleAgentIds ?? []);
+    setConnectedBundleIds(data.connectedBundleIds ?? []);
+  }, []);
+
+  const loadMarketplace = useCallback(async () => {
+    if (!uid) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const [all, featured, trending] = await Promise.all([
+        getAllAgents(),
+        getFeaturedAgents(),
+        getTrendingAgents(10),
+      ]);
+
+      setAllAgents(all);
+      setFeaturedAgents(featured);
+      setTrendingAgents(trending);
+      await loadMarketplaceState();
+    } catch (err) {
+      console.error("[AgentsView] load error:", err);
+      setError(err instanceof Error ? err.message : "Failed to load marketplace.");
+    } finally {
+      setLoading(false);
+    }
+  }, [loadMarketplaceState, uid]);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setUid(user?.uid ?? null);
@@ -48,105 +100,179 @@ export const AgentsView = () => {
     return () => unsub();
   }, []);
 
-  // -------------------------------------------------------------------------
-  // Data fetching — runs once uid is known
-  // -------------------------------------------------------------------------
   useEffect(() => {
-    if (!uid) return;
+    if (uid) {
+      loadMarketplace();
+    }
+  }, [uid, loadMarketplace]);
 
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [all, featured, trending, installed] = await Promise.all([
-          getAllAgents(),
-          getFeaturedAgents(),
-          getTrendingAgents(10),
-          getUserInstalledAgents(uid),
-        ]);
-        setAllAgents(all);
-        setFeaturedAgents(featured);
-        setTrendingAgents(trending);
-        setInstalledIds(installed);
-      } catch (err) {
-        console.error("Failed to load agents:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [uid]);
-
-  // -------------------------------------------------------------------------
-  // Search filtering — client-side since Firestore doesn't support full-text
-  // -------------------------------------------------------------------------
   const filteredAgents = useMemo(() => {
     if (!searchQuery.trim()) return allAgents;
-    const q = searchQuery.toLowerCase();
+    const query = searchQuery.toLowerCase();
+
     return allAgents.filter(
-      (a) =>
-        a.name.toLowerCase().includes(q) ||
-        a.category.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q)
+      (agent) =>
+        agent.name.toLowerCase().includes(query) ||
+        agent.category.toLowerCase().includes(query) ||
+        agent.description.toLowerCase().includes(query) ||
+        (agent.tags || []).some((tag) => tag.toLowerCase().includes(query))
     );
   }, [allAgents, searchQuery]);
 
-  // -------------------------------------------------------------------------
-  // Install / Uninstall handlers
-  // -------------------------------------------------------------------------
-  const handleInstall = async (agentId: string) => {
-    if (!uid) return;
-    await installAgentForUser(uid, agentId);
-    await incrementInstallCount(agentId);
-    setInstalledIds((prev) => [...prev, agentId]);
-    // update installCount in local state
-    setAllAgents((prev) =>
-      prev.map((a) =>
-        a.id === agentId ? { ...a, installCount: a.installCount + 1 } : a
-      )
-    );
-    setTrendingAgents((prev) =>
-      prev.map((a) =>
-        a.id === agentId ? { ...a, installCount: a.installCount + 1 } : a
-      )
-    );
-    setFeaturedAgents((prev) =>
-      prev.map((a) =>
-        a.id === agentId ? { ...a, installCount: a.installCount + 1 } : a
-      )
-    );
-  };
+  const openConnectionPopup = useCallback(async (target: { bundleId?: string; agentId?: string }) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch("/api/agents/oauth/start", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(target),
+    });
 
-  const handleUninstall = async (agentId: string) => {
-    if (!uid) return;
-    await uninstallAgentForUser(uid, agentId);
-    await decrementInstallCount(agentId);
-    setInstalledIds((prev) => prev.filter((id) => id !== agentId));
-    setAllAgents((prev) =>
-      prev.map((a) =>
-        a.id === agentId
-          ? { ...a, installCount: Math.max(0, a.installCount - 1) }
-          : a
-      )
-    );
-    setTrendingAgents((prev) =>
-      prev.map((a) =>
-        a.id === agentId
-          ? { ...a, installCount: Math.max(0, a.installCount - 1) }
-          : a
-      )
-    );
-    setFeaturedAgents((prev) =>
-      prev.map((a) =>
-        a.id === agentId
-          ? { ...a, installCount: Math.max(0, a.installCount - 1) }
-          : a
-      )
-    );
-  };
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.authUrl) {
+      throw new Error(data.error || "Failed to start authorization.");
+    }
 
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
+    const popupTarget = target.bundleId || target.agentId || "agent";
+    const popup = window.open(
+      data.authUrl,
+      `oauth-${popupTarget}`,
+      "width=560,height=720,menubar=no,toolbar=no,location=yes,status=no"
+    );
+
+    if (!popup) {
+      throw new Error("Popup blocked. Please allow popups and try again.");
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timeout = window.setTimeout(() => {
+        cleanup();
+        reject(new Error("Authorization timed out. Please try again."));
+      }, 180000);
+
+      const interval = window.setInterval(() => {
+        if (popup.closed && !settled) {
+          cleanup();
+          reject(new Error("Authorization window was closed before completion."));
+        }
+      }, 500);
+
+      const handleMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        if (!event.data || typeof event.data !== "object") return;
+
+        const sameTarget =
+          (target.bundleId && event.data.bundleId === target.bundleId) ||
+          (target.agentId && event.data.agentId === target.agentId);
+
+        if (event.data.type === "snitchx_oauth_success" && sameTarget) {
+          settled = true;
+          cleanup();
+          resolve();
+        }
+
+        if (event.data.type === "snitchx_oauth_error" && sameTarget) {
+          settled = true;
+          cleanup();
+          reject(new Error(event.data.message || "Bundle connection failed."));
+        }
+      };
+
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        window.clearInterval(interval);
+        window.removeEventListener("message", handleMessage);
+      };
+
+      window.addEventListener("message", handleMessage);
+    });
+  }, []);
+
+  const runAgentMutation = useCallback(
+    async (payload: { action: "install" | "uninstall"; targetId: string; targetType: "agent" | "bundle" }) => {
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/agents", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (data.oauthRequired && (data.bundleId || data.agentId)) {
+          await openConnectionPopup({
+            bundleId: data.bundleId || undefined,
+            agentId: data.agentId || undefined,
+          });
+          await loadMarketplaceState();
+          return;
+        }
+        throw new Error(data.error || "Failed to update agent state.");
+      }
+
+      await loadMarketplaceState();
+    },
+    [loadMarketplaceState, openConnectionPopup]
+  );
+
+  const handleInstall = useCallback(
+    async (agentId: string) => {
+      const item = allAgents.find((agent) => agent.id === agentId);
+      if (!item) return;
+
+      setError(null);
+
+      if (item.kind === "bundle") {
+        if (!connectedBundleIds.includes(item.id)) {
+          await openConnectionPopup({ bundleId: item.id });
+          await loadMarketplaceState();
+          return;
+        }
+
+        await runAgentMutation({
+          action: "install",
+          targetId: item.id,
+          targetType: "bundle",
+        });
+        return;
+      }
+
+      if (item.requiresConnection && item.bundleId && !connectedBundleIds.includes(item.bundleId)) {
+        await openConnectionPopup({ bundleId: item.bundleId });
+        await loadMarketplaceState();
+        return;
+      }
+
+      await runAgentMutation({
+        action: "install",
+        targetId: item.id,
+        targetType: "agent",
+      });
+    },
+    [allAgents, connectedBundleIds, loadMarketplaceState, openConnectionPopup, runAgentMutation]
+  );
+
+  const handleUninstall = useCallback(
+    async (agentId: string) => {
+      const item = allAgents.find((agent) => agent.id === agentId);
+      if (!item) return;
+
+      setError(null);
+
+      await runAgentMutation({
+        action: "uninstall",
+        targetId: item.id,
+        targetType: item.kind,
+      });
+    },
+    [allAgents, runAgentMutation]
+  );
+
+  const ownedIds = useMemo(
+    () => Array.from(new Set([...installedIds, ...connectedBundleIds])),
+    [connectedBundleIds, installedIds]
+  );
+
   if (loading) {
     return (
       <div className="flex h-[calc(100vh-64px)] items-center justify-center">
@@ -160,60 +286,72 @@ export const AgentsView = () => {
   return (
     <div className="custom-scrollbar h-[calc(100vh-64px)] overflow-y-auto overflow-x-hidden w-full">
       <div className="max-w-7xl space-y-10 px-6 py-8">
-        {/* Header */}
         <div className="flex items-center gap-3">
           <Bot className="h-8 w-8 text-indigo-400" />
           <div>
             <h1 className="text-2xl font-bold text-white/95">Agent Marketplace</h1>
             <p className="text-sm text-white/40">
-              Discover and install AI agents to supercharge your workflow
+              Install real agents, connect Google and Microsoft bundles, and control what your account can use.
             </p>
           </div>
         </div>
 
-        {/* Search bar */}
         <AgentsSearchBar value={searchQuery} onChange={setSearchQuery} />
 
-        {/* If searching, show only filtered grid */}
+        {error ? (
+          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {error}
+          </div>
+        ) : null}
+
+        {!isSearching ? (
+          <div className="flex flex-wrap gap-2">
+            {["productivity", "google", "microsoft", "notion", "location", "calendar", "reminders"].map((chip) => (
+              <span
+                key={chip}
+                className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium capitalize text-white/65"
+              >
+                {chip}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         {isSearching ? (
           <AgentsGrid
             agents={filteredAgents}
-            installedAgentIds={installedIds}
+            installedAgentIds={ownedIds}
             onInstall={handleInstall}
             onUninstall={handleUninstall}
           />
         ) : (
           <>
-            {/* Featured section */}
             <AgentsFeaturedSection
               agents={featuredAgents}
-              installedAgentIds={installedIds}
+              installedAgentIds={ownedIds}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
             />
 
-            {/* Trending this week */}
             <AgentsTrendingSection
               title="Trending This Week"
               agents={trendingAgents.slice(0, 5)}
-              installedAgentIds={installedIds}
+              installedAgentIds={ownedIds}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
             />
 
-            {/* Trending this month */}
             <AgentsTrendingSection
               title="Trending This Month"
               agents={trendingAgents}
-              installedAgentIds={installedIds}
+              installedAgentIds={ownedIds}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
             />
 
-            {/* All agents grid */}
             <AgentsGrid
               agents={allAgents}
-              installedAgentIds={installedIds}
+              installedAgentIds={ownedIds}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
             />

@@ -1,187 +1,40 @@
 /**
  * POST /api/chat
  *
- * Next.js API route — orchestrates the parent LLM (Ollama).
+ * Authenticated streaming chat route for SnitchX.
  *
- * Two modes:
- *  1. Normal chat — Ollama returns plain text → forwarded to frontend.
- *  2. Agent intent — Ollama returns JSON wrapped in <AGENT_INTENT> tags
- *     → creates an agentTask in Firestore → returns task metadata to frontend.
- *
- * Uses TAG-BASED extraction: the LLM wraps structured data in
- * <AGENT_INTENT>...</AGENT_INTENT> tags, allowing conversational text
- * alongside the intent JSON. This is more robust than raw JSON parsing.
- *
- * Request body:  { messages, chatId?, userId?, model? }
- * Response body: { type: "chat", content } | { type: "agent_task", taskId, agentId, status, content }
+ * - Verifies the Firebase ID token from the Authorization header
+ * - Streams normal Ollama text responses incrementally
+ * - Buffers agent-intent responses and converts them into agent tasks
+ * - Preserves the existing persona + memory pipeline
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAgentTask, executeAgentTask } from "@/lib/firestore-tasks.server";
-import type { AgentRegistryEntry } from "@/modules/chat/types";
 import { isTriggerMessage, isPersonalContextQuery } from "@/lib/memory/trigger-detector";
 import { extractMemories } from "@/lib/memory/extractor";
 import { processExtractedMemories } from "@/lib/memory/deduper";
 import { rebuildPersona, formatPersonaForPrompt } from "@/lib/memory/persona-builder";
 import { getPersona } from "@/lib/memory/memory-repository.server";
 import { getTopKMemories, formatMemoriesForPrompt } from "@/lib/memory/retrieval";
+import {
+    AGENT_CATALOG,
+    getAgentCatalogEntry,
+    getInstallHintForAgent,
+    getInstalledAgentRegistry,
+} from "@/lib/agents/catalog";
+import {
+    getAccessibleAgentIds,
+    getInstalledAgentIds,
+} from "@/lib/agents/user-access.server";
+import { verifyFirebaseRequest } from "@/lib/server-auth";
 
-// ---------------------------------------------------------------------------
-// Agent Registry — describes all agents the parent LLM can choose from.
-// This is the "brain" that tells the LLM what tools it has.
-// ---------------------------------------------------------------------------
+const GOOGLE_AGENT_TYPES = new Set(["calendar", "gmail", "meet", "drive", "tasks", "web_search"]);
 
-const AGENT_REGISTRY: AgentRegistryEntry[] = [
-    {
-        id: "teams-agent",
-        name: "Microsoft Teams Agent",
-        description:
-            "Handles Microsoft Teams actions: making voice/video calls, sending messages, " +
-            "and scheduling meetings with attendees. Can search contacts by name and resolve " +
-            "their email addresses via Microsoft Graph. For meetings, it can notify the user via WhatsApp, SMS, or Call.",
-        actions: ["make_call", "send_message", "schedule_meeting"],
-        examplePrompts: [
-            "Call Nandini on Teams",
-            "Send a message to Riya on Teams saying I will be late",
-            "Make a Teams call to john@company.com",
-            "Schedule a meeting with Aaron and Priya tomorrow at 10 AM about the sprint",
-            "Set up a 30-minute standup with the team on Monday at 9 AM and notify me via WhatsApp",
-        ],
-    },
-    {
-        id: "todo-agent",
-        name: "To-Do List Agent",
-        description: "Manages the user's personal to-do list and tasks.",
-        actions: ["add_task", "list_tasks", "list_tasks_by_date", "delete_task", "mark_done"],
-        examplePrompts: [
-            "Add buy milk tomorrow at 10am to my to-do list",
-            "What are my tasks for today?",
-            "Mark 'buy milk' as done",
-            "Delete the gym task from my list",
-            "Show all pending tasks"
-        ]
-    },
-    {
-        id: "calendar-agent",
-        name: "Microsoft Calendar Agent",
-        description: "Manages the user's Microsoft Outlook Calendar. Can view existing events, check for scheduling conflicts, create new events, and cancel events.",
-        actions: ["get_calendar_events", "create_calendar_event", "check_conflicts", "delete_event", "find_person_email"],
-        examplePrompts: [
-            "What is on my calendar for today?",
-            "Schedule a meeting with Ayush tomorrow at 3 PM",
-            "Am I free next Monday at 10 AM?",
-            "Delete the meeting I have at 4 PM tomorrow",
-        ]
-    },
-    {
-        id: "email-agent",
-        name: "Microsoft Email Agent",
-        description: "Manages the user's Microsoft Outlook Email Inbox. Can read inbox, summarize emails, search emails by keyword, send emails, forward, reply, move, and mark emails.",
-        actions: ["read_inbox", "read_email", "summarize_email", "search_emails", "reply_to_email", "forward_email", "send_email", "mark_email", "move_email", "find_person_email"],
-        examplePrompts: [
-            "Read my latest emails",
-            "Send an email to John saying the report is ready",
-            "Summarize the email I got from Alice yesterday",
-            "Search for emails about the Q3 budget",
-            "Mark all unread emails as read"
-        ]
-    },
-    {
-        id: "google-agent",
-        name: "Google Workspace Agent",
-        description: "Manages the user's Google Workspace including Gmail, Calendar, Meet, Drive, Tasks, and Web Search.",
-        actions: ["calendar", "gmail", "meet", "drive", "tasks", "web_search"],
-        examplePrompts: [
-            "Send an email to John via Gmail",
-            "Schedule a Google Meet with Alice tomorrow",
-            "Search my Google Drive for the Q3 report",
-            "What's on my Google Calendar?",
-            "Add a new task to my Google Tasks"
-        ]
-    }
-];
-
-// ---------------------------------------------------------------------------
-// Orchestration System Prompt
-// ---------------------------------------------------------------------------
-
-function buildOrchestrationPrompt(installedAgentIds?: string[]): string {
-    // Filter to only installed agents if provided, otherwise show all
-    const availableAgents = installedAgentIds
-        ? AGENT_REGISTRY.filter((a) => installedAgentIds.includes(a.id))
-        : AGENT_REGISTRY;
-
-    const agentDescriptions = availableAgents
-        .map(
-            (a) =>
-                `- **${a.name}** (id: "${a.id}")\n` +
-                `  Description: ${a.description}\n` +
-                `  Actions: ${a.actions.join(", ")}\n` +
-                `  Example prompts: ${a.examplePrompts.map((p) => `"${p}"`).join(", ")}`
-        )
-        .join("\n\n");
-
-    return `You are the orchestration AI of SnitchX, an AI assistant platform.
-
-You can either answer questions directly OR delegate tasks to specialized agents.
-
-## Available Agents:
-${agentDescriptions || "No agents available."}
-
-## Rules:
-1. If the user's request matches an agent's capabilities, you MUST wrap a valid JSON object inside <AGENT_INTENT> tags. You may include a brief, friendly explanation BEFORE the tags. Example:
-
-Sure! I'll call Aaron on Microsoft Teams for you right away.
-
-<AGENT_INTENT>
-{
-  "agent_required": "<agent-id>",
-  "action": "<action-name>",
-  "parameters": {
-    <relevant parameters extracted from the user's message>
-  },
-  "reasoning": "<brief explanation of why you chose this agent>"
+interface ChatRequestMessage {
+    role: string;
+    content: string;
 }
-</AGENT_INTENT>
-
-2. For the teams-agent:
-   - For "make_call" action: extract "contact" parameter (person name or email)
-   - For "send_message" action: extract "contact" and "message" parameters
-   - For "schedule_meeting" action: extract these parameters:
-     - "title": meeting title (required)
-     - "attendees": array of names or emails (required)
-     - "date": date as YYYY-MM-DD (required, calculate from relative dates like "tomorrow" or "next Monday")
-     - "time": time as HH:MM in 24-hour format (required)
-     - "duration": duration in minutes (default to 30 if not specified)
-     - "description": agenda or description (optional)
-     - "notification_preference": (e.g. "whatsapp", "sms", "call", "all", or "none")
-
-   **IMPORTANT for schedule_meeting**: If the user asks to schedule a meeting but does NOT explicitly specify a notification preference (like "whatsapp", "sms", "call", "all", or "none"), you MUST NOT use the <AGENT_INTENT> tag yet. Instead, respond normally by asking them "Would you like to be notified about this meeting via WhatsApp, SMS, Call, All, or None?". Only use <AGENT_INTENT> after they provide their preference!
-
-3. For the todo-agent:
-   - For "add_task" action: extract "title" (required) and "datetime" (optional, format YYYY-MM-DD HH:MM)
-   - For "list_tasks" action: extract "status" (optional, "pending" or "done")
-   - For "list_tasks_by_date" action: extract "datetime" (required YYYY-MM-DD)
-   - For "delete_task" action: extract "task_id" (if known) or "title" of the task to delete.
-   - For "mark_done" action: extract "task_id" (if known) or "title" of the task to mark done.
-
-4. For the google-agent:
-   - Extract "agent_type" (must be one of: "calendar", "gmail", "meet", "drive", "tasks", "web_search")
-   - Extract "action" as a brief string describing the intent (e.g., "send_email", "schedule_meeting", "search_files")
-   - Extract "parameters" as a single plain text string combining all relevant info from the user request (e.g., "to John about the updated report")
-
-5. If the user's request does NOT match any agent, respond normally as a helpful AI assistant. Do NOT use <AGENT_INTENT> tags in this case.
-
-6. NEVER execute actions directly. ALWAYS delegate to the appropriate agent via the <AGENT_INTENT> tags.
-
-7. If you are unsure whether an agent is needed, respond normally and ask the user for clarification.
-
-8. The JSON inside <AGENT_INTENT> must be valid and parseable — no trailing commas, no comments.`;
-}
-
-// ---------------------------------------------------------------------------
-// Intent Detection — Tag-Based extraction with <AGENT_INTENT> tags
-// ---------------------------------------------------------------------------
 
 interface AgentIntent {
     agent_required: string;
@@ -192,158 +45,306 @@ interface AgentIntent {
 
 interface ParsedIntentResult {
     intent: AgentIntent;
-    /** Conversational text the LLM wrote OUTSIDE the tags */
     conversationalText: string;
 }
 
-function tryParseAgentIntent(content: string): ParsedIntentResult | { error: true; fallback: string } | null {
-    // ── 1. Try tag-based extraction (primary method) ──────────────────
-    const tagMatch = content.match(/<AGENT_INTENT>([\s\S]*?)<\/AGENT_INTENT>/);
+function buildOrchestrationPrompt(
+    installedAgentIds: string[],
+    accessibleAgentIds: string[]
+): string {
+    const installedRegistry = getInstalledAgentRegistry(accessibleAgentIds);
+    const installedSet = new Set(installedAgentIds);
+    const accessibleSet = new Set(accessibleAgentIds);
 
-    if (tagMatch) {
-        const jsonStr = tagMatch[1].trim();
-        const conversationalText = content
-            .replace(/<AGENT_INTENT>[\s\S]*?<\/AGENT_INTENT>/, "")
-            .trim();
+    const availableAgentDescriptions = installedRegistry
+        .map(
+            (agent) =>
+                `- **${agent.name}** (id: "${agent.id}")\n` +
+                `  Description: ${agent.description}\n` +
+                `  Actions: ${agent.actions.join(", ")}\n` +
+                `  Example prompts: ${agent.examplePrompts.map((prompt) => `"${prompt}"`).join(", ")}`
+        )
+        .join("\n\n");
 
-        try {
-            const parsed = JSON.parse(jsonStr);
+    const unavailableDescriptions = AGENT_CATALOG
+        .filter((agent) => !accessibleSet.has(agent.id))
+        .map((agent) => {
+            const reason = installedSet.has(agent.id)
+                ? `Installed but not connected. ${getInstallHintForAgent(agent.id)}`
+                : getInstallHintForAgent(agent.id);
+            return `- ${agent.name} (${agent.id}): ${reason}`;
+        })
+        .join("\n");
 
-            if (
-                typeof parsed === "object" &&
-                parsed !== null &&
-                typeof parsed.action === "string" &&
-                typeof parsed.parameters === "object"
-            ) {
-                const rawAgent = String(parsed.agent_required || "").toLowerCase();
+    return `You are the orchestration AI of SnitchX, an AI assistant platform.
 
-                // Fuzzy match the agent in the registry
-                const matchedAgent = fuzzyMatchAgent(rawAgent);
+You can either answer questions directly OR delegate tasks to specialized agents.
 
-                if (matchedAgent) {
-                    parsed.agent_required = matchedAgent.id;
-                    return { intent: parsed as AgentIntent, conversationalText };
-                } else {
-                    return { error: true, fallback: "The AI attempted to trigger an agent but provided an unrecognized agent ID." };
-                }
-            }
-        } catch {
-            return { error: true, fallback: "The AI attempted to trigger an agent but the JSON inside <AGENT_INTENT> tags was invalid." };
-        }
-    }
+## Currently Available Agents
+${availableAgentDescriptions || "No agents are currently available for this user."}
 
-    // ── 2. Fallback: try raw JSON parsing (backwards compatibility) ───
-    const trimmed = content.trim()
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
+## Unavailable Agents
+${unavailableDescriptions || "All registered agents are available right now."}
 
-    const looksLikeAgentJson = trimmed.startsWith("{") && trimmed.includes('"agent_required"');
+## Core Rules
+1. If a request should be delegated to an AVAILABLE agent, respond with ONLY a valid JSON object wrapped inside <AGENT_INTENT> tags. Do not include any explanation before or after the tags.
+2. If a request needs an UNAVAILABLE agent, do NOT emit <AGENT_INTENT>. Respond normally and tell the user to install or connect the required agent first.
+3. NEVER execute actions yourself. Only delegate using <AGENT_INTENT> for available agents.
+4. If you are unsure which agent is needed, ask a concise clarification question instead of emitting <AGENT_INTENT>.
+5. The JSON inside <AGENT_INTENT> must be valid and parseable: no comments, no trailing commas.
 
-    if (looksLikeAgentJson) {
-        try {
-            const parsed = JSON.parse(trimmed);
-            if (
-                typeof parsed === "object" &&
-                parsed !== null &&
-                typeof parsed.action === "string" &&
-                typeof parsed.parameters === "object"
-            ) {
-                const rawAgent = String(parsed.agent_required || "").toLowerCase();
-                const matchedAgent = fuzzyMatchAgent(rawAgent);
+## Agent Formatting Rules
+For the teams-agent:
+- make_call: extract "contact"
+- send_message: extract "contact" and "message"
+- schedule_meeting: extract "title", "attendees", "date", "time", "duration", "description", and "notification_preference"
+- If notification preference is missing for a meeting request, do NOT emit <AGENT_INTENT>. Ask: "Would you like to be notified via WhatsApp, SMS, Call, All, or None?"
 
-                if (matchedAgent) {
-                    parsed.agent_required = matchedAgent.id;
-                    return { intent: parsed as AgentIntent, conversationalText: "" };
-                } else {
-                    return { error: true, fallback: "The AI attempted to trigger an agent but provided an unrecognized agent ID." };
-                }
-            }
-        } catch {
-            return { error: true, fallback: "The AI attempted to trigger an agent but generated invalid JSON format." };
-        }
-    }
+For the todo-agent:
+- add_task: extract "title" and optional "datetime" in YYYY-MM-DD HH:MM
+- add_to_plan: extract "title", optional "date", optional "time", optional "description", and optional "priority"
+- list_tasks: optional "status"
+- list_tasks_by_date: required "datetime" in YYYY-MM-DD
+- get_daily_plan: extract "date" in YYYY-MM-DD when the user asks for a day's plan
+- get_weekly_overview: extract optional "startDate" in YYYY-MM-DD
+- delete_task and mark_done: use "task_id" if known, otherwise "title"
+- Use the todo-agent for reminders, daily planning, and "remind me" requests unless the user explicitly asks for Google Tasks.
 
-    return null;
+For the google-agent:
+- Return this exact JSON shape:
+  {
+    "agent_required": "google-agent",
+    "action": "<brief action label>",
+    "parameters": {
+      "agent_type": "<calendar|gmail|meet|drive|tasks|web_search>",
+      "parameters": "<plain text details>"
+    },
+    "reasoning": "<brief explanation>"
+  }
+- For Gmail or Drive listing requests, NEVER request or return more than 20 items at once.
+- Use "gmail" when the request is about Gmail inbox, reading emails, searching emails, or summarizing emails.
+- Use "drive" when the request is about files, Google Docs, Drive documents, reading docs, or summarizing docs.
+- Use "calendar" for calendar events, scheduling, and agendas.
+- Use "meet" for Google Meet calls or links.
+- Use "tasks" for Google Tasks or reminders.
+- Use "web_search" for internet lookups.
+
+For the maps-agent:
+- get_directions: extract "origin", "destination", and optional "mode"
+- search_places: extract "query", optional "location", and optional "radius"
+- geocode: extract either "address" or "latlng"
+- distance_matrix: extract "origins", "destinations", and optional "mode"
+
+For the notion-agent:
+- search_pages: extract "query" and optional "limit"
+- get_page: extract "pageId" when known, otherwise use "query"
+- create_page: extract "title", "content", and optional "parentPageId"
+- append_to_page: extract "pageId" when known, otherwise use "query" plus "content"
+
+If an agent is needed, output ONLY:
+<AGENT_INTENT>
+{
+  "agent_required": "<agent-id>",
+  "action": "<action-name>",
+  "parameters": {
+    "key": "value"
+  },
+  "reasoning": "<brief explanation>"
+}
+</AGENT_INTENT>`;
 }
 
-/** Fuzzy-match an agent ID string against the registry */
+function normalizeAgentIntent(parsed: Record<string, unknown>): AgentIntent | null {
+    const action = typeof parsed.action === "string" ? parsed.action.trim() : "";
+    if (!action) return null;
+
+    const intent: AgentIntent = {
+        agent_required: String(parsed.agent_required || "").trim(),
+        action,
+        parameters: {},
+        reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : undefined,
+    };
+
+    if (typeof parsed.parameters === "string") {
+        intent.parameters = { parameters: parsed.parameters };
+    } else if (typeof parsed.parameters === "object" && parsed.parameters !== null) {
+        intent.parameters = { ...(parsed.parameters as Record<string, unknown>) };
+    } else if (typeof parsed.parameters !== "undefined" && parsed.parameters !== null) {
+        intent.parameters = { parameters: String(parsed.parameters) };
+    }
+
+    if (typeof parsed.agent_type === "string" && !intent.parameters.agent_type) {
+        intent.parameters.agent_type = parsed.agent_type;
+    }
+
+    return intent;
+}
+
 function fuzzyMatchAgent(rawAgent: string) {
-    return AGENT_REGISTRY.find((a) => {
-        const id = a.id.toLowerCase();
-        const name = a.name.toLowerCase();
+    return AGENT_CATALOG.find((agent) => {
+        const id = agent.id.toLowerCase();
+        const name = agent.name.toLowerCase();
         return (
             rawAgent === id ||
             rawAgent === id.replace("-", "_") ||
-            (rawAgent.includes("teams") && id.includes("teams")) ||
             rawAgent.includes(id.replace("-", "")) ||
             name.includes(rawAgent)
         );
     });
 }
 
-// ---------------------------------------------------------------------------
-// Route Handler
-// ---------------------------------------------------------------------------
+function normalizeGoogleIntent(intent: AgentIntent): AgentIntent {
+    if (intent.agent_required !== "google-agent") return intent;
 
-// ---------------------------------------------------------------------------
-// Memory extraction — fire-and-forget background pipeline
-// ---------------------------------------------------------------------------
+    const normalized: AgentIntent = {
+        ...intent,
+        parameters: { ...intent.parameters },
+    };
 
-/**
- * Runs the full 3-layer memory extraction pipeline for a user message.
- * This is ALWAYS called asynchronously — it never blocks the chat response.
- */
+    const currentAgentType =
+        typeof normalized.parameters.agent_type === "string"
+            ? normalized.parameters.agent_type.toLowerCase().trim()
+            : "";
+
+    if (GOOGLE_AGENT_TYPES.has(currentAgentType)) {
+        normalized.parameters.agent_type = currentAgentType;
+        return normalized;
+    }
+
+    const actionLower = normalized.action.toLowerCase().trim();
+    if (GOOGLE_AGENT_TYPES.has(actionLower)) {
+        normalized.parameters.agent_type = actionLower;
+        return normalized;
+    }
+
+    const paramsText = String(normalized.parameters.parameters || "").toLowerCase();
+    if (/\b(gmail|email|mail|inbox)\b/.test(paramsText)) normalized.parameters.agent_type = "gmail";
+    else if (/\b(drive|file|files|docs?|documents?)\b/.test(paramsText)) normalized.parameters.agent_type = "drive";
+    else if (/\b(calendar|event|schedule|agenda)\b/.test(paramsText)) normalized.parameters.agent_type = "calendar";
+    else if (/\b(meet|meeting|video call)\b/.test(paramsText)) normalized.parameters.agent_type = "meet";
+    else if (/\b(task|tasks|todo|to-do|remind)\b/.test(paramsText)) normalized.parameters.agent_type = "tasks";
+    else if (/\b(search|web|internet|lookup|look up)\b/.test(paramsText)) normalized.parameters.agent_type = "web_search";
+
+    return normalized;
+}
+
+function tryParseAgentIntent(content: string): ParsedIntentResult | { error: true; fallback: string } | null {
+    const tagMatch = content.match(/<AGENT_INTENT>([\s\S]*?)<\/AGENT_INTENT>/);
+
+    if (!tagMatch) {
+        return null;
+    }
+
+    const jsonStr = tagMatch[1].trim();
+    const conversationalText = content.replace(/<AGENT_INTENT>[\s\S]*?<\/AGENT_INTENT>/, "").trim();
+
+    try {
+        const parsed = JSON.parse(jsonStr);
+        if (typeof parsed !== "object" || parsed === null) {
+            return { error: true, fallback: "I could not understand that agent request. Please try again." };
+        }
+
+        const normalizedIntent = normalizeAgentIntent(parsed as Record<string, unknown>);
+        if (!normalizedIntent) {
+            return { error: true, fallback: "I could not understand that agent request. Please try again." };
+        }
+
+        const matchedAgent = fuzzyMatchAgent(String(normalizedIntent.agent_required || "").toLowerCase());
+        if (!matchedAgent) {
+            return { error: true, fallback: "I could not match that request to a supported agent." };
+        }
+
+        normalizedIntent.agent_required = matchedAgent.id;
+        const finalIntent = normalizeGoogleIntent(normalizedIntent);
+
+        if (
+            finalIntent.agent_required === "google-agent" &&
+            (typeof finalIntent.parameters.agent_type !== "string" ||
+                !GOOGLE_AGENT_TYPES.has(finalIntent.parameters.agent_type.toLowerCase().trim()))
+        ) {
+            return {
+                error: true,
+                fallback:
+                    "I could not determine which Google service to use. Please mention Gmail, Drive, Calendar, Meet, Tasks, or Web Search.",
+            };
+        }
+
+        return { intent: finalIntent, conversationalText };
+    } catch {
+        return { error: true, fallback: "I generated an invalid agent payload. Please try again." };
+    }
+}
+
+function getNumericRequestCount(text: string): number | null {
+    const lower = text.toLowerCase();
+
+    if (/\b(all|every)\s+(emails?|mails?|files?|documents?|docs?)\b/.test(lower)) {
+        return 999;
+    }
+
+    const directMatch = lower.match(/\b(\d{1,4})\s+(latest\s+|recent\s+|last\s+)?(emails?|mails?|files?|documents?|docs?)\b/);
+    if (directMatch) {
+        return Number.parseInt(directMatch[1], 10);
+    }
+
+    return null;
+}
+
+function getGoogleIntentLimitViolation(intent: AgentIntent, userMessage: string): string | null {
+    if (intent.agent_required !== "google-agent") return null;
+
+    const rawAgentType = intent.parameters.agent_type;
+    const agentType = typeof rawAgentType === "string" ? rawAgentType.toLowerCase() : "";
+    if (agentType !== "gmail" && agentType !== "drive") return null;
+
+    const requestedCount = getNumericRequestCount(userMessage) ?? getNumericRequestCount(String(intent.parameters.parameters || ""));
+    if (requestedCount && requestedCount > 20) {
+        const itemLabel = agentType === "gmail" ? "emails" : "files";
+        return `I currently cannot display more than 20 ${itemLabel} at once. Please ask for 20 or fewer.`;
+    }
+
+    return null;
+}
+
 function triggerMemoryExtraction(
     uid: string,
     chatId: string | undefined,
     messageId: string | undefined,
-    content: string,
+    content: string
 ): void {
-    // Kick off in next tick so the response is already sent
-    Promise.resolve().then(async () => {
-        try {
-            // Layer 1 — trigger detection (instant, no cost)
-            if (!isTriggerMessage(content)) {
-                console.log("[MemoryTrigger] not triggered");
-                return;
-            }
-            console.log("[MemoryTrigger] triggered for message:", content.slice(0, 60));
+    Promise.resolve()
+        .then(async () => {
+            try {
+                if (!isTriggerMessage(content)) {
+                    return;
+                }
 
-            // Layers 2+3 — extraction
-            const extracted = await extractMemories(content);
-            if (extracted.length === 0) {
-                console.log("[MemoryExtractor] nothing extracted");
-                return;
-            }
+                const extracted = await extractMemories(content);
+                if (extracted.length === 0) {
+                    return;
+                }
 
-            // Dedup + save
-            const saved = await processExtractedMemories(
-                uid,
-                extracted,
-                "chat",
-                chatId ?? null,
-                messageId ?? null,
-            );
-
-            if (saved > 0) {
-                // Rebuild persona after new memories (fire-and-forget)
-                rebuildPersona(uid).catch((err) =>
-                    console.error("[MemoryPipeline] persona rebuild error:", err)
+                const saved = await processExtractedMemories(
+                    uid,
+                    extracted,
+                    "chat",
+                    chatId ?? null,
+                    messageId ?? null
                 );
+
+                if (saved > 0) {
+                    rebuildPersona(uid).catch((err) =>
+                        console.error("[MemoryPipeline] persona rebuild error:", err)
+                    );
+                }
+            } catch (err) {
+                console.error("[MemoryPipeline] error:", err);
             }
-        } catch (err) {
-            console.error("[MemoryPipeline] error:", err);
-        }
-    }).catch((err) => console.error("[MemoryPipeline] unhandled:", err));
+        })
+        .catch((err) => console.error("[MemoryPipeline] unhandled:", err));
 }
 
-// ---------------------------------------------------------------------------
-// Persona context — only fetched when the query needs personal context
-// ---------------------------------------------------------------------------
-
-async function buildPersonaContext(uid: string | undefined, userMessage: string): Promise<string> {
-    if (!uid) return "";
+async function buildPersonaContext(uid: string, userMessage: string): Promise<string> {
     if (!isPersonalContextQuery(userMessage)) return "";
 
     try {
@@ -351,168 +352,315 @@ async function buildPersonaContext(uid: string | undefined, userMessage: string)
             getPersona(uid),
             getTopKMemories(uid, userMessage, 7),
         ]);
+
         const personaSection = formatPersonaForPrompt(persona);
         const memoriesSection = formatMemoriesForPrompt(topMemories);
         return [personaSection, memoriesSection].filter(Boolean).join("\n\n");
     } catch (err) {
-        console.error("[PersonaContext] failed to fetch:", err);
+        console.error("[PersonaContext] failed:", err);
         return "";
     }
 }
 
-// ---------------------------------------------------------------------------
-// Route Handler
-// ---------------------------------------------------------------------------
+async function streamOllamaChat(
+    baseUrl: string,
+    model: string,
+    messages: { role: string; content: string }[],
+    onDelta: (delta: string) => void
+): Promise<string> {
+    const response = await fetch(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            model,
+            messages,
+            stream: true,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+            `Ollama returned status ${response.status}. ${errorText || "No details available."}`
+        );
+    }
+
+    if (!response.body) {
+        throw new Error("Ollama did not return a streaming body.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullContent = "";
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            const payload = JSON.parse(trimmed) as {
+                done?: boolean;
+                message?: { content?: string };
+            };
+
+            const delta = payload.message?.content || "";
+            if (delta) {
+                fullContent += delta;
+                onDelta(delta);
+            }
+        }
+    }
+
+    if (buffer.trim()) {
+        const payload = JSON.parse(buffer.trim()) as { message?: { content?: string } };
+        const delta = payload.message?.content || "";
+        if (delta) {
+            fullContent += delta;
+            onDelta(delta);
+        }
+    }
+
+    return fullContent;
+}
 
 export async function POST(req: NextRequest) {
+    const verifiedUser = await verifyFirebaseRequest(req);
+    if (!verifiedUser) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     try {
         const body = await req.json();
-        const { messages, chatId, userId } = body;
+        const { messages, chatId } = body as {
+            messages: ChatRequestMessage[];
+            chatId?: string;
+            model?: string;
+        };
 
-        if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        if (!Array.isArray(messages) || messages.length === 0) {
             return NextResponse.json(
-                { error: "Request body must include a non-empty `messages` array." },
+                { error: "Request body must include a non-empty messages array." },
                 { status: 400 }
             );
         }
 
-        // Read Ollama config — model can come from frontend or env.
+        const uid = verifiedUser.uid;
         const baseUrl = process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434";
-        const selectedModel = body.model || process.env.OLLAMA_DEFAULT_MODEL || "qwen3.5:397b-cloud";
-        const model = selectedModel;
+        const model = body.model || process.env.OLLAMA_DEFAULT_MODEL || "qwen3.5:397b-cloud";
 
-        // Get the last user message for trigger detection + persona context
-        const lastUserMessage = [...messages].reverse().find(
-            (m: { role: string; content: string }) => m.role === "user"
-        )?.content ?? "";
+        const lastUserMessage =
+            [...messages].reverse().find((message) => message.role === "user")?.content || "";
 
-        // Fire-and-forget memory extraction (runs after response is sent, never blocks)
-        if (userId && lastUserMessage) {
-            triggerMemoryExtraction(userId, chatId, undefined, lastUserMessage);
+        const [installedAgentIds, accessibleAgentIds, personaContext] = await Promise.all([
+            getInstalledAgentIds(uid),
+            getAccessibleAgentIds(uid),
+            buildPersonaContext(uid, lastUserMessage),
+        ]);
+
+        if (lastUserMessage) {
+            triggerMemoryExtraction(uid, chatId, undefined, lastUserMessage);
         }
 
-        // Conditionally fetch persona context (only if query needs personal context)
-        const personaContext = await buildPersonaContext(userId, lastUserMessage);
+        const systemPrompt = [
+            buildOrchestrationPrompt(installedAgentIds, accessibleAgentIds),
+            personaContext,
+        ]
+            .filter(Boolean)
+            .join("\n\n");
 
-        // Build the orchestration system prompt, optionally with persona context
-        const basePrompt = buildOrchestrationPrompt();
-        const systemPrompt = personaContext
-            ? `${basePrompt}\n\n${personaContext}`
-            : basePrompt;
-
-        // Prepend the system prompt to the message history
         const messagesForOllama = [
             { role: "system", content: systemPrompt },
-            ...messages.map((m: { role: string; content: string }) => ({
-                role: m.role === "agent" ? "assistant" : m.role, // Map "agent" role to "assistant" for Ollama
-                content: m.content,
+            ...messages.map((message) => ({
+                role: message.role === "agent" ? "assistant" : message.role,
+                content: message.content,
             })),
         ];
 
-        // Call the Ollama /api/chat endpoint
-        const ollamaRes = await fetch(`${baseUrl}/api/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                model,
-                messages: messagesForOllama,
-                stream: false,
-            }),
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+            start(controller) {
+                const sendEvent = (event: string, data: Record<string, unknown>) => {
+                    controller.enqueue(
+                        encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+                    );
+                };
+
+                const run = async () => {
+                    try {
+                        let streamedText = "";
+                        let rawAssistantContent = "";
+                        let heldBuffer = "";
+                        let streamMode: "undecided" | "text" | "intent" = "undecided";
+
+                        const handleDelta = (delta: string) => {
+                            rawAssistantContent += delta;
+                            heldBuffer += delta;
+
+                            if (streamMode === "undecided") {
+                                const trimmed = heldBuffer.trimStart();
+                                if (!trimmed) return;
+
+                                if (
+                                    trimmed.startsWith("<AGENT_INTENT>") ||
+                                    "<AGENT_INTENT>".startsWith(trimmed)
+                                ) {
+                                    streamMode = "intent";
+                                    return;
+                                }
+
+                                if (trimmed.startsWith("<") && heldBuffer.length < 24) {
+                                    return;
+                                }
+
+                                streamMode = "text";
+                                streamedText += heldBuffer;
+                                sendEvent("text", { content: heldBuffer });
+                                heldBuffer = "";
+                                return;
+                            }
+
+                            if (streamMode === "text") {
+                                streamedText += delta;
+                                sendEvent("text", { content: delta });
+                            }
+                        };
+
+                        const assistantContent = await streamOllamaChat(
+                            baseUrl,
+                            model,
+                            messagesForOllama,
+                            handleDelta
+                        );
+
+                        const parseResult = tryParseAgentIntent(assistantContent);
+                        if (parseResult && "error" in parseResult) {
+                            const fallback = parseResult.fallback;
+                            if (!streamedText.trim()) {
+                                sendEvent("text", { content: fallback });
+                            }
+                            sendEvent("done", { type: "chat", content: fallback });
+                            controller.close();
+                            return;
+                        }
+
+                        if (parseResult && chatId) {
+                            const { intent } = parseResult;
+                            const googleLimitMessage = getGoogleIntentLimitViolation(intent, lastUserMessage);
+                            if (googleLimitMessage) {
+                                if (!streamedText.trim()) {
+                                    sendEvent("text", { content: googleLimitMessage });
+                                }
+                                sendEvent("done", { type: "chat", content: googleLimitMessage });
+                                controller.close();
+                                return;
+                            }
+
+                            if (!installedAgentIds.includes(intent.agent_required)) {
+                                const installMessage = getInstallHintForAgent(intent.agent_required);
+                                if (!streamedText.trim()) {
+                                    sendEvent("text", { content: installMessage });
+                                }
+                                sendEvent("done", { type: "chat", content: installMessage });
+                                controller.close();
+                                return;
+                            }
+
+                            if (!accessibleAgentIds.includes(intent.agent_required)) {
+                                const connectMessage = getInstallHintForAgent(intent.agent_required);
+                                if (!streamedText.trim()) {
+                                    sendEvent("text", { content: connectMessage });
+                                }
+                                sendEvent("done", { type: "chat", content: connectMessage });
+                                controller.close();
+                                return;
+                            }
+
+                            const task = await createAgentTask({
+                                userId: uid,
+                                chatId,
+                                agentId: intent.agent_required,
+                                parentLLMRequest: intent as unknown as Record<string, unknown>,
+                                agentInput: {
+                                    action: intent.action,
+                                    ...intent.parameters,
+                                },
+                            });
+
+                            executeAgentTask(task).catch((err) =>
+                                console.error("[executeAgentTask] background error:", err)
+                            );
+
+                            const agentName =
+                                getAgentCatalogEntry(intent.agent_required)?.name || intent.agent_required;
+                            const content =
+                                `Delegating to ${agentName}.\n\n` +
+                                `Action: ${intent.action}` +
+                                (intent.reasoning ? `\n\nReasoning: ${intent.reasoning}` : "");
+
+                            sendEvent("agent_task", {
+                                type: "agent_task",
+                                taskId: task.taskId,
+                                agentId: intent.agent_required,
+                                status: "queued",
+                                content,
+                            });
+                            sendEvent("done", {
+                                type: "agent_task",
+                                taskId: task.taskId,
+                                agentId: intent.agent_required,
+                                status: "queued",
+                                content,
+                            });
+                            controller.close();
+                            return;
+                        }
+
+                        const cleanContent = assistantContent
+                            .replace(/<AGENT_INTENT>[\s\S]*?<\/AGENT_INTENT>/g, "")
+                            .trim();
+
+                        if (!streamedText.trim() && cleanContent) {
+                            sendEvent("text", { content: cleanContent });
+                        }
+
+                        sendEvent("done", {
+                            type: "chat",
+                            content: cleanContent || streamedText || "No response received.",
+                        });
+                        controller.close();
+                    } catch (error) {
+                        console.error("[Chat API Error]", error);
+                        const message =
+                            error instanceof Error ? error.message : "Internal server error";
+                        sendEvent("error", { error: message });
+                        controller.close();
+                    }
+                };
+
+                void run();
+            },
         });
 
-        if (!ollamaRes.ok) {
-            const errorText = await ollamaRes.text();
-            console.error("[Ollama API Error]", ollamaRes.status, errorText);
-            return NextResponse.json(
-                {
-                    error: `Ollama returned status ${ollamaRes.status}. Is Ollama running with the "${model}" model pulled?`,
-                    details: errorText,
-                },
-                { status: 502 }
-            );
-        }
-
-        const ollamaData = await ollamaRes.json();
-        const assistantContent: string =
-            ollamaData?.message?.content ?? "No response from model.";
-
-        // ── Check if the LLM returned an agent intent (tag-based) ──────
-        const result = tryParseAgentIntent(assistantContent);
-
-        if (result && 'error' in result) {
-            // The LLM tried to output an agent intent but it's malformed.
-            // Don't bleed raw JSON/tags to the user.
-            return NextResponse.json({
-                type: "chat",
-                content: result.fallback,
-            });
-        }
-
-        if (result && userId && chatId) {
-            const { intent, conversationalText } = result;
-
-            // Agent intent detected → create a task in Firestore
-            console.log("[Agent Intent]", JSON.stringify(intent));
-
-            const task = await createAgentTask({
-                userId,
-                chatId,
-                agentId: intent.agent_required,
-                parentLLMRequest: intent as unknown as Record<string, unknown>,
-                agentInput: {
-                    action: intent.action,
-                    ...intent.parameters,
-                },
-            });
-
-            // ── Fire-and-forget: execute the agent task in background ──
-            executeAgentTask(task).catch((err) =>
-                console.error("[executeAgentTask] Background error:", err)
-            );
-
-            // Build a user-facing message — include the AI's conversational text
-            const agentName =
-                AGENT_REGISTRY.find((a) => a.id === intent.agent_required)?.name ||
-                intent.agent_required;
-
-            const taskSummary = `🤖 Delegating to **${agentName}**...\n\nAction: \`${intent.action}\`${intent.reasoning ? `\n\nReasoning: ${intent.reasoning}` : ""}`;
-            const fullContent = conversationalText
-                ? `${conversationalText}\n\n${taskSummary}`
-                : taskSummary;
-
-            return NextResponse.json({
-                type: "agent_task",
-                taskId: task.taskId,
-                agentId: intent.agent_required,
-                status: "queued",
-                content: fullContent,
-            });
-        }
-
-        // ── Normal chat response (strip any stray tags just in case) ─────
-        const cleanContent = assistantContent
-            .replace(/<AGENT_INTENT>[\s\S]*?<\/AGENT_INTENT>/g, "")
-            .trim() || assistantContent;
-
-        return NextResponse.json({
-            type: "chat",
-            content: cleanContent,
+        return new Response(stream, {
+            headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache, no-transform",
+                Connection: "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         });
-    } catch (error: unknown) {
+    } catch (error) {
         console.error("[Chat API Error]", error);
-
         const message =
             error instanceof Error ? error.message : "Unknown error occurred";
-        const isConnectionError =
-            message.includes("ECONNREFUSED") || message.includes("fetch failed");
-
-        return NextResponse.json(
-            {
-                error: isConnectionError
-                    ? `Cannot connect to Ollama. Make sure Ollama is running on ${process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434"}`
-                    : `Internal server error: ${message}`,
-            },
-            { status: isConnectionError ? 503 : 500 }
-        );
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

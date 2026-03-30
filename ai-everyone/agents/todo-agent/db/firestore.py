@@ -56,8 +56,10 @@ def add_task(user_id: str, task: dict) -> str:
             "userId": user_id,
             "title": task.get("title", ""),
             "datetime": task.get("datetime", ""),
+            "description": task.get("description", ""),
             "status": task.get("status", "pending"),
             "priority": task.get("priority", "normal"),
+            "duration": task.get("duration", 30),
             "tags": task.get("tags", []),
             "createdAt": firestore.SERVER_TIMESTAMP,
         }
@@ -89,6 +91,15 @@ def get_tasks_by_date(user_id: str, date_str: str) -> list[dict]:
         return [_serialize(doc) for doc in docs]
     except Exception as exc:
         raise DatabaseError(f"get_tasks_by_date failed: {exc}")
+
+def get_tasks_in_range(user_id: str, start_date: str, end_date: str) -> list[dict]:
+    try:
+        docs = todos_ref.where("userId", "==", user_id)\
+                        .where("datetime", ">=", start_date)\
+                        .where("datetime", "<=", end_date + u"\uf8ff").get()
+        return [_serialize(doc) for doc in docs]
+    except Exception as exc:
+        raise DatabaseError(f"get_tasks_in_range failed: {exc}")
 
 def get_task_by_id(user_id: str, task_id: str) -> dict | None:
     try:

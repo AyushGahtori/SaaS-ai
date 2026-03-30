@@ -267,7 +267,10 @@ def run_teams_action(task_data: dict) -> dict:
 
     # ── Resolve contact ──────────────────────────────────────────────────
     try:
-        graph = GraphDirectoryClient()
+        graph = GraphDirectoryClient(
+            access_token=task_data.get("access_token"),
+            refresh_token=task_data.get("refresh_token"),
+        )
         matches = graph.search_people(contact_query)
     except DeviceFlowRequired as e:
         return {
@@ -336,7 +339,10 @@ def _handle_schedule_meeting(data: dict) -> dict:
         return {"status": "failed", "error": "Missing date or time for meeting."}
 
     # ── Resolve Attendees ────────────────────────────────────────────────
-    graph = GraphDirectoryClient()
+    graph = GraphDirectoryClient(
+        access_token=data.get("access_token"),
+        refresh_token=data.get("refresh_token"),
+    )
     resolved_emails = []
     resolved_details = []
     unresolved = []

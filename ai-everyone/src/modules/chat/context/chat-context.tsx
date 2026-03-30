@@ -1,17 +1,7 @@
 /**
- * ChatProvider — global chat state management.
+ * ChatProvider - global chat state management.
  *
- * Simplified adaptation of Chatbot-UI's context.tsx + global-state.tsx.
- * Provides all chat-related state and actions to child components
- * via React Context.
- *
- * State includes:
- *  - List of user's chats (sidebar)
- *  - Active chat ID and its messages
- *  - Loading / generating flags
- *
- * Actions include:
- *  - loadChats, createNewChat, selectChat, sendMessage, deleteChat, renameChat
+ * Provides chat state, streaming sendMessage, and task-status listeners.
  */
 
 "use client";
@@ -41,39 +31,33 @@ import {
 } from "@/modules/chat/db/messages";
 import { subscribeToTask } from "@/lib/firestore-tasks";
 
-// ---------------------------------------------------------------------------
-// Context shape
-// ---------------------------------------------------------------------------
+interface StreamPayload {
+    type: string;
+    content?: string;
+    taskId?: string;
+    agentId?: string;
+    status?: string;
+}
 
 interface ChatContextValue {
-    /** All chats for the current user (sidebar list). */
     chats: Chat[];
-    /** Currently active/selected chat ID. */
     activeChatId: string | null;
-    /** Messages in the active chat. */
     messages: ChatMessage[];
-    /** Whether the AI is currently generating a response. */
     isGenerating: boolean;
-    /** Whether chats are being loaded from Firestore. */
     isLoadingChats: boolean;
-    /** Error message from the last API call, if any. */
     error: string | null;
-    /** Map of active task statuses for real-time UI updates. */
     taskStatuses: Record<string, { status: string; result?: Record<string, unknown> }>;
-    /** Currently selected LLM model. */
     selectedModel: string;
-    /** Available models the user can pick from. */
     availableModels: { id: string; label: string }[];
-    /** Whether the voice input bar is currently active. */
     isVoiceActive: boolean;
-    /** Pending voice response text to speak (survives VoiceBar remount). */
     pendingVoiceResponse: string | null;
-
-    // Actions
     loadChats: () => Promise<void>;
     createNewChat: () => void;
     selectChat: (chatId: string) => Promise<void>;
-    sendMessage: (content: string, isVoice?: boolean) => Promise<{ type: string; content?: string; taskId?: string } | undefined>;
+    sendMessage: (
+        content: string,
+        isVoice?: boolean
+    ) => Promise<{ type: string; content?: string; taskId?: string } | undefined>;
     removeChatById: (chatId: string) => Promise<void>;
     renameChat: (chatId: string, newTitle: string) => Promise<void>;
     setSelectedModel: (model: string) => void;
@@ -84,10 +68,6 @@ interface ChatContextValue {
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
-
 export function useChatContext(): ChatContextValue {
     const ctx = useContext(ChatContext);
     if (!ctx) {
@@ -96,21 +76,13 @@ export function useChatContext(): ChatContextValue {
     return ctx;
 }
 
-// ---------------------------------------------------------------------------
-// Provider
-// ---------------------------------------------------------------------------
-
-// Available models for the selector dropdown
 const AVAILABLE_MODELS = [
     { id: "qwen3.5:397b-cloud", label: "Cloud · High Accuracy" },
     { id: "qwen2.5:7b", label: "Local · Fast" },
 ];
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-    // Auth state — we need the UID for all Firestore operations.
     const [uid, setUid] = useState<string | null>(null);
-
-    // Chat state
     const [chats, setChats] = useState<Chat[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -124,12 +96,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [isVoiceActive, setIsVoiceActive] = useState(false);
     const [pendingVoiceResponse, setPendingVoiceResponse] = useState<string | null>(null);
 
-    // Ref to track whether the user aborted the current generation.
     const abortRef = useRef(false);
-    // Ref to track active task listeners for cleanup.
     const taskListenersRef = useRef<Record<string, () => void>>({});
 
-    // ── Auth listener ────────────────────────────────────────────────────
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, (user: User | null) => {
             setUid(user?.uid ?? null);
@@ -137,14 +106,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         return () => unsub();
     }, []);
 
-    // Cleanup task listeners on unmount
     useEffect(() => {
         return () => {
             Object.values(taskListenersRef.current).forEach((unsub) => unsub());
         };
     }, []);
 
-    // ── Load chats on login ──────────────────────────────────────────────
     const loadChats = useCallback(async () => {
         if (!uid) return;
         setIsLoadingChats(true);
@@ -158,28 +125,23 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         }
     }, [uid]);
 
-    // Auto-load chats when user logs in.
     useEffect(() => {
         if (uid) {
             loadChats();
-        } else {
-            // User logged out — clear state.
-            setChats([]);
-            setActiveChatId(null);
-            setMessages([]);
+            return;
         }
+
+        setChats([]);
+        setActiveChatId(null);
+        setMessages([]);
     }, [uid, loadChats]);
 
-    // ── Create new chat ──────────────────────────────────────────────────
     const createNewChat = useCallback(() => {
-        // Simply reset to the "no chat selected" state.
-        // The actual Firestore document will be created when the first message is sent.
         setActiveChatId(null);
         setMessages([]);
         setError(null);
     }, []);
 
-    // ── Select / switch chat ─────────────────────────────────────────────
     const selectChat = useCallback(
         async (chatId: string) => {
             if (!uid) return;
@@ -197,13 +159,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         [uid]
     );
 
-    // ── Subscribe to a task for real-time status updates ─────────────────
     const watchTask = useCallback((taskId: string) => {
-        // Don't subscribe twice
         if (taskListenersRef.current[taskId]) return;
 
         const unsub = subscribeToTask(taskId, (task) => {
             if (!task) return;
+
             setTaskStatuses((prev) => ({
                 ...prev,
                 [taskId]: {
@@ -212,7 +173,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 },
             }));
 
-            // Cleanup listener once task is terminal
             if (task.status === "success" || task.status === "failed") {
                 unsub();
                 delete taskListenersRef.current[taskId];
@@ -222,9 +182,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         taskListenersRef.current[taskId] = unsub;
     }, []);
 
-    // ── Send message ─────────────────────────────────────────────────────
     const sendMessage = useCallback(
-        async (content: string, isVoice?: boolean): Promise<{ type: string; content?: string; taskId?: string } | undefined> => {
+        async (
+            content: string,
+            isVoice?: boolean
+        ): Promise<{ type: string; content?: string; taskId?: string } | undefined> => {
             if (!uid || !content.trim()) return undefined;
 
             setIsGenerating(true);
@@ -232,9 +194,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             abortRef.current = false;
 
             let currentChatId = activeChatId;
+            let tempAssistantId = "";
 
             try {
-                // 1. If there's no active chat, create one in Firestore first.
                 if (!currentChatId) {
                     const title =
                         content.length > 40 ? content.slice(0, 40) + "…" : content;
@@ -244,10 +206,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     setChats((prev) => [newChat, ...prev]);
                 }
 
-                // 2. Save the user message to Firestore.
+                if (!currentChatId) {
+                    throw new Error("Failed to create or resolve a chat session.");
+                }
+                const resolvedChatId = currentChatId;
+
                 const userMsg = await createMessage(
                     uid,
-                    currentChatId,
+                    resolvedChatId,
                     "user",
                     content,
                     undefined,
@@ -256,81 +222,191 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 );
                 setMessages((prev) => [...prev, userMsg]);
 
-                // 3. Build message history for the API call.
                 const historyForApi = [
-                    ...messages.map((m) => ({ role: m.role, content: m.content, isVoice: m.isVoice })),
+                    ...messages.map((message) => ({
+                        role: message.role,
+                        content: message.content,
+                        isVoice: message.isVoice,
+                    })),
                     { role: "user" as const, content, isVoice },
                 ];
 
-                // 4. Call the /api/chat route — now with userId, chatId, and
-                //    the user's selected model.
+                tempAssistantId = `temp_${Date.now()}`;
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: tempAssistantId,
+                        chatId: resolvedChatId,
+                        role: "assistant",
+                        content: "",
+                        createdAt: new Date().toISOString(),
+                    },
+                ]);
+
+                const token = await auth.currentUser?.getIdToken();
+                if (!token) {
+                    throw new Error("Authentication expired. Please sign in again.");
+                }
+
                 const res = await fetch("/api/chat", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
                     body: JSON.stringify({
                         messages: historyForApi,
-                        userId: uid,
-                        chatId: currentChatId,
+                        chatId: resolvedChatId,
                         model: selectedModel,
                     }),
                 });
 
                 if (!res.ok) {
                     const errData = await res.json().catch(() => ({}));
-                    throw new Error(
-                        errData.error || `API returned status ${res.status}`
-                    );
+                    throw new Error(errData.error || `API returned status ${res.status}`);
                 }
 
-                const data = await res.json();
+                if (!res.body) {
+                    throw new Error("The chat response did not include a stream.");
+                }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+                let currentEvent = "";
+                let streamedAssistantContent = "";
+                let finalPayload: StreamPayload | null = null;
+                let agentTaskPayload: StreamPayload | null = null;
+
+                const processEvent = (eventName: string, dataLine: string) => {
+                    const payload = JSON.parse(dataLine.substring(6)) as StreamPayload & {
+                        error?: string;
+                    };
+
+                    if (eventName === "text") {
+                        streamedAssistantContent += payload.content || "";
+                        setMessages((prev) =>
+                            prev.map((message) =>
+                                message.id === tempAssistantId
+                                    ? { ...message, content: streamedAssistantContent }
+                                    : message
+                            )
+                        );
+                        return;
+                    }
+
+                    if (eventName === "agent_task") {
+                        agentTaskPayload = payload;
+                        return;
+                    }
+
+                    if (eventName === "done") {
+                        finalPayload = payload;
+                        return;
+                    }
+
+                    if (eventName === "error") {
+                        throw new Error(payload.error || "Streaming failed.");
+                    }
+                };
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\n");
+                    buffer = lines.pop() || "";
+
+                    for (const line of lines) {
+                        if (line.startsWith("event: ")) {
+                            currentEvent = line.substring(7).trim();
+                        } else if (line.startsWith("data: ")) {
+                            processEvent(currentEvent, line);
+                            currentEvent = "";
+                        }
+                    }
+                }
+
+                if (buffer.trim()) {
+                    const lines = buffer.trim().split("\n");
+                    let eventName = currentEvent;
+                    for (const line of lines) {
+                        if (line.startsWith("event: ")) {
+                            eventName = line.substring(7).trim();
+                        } else if (line.startsWith("data: ")) {
+                            processEvent(eventName, line);
+                        }
+                    }
+                }
 
                 if (abortRef.current) return;
 
-                if (data.type === "agent_task") {
-                    // ── Agent task was created ────────────────────────────
+                const resolvedPayload: StreamPayload =
+                    agentTaskPayload ??
+                    finalPayload ?? {
+                        type: "chat",
+                        content: streamedAssistantContent || "No response received.",
+                    };
+
+                if (
+                    resolvedPayload.type === "agent_task" &&
+                    resolvedPayload.taskId &&
+                    resolvedPayload.agentId
+                ) {
                     const agentMsg = await createMessage(
                         uid,
-                        currentChatId,
+                        resolvedChatId,
                         "agent",
-                        data.content || "Processing agent task...",
-                        data.taskId,
-                        data.agentId,
+                        resolvedPayload.content || "Processing agent task...",
+                        resolvedPayload.taskId,
+                        resolvedPayload.agentId,
                         isVoice
                     );
-                    setMessages((prev) => [...prev, agentMsg]);
+                    setMessages((prev) => [
+                        ...prev.filter((message) => message.id !== tempAssistantId),
+                        agentMsg,
+                    ]);
 
-                    // Set initial task status
                     setTaskStatuses((prev) => ({
                         ...prev,
-                        [data.taskId]: { status: data.status || "queued" },
+                        [resolvedPayload.taskId!]: {
+                            status: resolvedPayload.status || "queued",
+                        },
                     }));
 
-                    // Start real-time listener for task updates
-                    watchTask(data.taskId);
+                    watchTask(resolvedPayload.taskId);
                 } else {
-                    // ── Normal chat response ─────────────────────────────
-                    const assistantContent: string =
-                        data.content || "No response received.";
+                    const assistantContent =
+                        resolvedPayload.content || streamedAssistantContent || "No response received.";
 
                     const assistantMsg = await createMessage(
                         uid,
-                        currentChatId,
+                        resolvedChatId,
                         "assistant",
                         assistantContent,
                         undefined,
                         undefined,
                         isVoice
                     );
-                    setMessages((prev) => [...prev, assistantMsg]);
+                    setMessages((prev) =>
+                        prev.map((message) =>
+                            message.id === tempAssistantId ? assistantMsg : message
+                        )
+                    );
                 }
 
-                // Touch the chat's updatedAt so it bubbles to the top of the sidebar.
-                await updateChat(uid, currentChatId, {});
-                
+                await updateChat(uid, resolvedChatId, {});
                 setIsGenerating(false);
-                return data; // Return data so callers (like VoiceModal) can handle audio feedback
+
+                return resolvedPayload;
             } catch (err: unknown) {
                 console.error("[sendMessage]", err);
+                if (tempAssistantId) {
+                    setMessages((prev) =>
+                        prev.filter((message) => message.id !== tempAssistantId)
+                    );
+                }
                 setError(
                     err instanceof Error ? err.message : "Failed to send message."
                 );
@@ -341,17 +417,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         [uid, activeChatId, messages, watchTask, selectedModel]
     );
 
-    // ── Delete chat ──────────────────────────────────────────────────────
     const removeChatById = useCallback(
         async (chatId: string) => {
             if (!uid) return;
             try {
-                // Delete all messages first, then the chat document.
                 await deleteMessages(uid, chatId);
                 await deleteChatDoc(uid, chatId);
-                setChats((prev) => prev.filter((c) => c.id !== chatId));
+                setChats((prev) => prev.filter((chat) => chat.id !== chatId));
 
-                // If the deleted chat was active, reset the view.
                 if (activeChatId === chatId) {
                     setActiveChatId(null);
                     setMessages([]);
@@ -363,14 +436,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         [uid, activeChatId]
     );
 
-    // ── Rename chat ──────────────────────────────────────────────────────
     const renameChat = useCallback(
         async (chatId: string, newTitle: string) => {
             if (!uid) return;
             try {
                 await updateChat(uid, chatId, { title: newTitle });
                 setChats((prev) =>
-                    prev.map((c) => (c.id === chatId ? { ...c, title: newTitle } : c))
+                    prev.map((chat) => (chat.id === chatId ? { ...chat, title: newTitle } : chat))
                 );
             } catch (err) {
                 console.error("[renameChat]", err);
@@ -379,10 +451,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         [uid]
     );
 
-    // ── Clear error ──────────────────────────────────────────────────────
     const clearError = useCallback(() => setError(null), []);
 
-    // ── Provide ──────────────────────────────────────────────────────────
     const value: ChatContextValue = {
         chats,
         activeChatId,

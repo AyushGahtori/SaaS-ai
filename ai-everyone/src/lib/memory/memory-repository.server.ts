@@ -279,6 +279,19 @@ export async function getMemorySettings(uid: string): Promise<MemorySettings> {
     };
 }
 
+export async function updateMemorySettings(
+    uid: string,
+    settings: Partial<MemorySettings>
+): Promise<void> {
+    await settingsDoc(uid).set(
+        {
+            ...settings,
+            updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+    );
+}
+
 /**
  * Seed predefined skeleton documents for a brand-new user.
  * Called in firebaseAuth.ts on first sign-in.

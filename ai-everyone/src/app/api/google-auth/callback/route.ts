@@ -2,18 +2,56 @@
  * GET /api/google-auth/callback
  *
  * Google redirects here after the user grants consent.
- * This route forwards the authorization code to the Google Agent's
- * Python server (running on localhost:8300 inside Docker) to exchange
+ * This route forwards the authorization code to the Google Agent
+ * service URL to exchange
  * it for access + refresh tokens.
  */
 
 import { NextRequest } from "next/server";
 
-const GOOGLE_AGENT_URL = process.env.GOOGLE_AGENT_URL || "http://localhost:8300";
+const GOOGLE_AGENT_URL = process.env.GOOGLE_AGENT_URL || "http://13.206.83.175";
+const CALLBACK_PATH = "/api/google-auth/callback";
+
+function getRedirectUri(req: NextRequest): string {
+    const configured = process.env.GOOGLE_REDIRECT_URI?.trim();
+    if (configured && configured.includes(CALLBACK_PATH)) {
+        return configured;
+    }
+
+    const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const proto = forwardedProto || req.nextUrl.protocol.replace(":", "") || "http";
+    const host = forwardedHost || req.headers.get("host") || req.nextUrl.host;
+
+    return `${proto}://${host}${CALLBACK_PATH}`;
+}
+
+async function forwardCodeToAgent(code: string, redirectUri: string): Promise<Response> {
+    const encodedCode = encodeURIComponent(code);
+    const encodedRedirectUri = encodeURIComponent(redirectUri);
+    const base = GOOGLE_AGENT_URL.replace(/\/$/, "");
+
+    const candidateUrls = [
+        `${base}/google/auth/callback?code=${encodedCode}&redirect_uri=${encodedRedirectUri}`,
+        `${base}/auth/callback?code=${encodedCode}&redirect_uri=${encodedRedirectUri}`,
+    ];
+
+    let lastResponse: Response | null = null;
+    for (const url of candidateUrls) {
+        const res = await fetch(url);
+        if (res.status !== 404) {
+            return res;
+        }
+        lastResponse = res;
+    }
+
+    return lastResponse || new Response("Google Agent callback route not found", { status: 404 });
+}
 
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get("code");
     const error = req.nextUrl.searchParams.get("error");
+    const redirectUri = getRedirectUri(req);
 
     if (error) {
         return new Response(
@@ -42,7 +80,7 @@ export async function GET(req: NextRequest) {
 
     // Forward the code to the Python Google Agent server to exchange for tokens
     try {
-        const res = await fetch(`${GOOGLE_AGENT_URL}/auth/callback?code=${encodeURIComponent(code)}`);
+        const res = await forwardCodeToAgent(code, redirectUri);
         const body = await res.text();
 
         if (res.ok) {
@@ -72,7 +110,7 @@ export async function GET(req: NextRequest) {
             `<html><body style="background:#111;color:#f55;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
                 <div style="text-align:center">
                     <h2>❌ Cannot reach Google Agent</h2>
-                    <p style="color:#888">Is the Python server running on port 8300?</p>
+                    <p style="color:#888">Is the Google agent running on EC2?</p>
                     <p style="color:#666">${err instanceof Error ? err.message : "Unknown error"}</p>
                 </div>
             </body></html>`,

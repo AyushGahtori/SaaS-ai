@@ -78,6 +78,7 @@ class GoogleActionResponse(BaseModel):
     agent_type: str | None = None
     action: str | None = None
     result: dict | str | list | None = None
+    summary: str | None = None
     error: str | None = None
     execution_time_ms: float | None = None
 
@@ -90,12 +91,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from google_client import auth_store, exchange_code_for_tokens, build_auth_url
 
 @app.get("/auth/login")
+@app.get("/google/auth/login")
 def auth_login():
     """Redirect user to Google consent screen."""
     return RedirectResponse(url=build_auth_url())
 
 @app.get("/auth/callback")
-def auth_callback(code: str = "", error: str = ""):
+@app.get("/google/auth/callback")
+def auth_callback(code: str = "", error: str = "", redirect_uri: str = ""):
     """Google redirects here after user grants consent."""
     if error:
         return HTMLResponse(
@@ -108,7 +111,7 @@ def auth_callback(code: str = "", error: str = ""):
             status_code=400,
         )
     try:
-        exchange_code_for_tokens(code)
+        exchange_code_for_tokens(code, redirect_uri=redirect_uri or None)
         return HTMLResponse(
             "<h2>✅ Google account connected!</h2>"
             "<p>You can close this tab and go back to SnitchX.</p>"
@@ -121,6 +124,7 @@ def auth_callback(code: str = "", error: str = ""):
         )
 
 @app.get("/auth/status")
+@app.get("/google/auth/status")
 def auth_status():
     """Check if agent is authenticated."""
     token = auth_store.get("access_token")
@@ -129,6 +133,7 @@ def auth_status():
     return {"authenticated": False}
 
 @app.post("/auth/logout")
+@app.post("/google/auth/logout")
 def auth_logout():
     """Log out from Google."""
     auth_store["access_token"] = None
@@ -191,6 +196,7 @@ async def google_action(data: GoogleActionRequest):
             agent_type=data.agent_type,
             action=data.action,
             result=result.get("data", result),
+            summary=result.get("summary"),
             execution_time_ms=(time.time() - start) * 1000,
             error=result.get("error")
         )

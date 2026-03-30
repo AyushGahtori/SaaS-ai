@@ -12,10 +12,11 @@
 import React, { useState, useEffect } from "react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import type { ChatMessage } from "@/modules/chat/types";
-import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar, Key, ListTodo } from "lucide-react";
+import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar, Key, ListTodo, Folder, FileText, FileImage } from "lucide-react";
 import { MicrosoftLoginCard, type DeviceFlowData } from "./microsoft-login-card";
 import { GoogleLoginCard } from "./google-login-card";
 import { subscribeToTask, type AgentTask } from "@/lib/firestore-tasks";
+import { GeneratedAvatar } from "@/components/ui/generated-avatar";
 
 interface AgentTaskMessageProps {
     message: ChatMessage;
@@ -26,7 +27,164 @@ const AGENT_NAMES: Record<string, string> = {
     "teams-agent": "Microsoft Teams Agent",
     "email-agent": "Email Agent",
     "google-agent": "Google Workspace Agent",
+    "notion-agent": "Notion Agent",
+    "maps-agent": "Google Maps Agent",
+    "todo-agent": "To-do Agent",
 };
+
+interface GmailRow {
+    from: string;
+    subject: string;
+    date: string;
+    time: string;
+}
+
+interface DriveRow {
+    name: string;
+    mimeType: string;
+    typeLabel: string;
+    modifiedDate: string;
+    modifiedTime: string;
+}
+
+function normalizeString(value: unknown, fallback = "-") {
+    if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+    }
+    return fallback;
+}
+
+function formatDateAndTime(value: unknown): { date: string; time: string } {
+    if (typeof value !== "string" || !value.trim()) {
+        return { date: "-", time: "-" };
+    }
+
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+        return {
+            date: parsed.toLocaleDateString("en-CA"),
+            time: parsed.toLocaleTimeString("en-GB", { hour12: false }),
+        };
+    }
+
+    const split = value.split(" ");
+    return {
+        date: split.slice(0, 4).join(" ") || value,
+        time: split.slice(4).join(" ") || "-",
+    };
+}
+
+function getGmailRows(result: Record<string, unknown>): GmailRow[] {
+    const payload = (result.result as Record<string, unknown> | undefined) || result;
+    const emails = payload.emails;
+    if (!Array.isArray(emails)) {
+        return [];
+    }
+
+    return emails.map((email) => {
+        const item = (email || {}) as Record<string, unknown>;
+        const dateTime = formatDateAndTime(item.date);
+        return {
+            from: normalizeString(item.from),
+            subject: normalizeString(item.subject),
+            date: dateTime.date,
+            time: dateTime.time,
+        };
+    });
+}
+
+function getDriveTypeLabel(name: string, mimeType: string): string {
+    const lowerName = name.toLowerCase();
+    const lowerMime = mimeType.toLowerCase();
+
+    if (lowerMime.includes("folder")) return "folder";
+    if (lowerMime.includes("pdf") || lowerName.endsWith(".pdf")) return ".pdf";
+    if (lowerMime.includes("jpeg") || lowerMime.includes("jpg") || lowerMime.includes("png") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || lowerName.endsWith(".png")) return ".jpg";
+    if (lowerMime.includes("document") || lowerName.endsWith(".doc") || lowerName.endsWith(".docx")) return ".docx";
+    if (lowerName.endsWith(".txt")) return ".txt";
+    return mimeType || "file";
+}
+
+function getDriveRows(result: Record<string, unknown>): DriveRow[] {
+    const payload = (result.result as Record<string, unknown> | undefined) || result;
+    const files = payload.files;
+    if (!Array.isArray(files)) {
+        return [];
+    }
+
+    return files.map((file) => {
+        const item = (file || {}) as Record<string, unknown>;
+        const name = normalizeString(item.name);
+        const mimeType = normalizeString(item.mimeType, "file");
+        const dateTime = formatDateAndTime(item.modifiedTime);
+        return {
+            name,
+            mimeType,
+            typeLabel: getDriveTypeLabel(name, mimeType),
+            modifiedDate: dateTime.date,
+            modifiedTime: dateTime.time,
+        };
+    });
+}
+
+function DriveTypeIcon({ typeLabel }: { typeLabel: string }) {
+    const lower = typeLabel.toLowerCase();
+    if (lower === "folder") return <Folder className="w-3.5 h-3.5 text-yellow-300" />;
+    if (lower.includes("jpg") || lower.includes("png")) return <FileImage className="w-3.5 h-3.5 text-sky-300" />;
+    return <FileText className="w-3.5 h-3.5 text-blue-300" />;
+}
+
+function GmailTableCard({ rows }: { rows: GmailRow[] }) {
+    return (
+        <div className="mt-3 rounded-xl border border-white/10 bg-black/35 overflow-hidden">
+            <div className="grid grid-cols-[1.3fr_2.2fr_1fr_1fr] gap-3 px-3 py-2.5 text-[11px] uppercase tracking-wide text-white/50 border-b border-white/10">
+                <span>From</span>
+                <span>Subject</span>
+                <span>Date</span>
+                <span>Time</span>
+            </div>
+            <div className="custom-scrollbar max-h-48 overflow-y-auto">
+                {rows.map((row, idx) => (
+                    <div key={`${row.from}-${row.subject}-${idx}`} className="grid grid-cols-[1.3fr_2.2fr_1fr_1fr] gap-3 px-3 py-2.5 text-xs text-white/85 border-b border-white/5 last:border-b-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <GeneratedAvatar seed={row.from} variant="botttsNeutral" className="h-5 w-5" />
+                            <span className="truncate">{row.from}</span>
+                        </div>
+                        <span className="truncate">{row.subject}</span>
+                        <span className="truncate text-white/70">{row.date}</span>
+                        <span className="truncate text-white/70">{row.time}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function DriveTableCard({ rows }: { rows: DriveRow[] }) {
+    return (
+        <div className="mt-3 rounded-xl border border-white/10 bg-black/35 overflow-hidden">
+            <div className="grid grid-cols-[2fr_1.1fr_1fr_1fr] gap-3 px-3 py-2.5 text-[11px] uppercase tracking-wide text-white/50 border-b border-white/10">
+                <span>Name</span>
+                <span>Type</span>
+                <span>Modified Date</span>
+                <span>Modified Time</span>
+            </div>
+            <div className="custom-scrollbar max-h-48 overflow-y-auto">
+                {rows.map((row, idx) => (
+                    <div key={`${row.name}-${idx}`} className="grid grid-cols-[2fr_1.1fr_1fr_1fr] gap-3 px-3 py-2.5 text-xs text-white/85 border-b border-white/5 last:border-b-0">
+                        <span className="truncate">{row.name}</span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <DriveTypeIcon typeLabel={row.typeLabel} />
+                            <span className="truncate">{row.typeLabel}</span>
+                        </div>
+                        <span className="truncate text-white/70">{row.modifiedDate}</span>
+                        <span className="truncate text-white/70">{row.modifiedTime}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
 
 export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) => {
     const { taskStatuses } = useChatContext();
@@ -268,10 +426,40 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             );
         }
 
+        if (resultType === "google_gmail") {
+            const rows = getGmailRows(result);
+            if (rows.length > 0) {
+                return <GmailTableCard rows={rows} />;
+            }
+        }
+
+        if (resultType === "google_drive") {
+            const rows = getDriveRows(result);
+            if (rows.length > 0) {
+                return <DriveTableCard rows={rows} />;
+            }
+        }
+
         // Generic result
+        const nestedResult =
+            typeof result.result === "object" && result.result !== null
+                ? (result.result as Record<string, unknown>)
+                : undefined;
+        const summary =
+            (result.message as string | undefined) ||
+            (result.summary as string | undefined) ||
+            (nestedResult?.summary as string | undefined);
+
         return (
-            <div className="mt-2 text-xs text-white/50 break-words whitespace-pre-wrap">
-                Result: {JSON.stringify(result, null, 2)}
+            <div className="mt-3 space-y-3">
+                {summary ? (
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 whitespace-pre-wrap break-words">
+                        {summary}
+                    </div>
+                ) : null}
+                <div className="text-xs text-white/50 break-words whitespace-pre-wrap">
+                    Result: {JSON.stringify(result, null, 2)}
+                </div>
             </div>
         );
     };
