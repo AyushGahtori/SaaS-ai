@@ -75,6 +75,7 @@ export async function GET(req: NextRequest) {
             uid: string;
             bundleId: string | null;
             agentId: string | null;
+            pkceVerifier?: string | null;
         };
 
         const bundle = state.bundleId ? getAgentBundle(state.bundleId) : undefined;
@@ -91,7 +92,9 @@ export async function GET(req: NextRequest) {
             access_token: string;
             refresh_token?: string;
             expires_in?: number;
+            scope?: string;
         };
+        let metadata: Record<string, string | null> = {};
 
         if (provider === "google") {
             const response = await fetch("https://oauth2.googleapis.com/token", {
@@ -156,17 +159,191 @@ export async function GET(req: NextRequest) {
             }
 
             tokenData = (await response.json()) as typeof tokenData;
+        } else if (provider === "github") {
+            const response = await fetch("https://github.com/login/oauth/access_token", {
+                method: "POST",
+                headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: new URLSearchParams({
+                    client_id: process.env.GITHUB_CLIENT_ID || "",
+                    client_secret: process.env.GITHUB_CLIENT_SECRET || "",
+                    code,
+                    redirect_uri: redirectUri,
+                }),
+            });
+
+            if (!response.ok) {
+                return htmlResult(false, await response.text(), bundle?.id ?? "", agent?.id ?? "");
+            }
+
+            tokenData = (await response.json()) as typeof tokenData;
+        } else if (provider === "gitlab") {
+            const response = await fetch("https://gitlab.com/oauth/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                    client_id: process.env.GITLAB_CLIENT_ID || "",
+                    client_secret: process.env.GITLAB_CLIENT_SECRET || "",
+                    code,
+                    grant_type: "authorization_code",
+                    redirect_uri: redirectUri,
+                }),
+            });
+
+            if (!response.ok) {
+                return htmlResult(false, await response.text(), bundle?.id ?? "", agent?.id ?? "");
+            }
+
+            tokenData = (await response.json()) as typeof tokenData;
+        } else if (provider === "discord") {
+            const response = await fetch("https://discord.com/api/oauth2/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                    client_id: process.env.DISCORD_CLIENT_ID || "",
+                    client_secret: process.env.DISCORD_CLIENT_SECRET || "",
+                    code,
+                    grant_type: "authorization_code",
+                    redirect_uri: redirectUri,
+                }),
+            });
+
+            if (!response.ok) {
+                return htmlResult(false, await response.text(), bundle?.id ?? "", agent?.id ?? "");
+            }
+
+            tokenData = (await response.json()) as typeof tokenData;
+        } else if (provider === "dropbox") {
+            const response = await fetch("https://api.dropboxapi.com/oauth2/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                    client_id: process.env.DROPBOX_CLIENT_ID || "",
+                    client_secret: process.env.DROPBOX_CLIENT_SECRET || "",
+                    code,
+                    grant_type: "authorization_code",
+                    redirect_uri: redirectUri,
+                }),
+            });
+
+            if (!response.ok) {
+                return htmlResult(false, await response.text(), bundle?.id ?? "", agent?.id ?? "");
+            }
+
+            tokenData = (await response.json()) as typeof tokenData;
+        } else if (provider === "atlassian") {
+            const response = await fetch("https://auth.atlassian.com/oauth/token", {
+                method: "POST",
+                headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    grant_type: "authorization_code",
+                    client_id: process.env.JIRA_CLIENT_ID || "",
+                    client_secret: process.env.JIRA_CLIENT_SECRET || "",
+                    code,
+                    redirect_uri: redirectUri,
+                }),
+            });
+
+            if (!response.ok) {
+                return htmlResult(false, await response.text(), bundle?.id ?? "", agent?.id ?? "");
+            }
+
+            tokenData = (await response.json()) as typeof tokenData;
+        } else if (provider === "linkedin") {
+            const response = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                    grant_type: "authorization_code",
+                    code,
+                    redirect_uri: redirectUri,
+                    client_id: process.env.LINKEDIN_CLIENT_ID || "",
+                    client_secret: process.env.LINKEDIN_CLIENT_SECRET || "",
+                }),
+            });
+
+            if (!response.ok) {
+                return htmlResult(false, await response.text(), bundle?.id ?? "", agent?.id ?? "");
+            }
+
+            tokenData = (await response.json()) as typeof tokenData;
+
+            const userInfoResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
+                headers: {
+                    Authorization: `Bearer ${tokenData.access_token}`,
+                },
+            });
+
+            if (userInfoResponse.ok) {
+                const userInfo = (await userInfoResponse.json()) as { sub?: string };
+                if (userInfo.sub) {
+                    metadata.urn = `urn:li:person:${userInfo.sub}`;
+                }
+            }
+        } else if (provider === "zoom") {
+            const basicAuth = Buffer.from(
+                `${process.env.ZOOM_CLIENT_ID || ""}:${process.env.ZOOM_CLIENT_SECRET || ""}`
+            ).toString("base64");
+
+            const response = await fetch("https://zoom.us/oauth/token", {
+                method: "POST",
+                headers: {
+                    Authorization: `Basic ${basicAuth}`,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: new URLSearchParams({
+                    grant_type: "authorization_code",
+                    code,
+                    redirect_uri: redirectUri,
+                }),
+            });
+
+            if (!response.ok) {
+                return htmlResult(false, await response.text(), bundle?.id ?? "", agent?.id ?? "");
+            }
+
+            tokenData = (await response.json()) as typeof tokenData;
+        } else if (provider === "canva") {
+            const basicAuth = Buffer.from(
+                `${process.env.CANVA_CLIENT_ID || ""}:${process.env.CANVA_CLIENT_SECRET || ""}`
+            ).toString("base64");
+
+            const response = await fetch("https://api.canva.com/rest/v1/oauth/token", {
+                method: "POST",
+                headers: {
+                    Authorization: `Basic ${basicAuth}`,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: new URLSearchParams({
+                    grant_type: "authorization_code",
+                    code,
+                    redirect_uri: redirectUri,
+                    code_verifier: state.pkceVerifier || "",
+                }),
+            });
+
+            if (!response.ok) {
+                return htmlResult(false, await response.text(), bundle?.id ?? "", agent?.id ?? "");
+            }
+
+            tokenData = (await response.json()) as typeof tokenData;
         } else {
             return htmlResult(false, "Unsupported provider.", bundle?.id ?? "", agent?.id ?? "");
         }
 
-        await saveProviderConnection(state.uid, provider as "google" | "microsoft" | "notion", {
+        await saveProviderConnection(state.uid, provider as Exclude<typeof provider, "internal">, {
             accessToken: tokenData.access_token,
             refreshToken: tokenData.refresh_token ?? null,
             expiresAt: tokenData.expires_in
                 ? Date.now() + tokenData.expires_in * 1000
                 : null,
             scopes,
+            metadata,
             bundleId: bundle?.id ?? null,
         });
         await installAgentIds(state.uid, installTargets);

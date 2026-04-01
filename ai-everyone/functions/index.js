@@ -34,6 +34,17 @@ const AGENT_ROUTES = {
   "google-agent": "/google/action",
   "notion-agent": "/notion/action",
   "maps-agent": "/maps/action",
+  "canva-agent": "/canva/action",
+  "day-planner-agent": "/dayplanner/action",
+  "discord-agent": "/discord/action",
+  "dropbox-agent": "/dropbox/action",
+  "freshdesk-agent": "/freshdesk/action",
+  "github-agent": "/github/action",
+  "gitlab-agent": "/gitlab/action",
+  "greenhouse-agent": "/greenhouse/action",
+  "jira-agent": "/jira/action",
+  "linkedin-agent": "/linkedin/action",
+  "zoom-agent": "/zoom/action",
 };
 
 // ---------------------------------------------------------------------------
@@ -93,46 +104,99 @@ exports.runAgentTask = onDocumentCreated(
       });
 
       // ── 3. Call the agent's FastAPI server ───────────────────────────
-      let defaultHost = "http://13.206.83.175";
+      const defaultHost = "http://13.206.83.175";
+      const ENV_AGENT_URL_MAP = {
+        "teams-agent": process.env.TEAMS_AGENT_URL,
+        "email-agent": process.env.TEAMS_AGENT_URL,
+        "calendar-agent": process.env.TEAMS_AGENT_URL,
+        "todo-agent": process.env.TODO_AGENT_URL,
+        "google-agent": process.env.GOOGLE_AGENT_URL,
+        "notion-agent": process.env.NOTION_AGENT_URL,
+        "maps-agent": process.env.MAPS_AGENT_URL,
+        "canva-agent": process.env.CANVA_AGENT_URL,
+        "day-planner-agent": process.env.DAY_PLANNER_AGENT_URL,
+        "discord-agent": process.env.DISCORD_AGENT_URL,
+        "dropbox-agent": process.env.DROPBOX_AGENT_URL,
+        "freshdesk-agent": process.env.FRESHDESK_AGENT_URL,
+        "github-agent": process.env.GITHUB_AGENT_URL,
+        "gitlab-agent": process.env.GITLAB_AGENT_URL,
+        "greenhouse-agent": process.env.GREENHOUSE_AGENT_URL,
+        "jira-agent": process.env.JIRA_AGENT_URL,
+        "linkedin-agent": process.env.LINKEDIN_AGENT_URL,
+        "zoom-agent": process.env.ZOOM_AGENT_URL,
+      };
 
-      let agentServerUrl = process.env.AGENT_SERVER_URL || defaultHost;
-      if (task.agentId === "todo-agent" && process.env.TODO_AGENT_URL) agentServerUrl = process.env.TODO_AGENT_URL;
-      if (task.agentId === "google-agent" && process.env.GOOGLE_AGENT_URL) agentServerUrl = process.env.GOOGLE_AGENT_URL;
-      if (task.agentId === "notion-agent" && process.env.NOTION_AGENT_URL) agentServerUrl = process.env.NOTION_AGENT_URL;
-      if (task.agentId === "maps-agent" && process.env.MAPS_AGENT_URL) agentServerUrl = process.env.MAPS_AGENT_URL;
+      const agentServerUrl =
+        ENV_AGENT_URL_MAP[task.agentId] ||
+        process.env.AGENT_SERVER_URL ||
+        defaultHost;
 
       const agentUrl = `${agentServerUrl}${agentRoute}`;
+
+      const providerByAgent = {
+        "teams-agent": "microsoft",
+        "email-agent": "microsoft",
+        "calendar-agent": "microsoft",
+        "google-agent": "google",
+        "notion-agent": "notion",
+        "canva-agent": "canva",
+        "discord-agent": "discord",
+        "dropbox-agent": "dropbox",
+        "github-agent": "github",
+        "gitlab-agent": "gitlab",
+        "jira-agent": "atlassian",
+        "linkedin-agent": "linkedin",
+        "zoom-agent": "zoom",
+      };
+      const envBackedAgents = {
+        "freshdesk-agent": {
+          access_token: process.env.FRESHDESK_API_KEY,
+          domain: process.env.FRESHDESK_DOMAIN,
+        },
+        "greenhouse-agent": {
+          access_token: process.env.GREENHOUSE_API_KEY,
+        },
+      };
+
       let providerConnection = {};
-      if (["teams-agent", "email-agent", "calendar-agent"].includes(task.agentId)) {
-        const snap = await db.collection("users").doc(task.userId).collection("providerConnections").doc("microsoft").get();
+      const provider = providerByAgent[task.agentId];
+      if (provider) {
+        const snap = await db
+            .collection("users")
+            .doc(task.userId)
+            .collection("providerConnections")
+            .doc(provider)
+            .get();
         if (snap.exists && snap.data()?.accessToken) {
           providerConnection = {
             access_token: snap.data().accessToken,
             refresh_token: snap.data().refreshToken || undefined,
+            urn: snap.data()?.metadata?.urn || undefined,
+            domain: snap.data()?.metadata?.domain || undefined,
           };
         }
-      } else if (task.agentId === "google-agent") {
-        const snap = await db.collection("users").doc(task.userId).collection("providerConnections").doc("google").get();
-        if (snap.exists && snap.data()?.accessToken) {
-          providerConnection = {
-            access_token: snap.data().accessToken,
-            refresh_token: snap.data().refreshToken || undefined,
-          };
-        }
-      } else if (task.agentId === "notion-agent") {
-        const snap = await db.collection("users").doc(task.userId).collection("providerConnections").doc("notion").get();
-        if (snap.exists && snap.data()?.accessToken) {
-          providerConnection = {
-            access_token: snap.data().accessToken,
-            refresh_token: snap.data().refreshToken || undefined,
-          };
-        }
+      } else if (envBackedAgents[task.agentId]) {
+        providerConnection = envBackedAgents[task.agentId];
       }
 
-      if (
-        ["teams-agent", "email-agent", "calendar-agent", "google-agent", "notion-agent"].includes(task.agentId) &&
-        !providerConnection.access_token
-      ) {
+      const authRequiredAgents = [
+        "teams-agent",
+        "email-agent",
+        "calendar-agent",
+        "google-agent",
+        "notion-agent",
+        "canva-agent",
+        "discord-agent",
+        "dropbox-agent",
+        "github-agent",
+        "gitlab-agent",
+        "freshdesk-agent",
+        "greenhouse-agent",
+        "jira-agent",
+        "linkedin-agent",
+        "zoom-agent",
+      ];
+      if (authRequiredAgents.includes(task.agentId) && !providerConnection.access_token) {
         await taskRef.update({
           status: "failed",
           agentOutput: {

@@ -8,7 +8,7 @@
 
 import { NextResponse } from "next/server";
 
-const GOOGLE_AGENT_URL = process.env.GOOGLE_AGENT_URL || "http://13.206.83.175";
+const GOOGLE_AGENT_URL = process.env.GOOGLE_AGENT_URL || "http://13.126.69.108";
 
 export async function GET() {
     try {

@@ -19,11 +19,7 @@ interface AgentStateResponse {
   installedAgentIds: string[];
   accessibleAgentIds: string[];
   connectedBundleIds: string[];
-  connections: {
-    google: boolean;
-    microsoft: boolean;
-    notion?: boolean;
-  };
+  connections: Record<string, boolean>;
 }
 
 async function getAuthHeaders() {
@@ -132,6 +128,11 @@ export const AgentsView = () => {
       throw new Error(data.error || "Failed to start authorization.");
     }
 
+    const allowedPopupOrigin =
+      typeof data.popupOrigin === "string" && data.popupOrigin.length > 0
+        ? data.popupOrigin
+        : new URL(data.authUrl).origin;
+
     const popupTarget = target.bundleId || target.agentId || "agent";
     const popup = window.open(
       data.authUrl,
@@ -158,7 +159,7 @@ export const AgentsView = () => {
       }, 500);
 
       const handleMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
+        if (event.origin !== allowedPopupOrigin) return;
         if (!event.data || typeof event.data !== "object") return;
 
         const sameTarget =
