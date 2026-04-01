@@ -1,6 +1,20 @@
 import type { AgentRegistryEntry } from "@/modules/chat/types";
 
-export type AgentProvider = "internal" | "google" | "microsoft" | "notion";
+export type AgentProvider =
+    | "internal"
+    | "google"
+    | "microsoft"
+    | "notion"
+    | "github"
+    | "gitlab"
+    | "discord"
+    | "dropbox"
+    | "linkedin"
+    | "zoom"
+    | "atlassian"
+    | "canva"
+    | "freshdesk"
+    | "greenhouse";
 
 export interface AgentCatalogEntry extends AgentRegistryEntry {
     provider: AgentProvider;
@@ -165,6 +179,177 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         category: "productivity",
         tags: ["todo", "reminders", "planning"],
         requiresConnection: false,
+    },
+    // ── New Integration Agents ─────────────────────────────────────────────
+    {
+        id: "canva-agent",
+        name: "Canva Agent",
+        description: "List and create Canva designs directly from chat. Requires Canva OAuth connection.",
+        actions: ["list_designs", "create_design"],
+        examplePrompts: [
+            "List my recent Canva designs",
+            "Create a new Canva presentation called Q3 Review",
+        ],
+        provider: "canva",
+        category: "design",
+        tags: ["canva", "design", "presentations"],
+        requiresConnection: true,
+        oauthScopes: ["design:content:read", "design:meta:read", "asset:read"],
+    },
+    {
+        id: "day-planner-agent",
+        name: "Day Planner Agent",
+        description: "Plan your day and week with a built-in planner backed by your personal Firestore data.",
+        actions: ["get_daily_plan", "add_to_plan", "get_weekly_overview"],
+        examplePrompts: [
+            "What is my plan for today?",
+            "Add a meeting with the design team at 3 PM to my plan",
+            "Give me an overview of my week",
+        ],
+        provider: "internal",
+        category: "productivity",
+        tags: ["planning", "schedule", "daily"],
+        requiresConnection: false,
+    },
+    {
+        id: "discord-agent",
+        name: "Discord Agent",
+        description: "View your Discord profile and list servers you belong to.",
+        actions: ["get_user_info", "list_guilds"],
+        examplePrompts: [
+            "Show me my Discord profile",
+            "List my Discord servers",
+        ],
+        provider: "discord",
+        category: "communication",
+        tags: ["discord", "gaming", "community"],
+        requiresConnection: true,
+        oauthScopes: ["identify", "guilds"],
+    },
+    {
+        id: "dropbox-agent",
+        name: "Dropbox Agent",
+        description: "Search files, create folders, and move files in your Dropbox storage.",
+        actions: ["search_files", "create_folder", "move_file"],
+        examplePrompts: [
+            "Search Dropbox for the contract file",
+            "Create a folder called Project Alpha in Dropbox",
+            "Move the report to the Archives folder in Dropbox",
+        ],
+        provider: "dropbox",
+        category: "files",
+        tags: ["dropbox", "files", "storage", "cloud"],
+        requiresConnection: true,
+        oauthScopes: [],
+    },
+    {
+        id: "freshdesk-agent",
+        name: "Freshdesk Agent",
+        description: "Create support tickets, check ticket status, search solutions, and list recent tickets in Freshdesk.",
+        actions: ["create_ticket", "check_ticket_status", "search_solutions", "list_tickets"],
+        examplePrompts: [
+            "Create a Freshdesk ticket: billing issue for user John",
+            "What is the status of Freshdesk ticket 1234?",
+            "Search Freshdesk solutions for password reset",
+        ],
+        provider: "freshdesk",
+        category: "support",
+        tags: ["freshdesk", "helpdesk", "tickets", "support"],
+        requiresConnection: false,
+    },
+    {
+        id: "github-agent",
+        name: "GitHub Agent",
+        description: "List repositories, search repos, get issue details, and create new issues on GitHub.",
+        actions: ["list_repositories", "search_repositories", "get_issue", "create_issue"],
+        examplePrompts: [
+            "List my GitHub repositories",
+            "Search GitHub for repos about machine learning",
+            "Create a GitHub issue in my-org/my-repo: Login page broken",
+        ],
+        provider: "github",
+        category: "development",
+        tags: ["github", "code", "git", "repositories"],
+        requiresConnection: true,
+        oauthScopes: ["repo", "read:user", "user:email"],
+    },
+    {
+        id: "gitlab-agent",
+        name: "GitLab Agent",
+        description: "List projects, get issue details, and create new issues in GitLab.",
+        actions: ["list_projects", "get_issue", "create_issue"],
+        examplePrompts: [
+            "List my GitLab projects",
+            "Get GitLab issue #42 from my-group/my-project",
+            "Create a GitLab issue in my-project: API is returning 500",
+        ],
+        provider: "gitlab",
+        category: "development",
+        tags: ["gitlab", "code", "git", "devops"],
+        requiresConnection: true,
+        oauthScopes: ["api", "read_user", "read_api"],
+    },
+    {
+        id: "greenhouse-agent",
+        name: "Greenhouse Agent",
+        description: "List candidates, fetch resumes, and schedule interviews via Greenhouse ATS.",
+        actions: ["list_candidates", "get_candidate_resume", "schedule_interview"],
+        examplePrompts: [
+            "List active candidates in Greenhouse",
+            "Get the resume for candidate 9876 in Greenhouse",
+            "Schedule an interview with candidate 1234 with hr@company.com",
+        ],
+        provider: "greenhouse",
+        category: "hr",
+        tags: ["greenhouse", "ats", "recruiting", "hr"],
+        requiresConnection: false,
+    },
+    {
+        id: "jira-agent",
+        name: "Jira Agent",
+        description: "Create issues, check issue status, search with JQL, and list your assigned issues in Jira.",
+        actions: ["create_issue", "get_issue_status", "search_issues", "list_issues"],
+        examplePrompts: [
+            "Create a Jira bug in project PROJ: Checkout page is broken",
+            "What is the status of Jira issue PROJ-123?",
+            "Search Jira for issues assigned to me in the last sprint",
+        ],
+        provider: "atlassian",
+        category: "project-management",
+        tags: ["jira", "atlassian", "bugs", "agile"],
+        requiresConnection: true,
+        oauthScopes: ["read:jira-work", "write:jira-work", "read:jira-user"],
+    },
+    {
+        id: "linkedin-agent",
+        name: "LinkedIn Agent",
+        description: "Post to LinkedIn immediately or schedule posts for later. Analyze basic engagement.",
+        actions: ["schedule_post", "analyze_engagement"],
+        examplePrompts: [
+            "Post on LinkedIn: Excited to announce our new product launch!",
+            "Schedule a LinkedIn post for tomorrow at 9 AM: Join us at the DevConf 2024",
+        ],
+        provider: "linkedin",
+        category: "social",
+        tags: ["linkedin", "social media", "marketing"],
+        requiresConnection: true,
+        oauthScopes: ["w_member_social", "openid", "profile", "email"],
+    },
+    {
+        id: "zoom-agent",
+        name: "Zoom Agent",
+        description: "Create Zoom meetings, list upcoming meetings, and fetch AI meeting summaries.",
+        actions: ["create_meeting", "list_upcoming_meetings", "get_meeting_summary"],
+        examplePrompts: [
+            "Create a Zoom meeting called Weekly Sync for tomorrow at 10 AM",
+            "List my upcoming Zoom meetings",
+            "Get the AI summary for Zoom meeting 12345678",
+        ],
+        provider: "zoom",
+        category: "productivity",
+        tags: ["zoom", "meetings", "video"],
+        requiresConnection: true,
+        oauthScopes: [],
     },
 ];
 

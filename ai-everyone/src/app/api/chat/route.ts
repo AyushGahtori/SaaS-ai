@@ -141,6 +141,64 @@ For the notion-agent:
 - create_page: extract "title", "content", and optional "parentPageId"
 - append_to_page: extract "pageId" when known, otherwise use "query" plus "content"
 
+For the canva-agent:
+- list_designs: extract optional "limit" (number of designs to show)
+- create_design: extract "title" and optional "type" (e.g. "presentation", "social_media")
+
+For the day-planner-agent:
+- get_daily_plan: extract "date" in YYYY-MM-DD (default: today)
+- add_to_plan: extract "title", optional "date" in YYYY-MM-DD, optional "time" (HH:MM), optional "description", optional "priority" (high/medium/low), optional "duration" in minutes
+- get_weekly_overview: extract optional "startDate" in YYYY-MM-DD (default: this Monday)
+- NOTE: day-planner-agent is different from todo-agent — use day-planner-agent when user asks to "plan my day" or "add to my daily planner"
+
+For the discord-agent:
+- get_user_info: no parameters needed
+- list_guilds: no parameters needed
+
+For the dropbox-agent:
+- search_files: extract "query" (search term) and optional "limit"
+- create_folder: extract "path" (e.g. "/NewFolder")
+- move_file: extract "from_path" and "to_path"
+
+For the freshdesk-agent:
+- create_ticket: extract "subject", "description", optional "status" (2=Open default), optional "priority" (1=Low default)
+- check_ticket_status: extract "ticket_id" (number)
+- search_solutions: extract "keyword"
+- list_tickets: extract optional "limit" (default 5)
+
+For the github-agent:
+- list_repositories: extract optional "limit" and optional "sort" (updated/created/pushed)
+- search_repositories: extract "query"
+- get_issue: extract "owner", "repo", and "issueNumber"
+- create_issue: extract "owner", "repo", "title", and optional "body"
+- If owner or repo are missing and user hasn't specified, ask: "Which repository? (format: owner/repo)"
+
+For the gitlab-agent:
+- list_projects: extract optional "limit" and optional "search" filter
+- get_issue: extract "projectId" (e.g. "mygroup/myproject") and "issueIid" (internal issue number)
+- create_issue: extract "projectId", "title", and optional "description"
+
+For the greenhouse-agent:
+- list_candidates: extract optional "job_id" and optional "candidate_status" (active/rejected/hired)
+- get_candidate_resume: extract "candidate_id"
+- schedule_interview: extract "candidate_id", "interviewer_email", "start_time" (ISO 8601), "end_time" (ISO 8601)
+
+For the jira-agent:
+- create_issue: extract "project_key", "summary", "description", optional "issue_type" (Bug/Task/Story)
+- get_issue_status: extract "issue_key" (e.g. "PROJ-123")
+- search_issues: extract "jql" (Jira Query Language string)
+- list_issues: extract optional "limit" (default 5)
+
+For the linkedin-agent:
+- schedule_post: extract "content" (the post text) and optional "scheduled_time" (ISO datetime)
+- analyze_engagement: no parameters needed
+- If user asks to "post on LinkedIn", use schedule_post without scheduled_time for an immediate post
+
+For the zoom-agent:
+- create_meeting: extract "topic", optional "start_time" (UTC ISO format), optional "duration" (minutes)
+- list_upcoming_meetings: extract optional "type" (scheduled/upcoming, default upcoming)
+- get_meeting_summary: extract "meetingId"
+
 If an agent is needed, output ONLY:
 <AGENT_INTENT>
 {

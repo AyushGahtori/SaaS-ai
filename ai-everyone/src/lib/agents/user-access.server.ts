@@ -13,6 +13,7 @@ export interface ProviderConnection {
     refreshToken: string | null;
     expiresAt: number | null;
     scopes: string[];
+    metadata?: Record<string, string | null>;
     connectedAt?: unknown;
     bundleId?: string | null;
 }
@@ -71,6 +72,7 @@ export async function saveProviderConnection(
         refreshToken?: string | null;
         expiresAt?: number | null;
         scopes?: string[];
+        metadata?: Record<string, string | null>;
         bundleId?: string | null;
     }
 ): Promise<void> {
@@ -82,6 +84,7 @@ export async function saveProviderConnection(
             refreshToken: data.refreshToken ?? null,
             expiresAt: data.expiresAt ?? null,
             scopes: data.scopes ?? [],
+            metadata: data.metadata ?? {},
             bundleId: data.bundleId ?? null,
             connectedAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
@@ -116,6 +119,10 @@ export async function getProviderConnection(
         refreshToken: data.refreshToken ?? null,
         expiresAt: typeof data.expiresAt === "number" ? data.expiresAt : null,
         scopes: Array.isArray(data.scopes) ? data.scopes : [],
+        metadata:
+            data.metadata && typeof data.metadata === "object"
+                ? (data.metadata as Record<string, string | null>)
+                : {},
         connectedAt: data.connectedAt,
         bundleId: data.bundleId ?? null,
     };
@@ -152,6 +159,8 @@ export async function isAgentInstalled(uid: string, agentId: string): Promise<bo
 export async function getAgentExecutionAuth(uid: string, agentId: string): Promise<{
     access_token?: string;
     refresh_token?: string;
+    urn?: string;
+    domain?: string;
 }> {
     const agent = getAgentCatalogEntry(agentId);
     if (!agent || agent.provider === "internal") {
@@ -159,14 +168,27 @@ export async function getAgentExecutionAuth(uid: string, agentId: string): Promi
     }
 
     const connection = await getProviderConnection(uid, agent.provider);
-    if (!connection) {
-        return {};
+    if (connection) {
+        return {
+            access_token: connection.accessToken,
+            ...(connection.refreshToken ? { refresh_token: connection.refreshToken } : {}),
+            ...(connection.metadata?.urn ? { urn: connection.metadata.urn } : {}),
+            ...(connection.metadata?.domain ? { domain: connection.metadata.domain } : {}),
+        };
     }
 
-    return {
-        access_token: connection.accessToken,
-        ...(connection.refreshToken ? { refresh_token: connection.refreshToken } : {}),
-    };
+    if (agentId === "freshdesk-agent" && process.env.FRESHDESK_API_KEY) {
+        return {
+            access_token: process.env.FRESHDESK_API_KEY,
+            ...(process.env.FRESHDESK_DOMAIN ? { domain: process.env.FRESHDESK_DOMAIN } : {}),
+        };
+    }
+
+    if (agentId === "greenhouse-agent" && process.env.GREENHOUSE_API_KEY) {
+        return { access_token: process.env.GREENHOUSE_API_KEY };
+    }
+
+    return {};
 }
 
 export async function getAccessibleAgentIds(uid: string): Promise<string[]> {

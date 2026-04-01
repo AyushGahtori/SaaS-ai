@@ -24,13 +24,25 @@ import { getInstallHintForAgent } from "@/lib/agents/catalog";
 // ---------------------------------------------------------------------------
 
 const AGENT_ROUTES: Record<string, string> = {
-    "teams-agent": "/teams/action",
-    "email-agent": "/email/action",
-    "calendar-agent": "/calendar/action",
-    "todo-agent": "/todo/action",
-    "google-agent": "/google/action",
-    "notion-agent": "/notion/action",
-    "maps-agent": "/maps/action",
+    "teams-agent":       "/teams/action",
+    "email-agent":       "/email/action",
+    "calendar-agent":    "/calendar/action",
+    "todo-agent":        "/todo/action",
+    "google-agent":      "/google/action",
+    "notion-agent":      "/notion/action",
+    "maps-agent":        "/maps/action",
+    // New integration agents
+    "canva-agent":       "/canva/action",
+    "day-planner-agent": "/dayplanner/action",
+    "discord-agent":     "/discord/action",
+    "dropbox-agent":     "/dropbox/action",
+    "freshdesk-agent":   "/freshdesk/action",
+    "github-agent":      "/github/action",
+    "gitlab-agent":      "/gitlab/action",
+    "greenhouse-agent":  "/greenhouse/action",
+    "jira-agent":        "/jira/action",
+    "linkedin-agent":    "/linkedin/action",
+    "zoom-agent":        "/zoom/action",
 };
 
 /**
@@ -129,28 +141,31 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     });
 
     // ── 3. Call the agent's FastAPI server ─────────────────────────────
-    const isTodoAgent = task.agentId === "todo-agent";
-    const isGoogleAgent = task.agentId === "google-agent";
-    const isNotionAgent = task.agentId === "notion-agent";
-    const isMapsAgent = task.agentId === "maps-agent";
-
-    // Default Teams + Todo route through EC2 host root, Google via /google prefix.
-    let defaultHost = "http://13.206.83.175";
-    if (isTodoAgent) defaultHost = "http://13.206.83.175";
-    else if (isGoogleAgent) defaultHost = "http://13.206.83.175";
-    else if (isNotionAgent) defaultHost = "http://13.206.83.175";
-    else if (isMapsAgent) defaultHost = "http://13.206.83.175";
-    else defaultHost = "http://13.206.83.175";
-    
-    // Allow overriding from .env
-    let envUrl = process.env.AGENT_SERVER_URL;
-    if (isTodoAgent) envUrl = process.env.TODO_AGENT_URL;
-    else if (isGoogleAgent) envUrl = process.env.GOOGLE_AGENT_URL;
-    else if (isNotionAgent) envUrl = process.env.NOTION_AGENT_URL || process.env.AGENT_SERVER_URL;
-    else if (isMapsAgent) envUrl = process.env.MAPS_AGENT_URL || process.env.AGENT_SERVER_URL;
-    else envUrl = process.env.TEAMS_AGENT_URL || process.env.AGENT_SERVER_URL;
-    
-    const agentServerUrl = envUrl || defaultHost;
+    // Per-agent env override (falls back to AGENT_SERVER_URL → EC2 root)
+    const ENV_AGENT_URL_MAP: Record<string, string | undefined> = {
+        "teams-agent":       process.env.TEAMS_AGENT_URL,
+        "email-agent":       process.env.TEAMS_AGENT_URL,
+        "calendar-agent":    process.env.TEAMS_AGENT_URL,
+        "todo-agent":        process.env.TODO_AGENT_URL,
+        "google-agent":      process.env.GOOGLE_AGENT_URL,
+        "notion-agent":      process.env.NOTION_AGENT_URL,
+        "maps-agent":        process.env.MAPS_AGENT_URL,
+        "canva-agent":       process.env.CANVA_AGENT_URL,
+        "day-planner-agent": process.env.DAY_PLANNER_AGENT_URL,
+        "discord-agent":     process.env.DISCORD_AGENT_URL,
+        "dropbox-agent":     process.env.DROPBOX_AGENT_URL,
+        "freshdesk-agent":   process.env.FRESHDESK_AGENT_URL,
+        "github-agent":      process.env.GITHUB_AGENT_URL,
+        "gitlab-agent":      process.env.GITLAB_AGENT_URL,
+        "greenhouse-agent":  process.env.GREENHOUSE_AGENT_URL,
+        "jira-agent":        process.env.JIRA_AGENT_URL,
+        "linkedin-agent":    process.env.LINKEDIN_AGENT_URL,
+        "zoom-agent":        process.env.ZOOM_AGENT_URL,
+    };
+    const agentServerUrl =
+        ENV_AGENT_URL_MAP[task.agentId] ||
+        process.env.AGENT_SERVER_URL ||
+        "http://13.126.69.108";
     const agentUrl = `${agentServerUrl}${agentRoute}`;
     const executionAuth = await getAgentExecutionAuth(task.userId, task.agentId);
 

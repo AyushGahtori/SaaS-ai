@@ -10,6 +10,7 @@ import {
     uninstallAgentIds,
 } from "@/lib/agents/user-access.server";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
+import type { AgentProvider } from "@/lib/agents/catalog";
 
 export async function GET(req: NextRequest) {
     const verifiedUser = await verifyFirebaseRequest(req);
@@ -17,15 +18,26 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [installedAgentIds, accessibleAgentIds, connectedBundleIds, googleConnection, microsoftConnection, notionConnection] =
-        await Promise.all([
-            getInstalledAgentIds(verifiedUser.uid),
-            getAccessibleAgentIds(verifiedUser.uid),
-            getConnectedBundleIds(verifiedUser.uid),
-            getProviderConnection(verifiedUser.uid, "google"),
-            getProviderConnection(verifiedUser.uid, "microsoft"),
-            getProviderConnection(verifiedUser.uid, "notion"),
-        ]);
+    const providers = Array.from(
+        new Set(
+            AGENT_CATALOG.map((agent) => agent.provider).filter(
+                (provider): provider is Exclude<AgentProvider, "internal"> => provider !== "internal"
+            )
+        )
+    );
+
+    const providerConnections = await Promise.all(
+        providers.map(async (provider) => [
+            provider,
+            await getProviderConnection(verifiedUser.uid, provider),
+        ] as const)
+    );
+
+    const [installedAgentIds, accessibleAgentIds, connectedBundleIds] = await Promise.all([
+        getInstalledAgentIds(verifiedUser.uid),
+        getAccessibleAgentIds(verifiedUser.uid),
+        getConnectedBundleIds(verifiedUser.uid),
+    ]);
 
     return NextResponse.json({
         agents: AGENT_CATALOG,
@@ -33,11 +45,12 @@ export async function GET(req: NextRequest) {
         installedAgentIds,
         accessibleAgentIds,
         connectedBundleIds,
-        connections: {
-            google: Boolean(googleConnection?.accessToken),
-            microsoft: Boolean(microsoftConnection?.accessToken),
-            notion: Boolean(notionConnection?.accessToken),
-        },
+        connections: Object.fromEntries(
+            providerConnections.map(([provider, connection]) => [
+                provider,
+                Boolean(connection?.accessToken),
+            ])
+        ),
     });
 }
 

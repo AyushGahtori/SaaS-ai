@@ -128,7 +128,107 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 790,
     },
+    "canva-agent": {
+        iconUrl: makeMonogramIcon("Canva", "#06b6d4", "#2563eb"),
+        installCount: 11800,
+        rating: 4.5,
+        createdAt: "2026-03-11T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 760,
+    },
+    "day-planner-agent": {
+        iconUrl: makeMonogramIcon("Plan", "#f59e0b", "#f97316"),
+        installCount: 11200,
+        rating: 4.6,
+        createdAt: "2026-03-12T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 750,
+    },
+    "discord-agent": {
+        iconUrl: makeMonogramIcon("Chat", "#5865f2", "#4338ca"),
+        installCount: 10800,
+        rating: 4.5,
+        createdAt: "2026-03-13T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 740,
+    },
+    "dropbox-agent": {
+        iconUrl: makeMonogramIcon("Box", "#2563eb", "#1d4ed8"),
+        installCount: 10300,
+        rating: 4.5,
+        createdAt: "2026-03-14T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 735,
+    },
+    "freshdesk-agent": {
+        iconUrl: makeMonogramIcon("Desk", "#14b8a6", "#0f766e"),
+        installCount: 9800,
+        rating: 4.4,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 720,
+    },
+    "github-agent": {
+        iconUrl: makeMonogramIcon("GitHub", "#111827", "#374151"),
+        installCount: 12700,
+        rating: 4.7,
+        createdAt: "2026-03-16T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 800,
+    },
+    "gitlab-agent": {
+        iconUrl: makeMonogramIcon("GitLab", "#f97316", "#dc2626"),
+        installCount: 9700,
+        rating: 4.5,
+        createdAt: "2026-03-17T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 710,
+    },
+    "greenhouse-agent": {
+        iconUrl: makeMonogramIcon("Hire", "#22c55e", "#15803d"),
+        installCount: 8900,
+        rating: 4.4,
+        createdAt: "2026-03-18T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 700,
+    },
+    "jira-agent": {
+        iconUrl: makeMonogramIcon("Jira", "#2563eb", "#0f172a"),
+        installCount: 11900,
+        rating: 4.6,
+        createdAt: "2026-03-19T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 780,
+    },
+    "linkedin-agent": {
+        iconUrl: makeMonogramIcon("Link", "#0a66c2", "#1d4ed8"),
+        installCount: 8600,
+        rating: 4.3,
+        createdAt: "2026-03-20T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 690,
+    },
+    "zoom-agent": {
+        iconUrl: makeMonogramIcon("Zoom", "#2563eb", "#0891b2"),
+        installCount: 12100,
+        rating: 4.6,
+        createdAt: "2026-03-21T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 770,
+    },
 };
+
+function makeDefaultAgentMeta(agent: AgentCatalogEntry) {
+    const label = agent.name.split(" ")[0] || agent.id;
+    return {
+        iconUrl: makeMonogramIcon(label, "#334155", "#0f172a"),
+        installCount: 8200,
+        rating: 4.4,
+        createdAt: "2026-03-31T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 640,
+    };
+}
 
 function toBundleItem(bundle: AgentBundle): MarketplaceAgent {
     const meta = bundleUiMeta[bundle.id];
@@ -147,7 +247,7 @@ function toBundleItem(bundle: AgentBundle): MarketplaceAgent {
 }
 
 function toAgentItem(agent: AgentCatalogEntry): MarketplaceAgent {
-    const meta = agentUiMeta[agent.id];
+    const meta = agentUiMeta[agent.id] ?? makeDefaultAgentMeta(agent);
     return {
         id: agent.id,
         name: agent.name,

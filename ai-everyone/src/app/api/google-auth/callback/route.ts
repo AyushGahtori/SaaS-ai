@@ -9,7 +9,7 @@
 
 import { NextRequest } from "next/server";
 
-const GOOGLE_AGENT_URL = process.env.GOOGLE_AGENT_URL || "http://13.206.83.175";
+const GOOGLE_AGENT_URL = process.env.GOOGLE_AGENT_URL || "http://13.126.69.108";
 const CALLBACK_PATH = "/api/google-auth/callback";
 
 function getRedirectUri(req: NextRequest): string {
