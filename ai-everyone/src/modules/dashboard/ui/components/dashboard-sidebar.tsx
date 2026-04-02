@@ -135,8 +135,8 @@ export const DashboardSidebar = () => {
                 Recent Chats
               </span>
             </div>
-            <div className="flex flex-col h-full bg-sidebar">
-              <div className="custom-scrollbar sidebar-fade flex-1 min-h-0 overflow-y-auto w-full relative">
+            <div className="flex flex-col h-full bg-[#0C0D0D]">
+              <div className="custom-scrollbar flex-1 min-h-0 overflow-y-auto w-full relative">
                 <ChatSidebarList />
               </div>
             </div>

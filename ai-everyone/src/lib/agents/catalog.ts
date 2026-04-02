@@ -140,6 +140,22 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         requiresConnection: false,
     },
     {
+        id: "emergency-response-agent",
+        name: "Emergency Response Agent",
+        description:
+            "Assess medical emergency severity, then activate live emergency response with nearby hospitals and sharing actions.",
+        actions: ["assess_emergency", "activate_emergency"],
+        examplePrompts: [
+            "I am having severe chest pain on my left side",
+            "Start emergency response now",
+            "Find nearby hospitals around my live location",
+        ],
+        provider: "internal",
+        category: "health",
+        tags: ["emergency", "medical", "hospital", "safety"],
+        requiresConnection: false,
+    },
+    {
         id: "notion-agent",
         name: "Notion Agent",
         description:

@@ -42,11 +42,13 @@ export const ChatSidebarList: React.FC = () => {
                 return (
                     <div
                         key={chat.id}
+                        data-chat-sidebar-item="true"
+                        data-active={isActive ? "true" : "false"}
                         className={cn(
-                            "group flex items-center gap-2 px-3 py-2 mx-1 rounded-md cursor-pointer text-sm transition-colors",
+                            "group flex items-center gap-2 px-3 py-2 mx-1 rounded-md cursor-pointer text-sm transition-colors border bg-none",
                             isActive
-                                ? "bg-white/10 text-white"
-                                : "text-[#E5E5E5] hover:bg-white/5"
+                                ? "bg-[#101214] border-[#2A2F33] text-white"
+                                : "border-transparent text-[#E5E5E5] hover:bg-[#0F1213] hover:border-[#23282D]"
                         )}
                         onClick={async () => {
                             await selectChat(chat.id);

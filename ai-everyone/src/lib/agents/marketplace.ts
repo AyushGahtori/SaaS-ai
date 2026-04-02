@@ -96,6 +96,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 860,
     },
+    "emergency-response-agent": {
+        iconUrl: makeMonogramIcon("SOS", "#ef4444", "#b91c1c"),
+        installCount: 9600,
+        rating: 4.7,
+        createdAt: "2026-04-02T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 845,
+    },
     "notion-agent": {
         iconUrl: makeMonogramIcon("Notion", "#111827", "#374151"),
         installCount: 15400,

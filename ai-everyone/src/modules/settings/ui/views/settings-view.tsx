@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, updateProfile } from "firebase/auth";
 import { Bell, Bot, BrainCircuit, Link2, Settings2, User } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { getUserProfile, updateUserProfile } from "@/lib/firestore";
@@ -115,6 +115,21 @@ export function SettingsView() {
         role: profileForm.role,
         communicationStyle: profileForm.communicationStyle,
       });
+
+      if (auth.currentUser && profileForm.name.trim()) {
+        await updateProfile(auth.currentUser, {
+          displayName: profileForm.name.trim(),
+        });
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("snitchx-profile-updated", {
+          detail: {
+            name: profileForm.name,
+            email: profileForm.email,
+          },
+        })
+      );
     } catch (err) {
       console.error("[SettingsView] save profile error:", err);
       setError(err instanceof Error ? err.message : "Failed to save profile.");

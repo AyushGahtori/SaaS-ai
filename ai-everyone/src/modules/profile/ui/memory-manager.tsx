@@ -27,6 +27,8 @@ const MEMORY_TYPES: MemoryType[] = [
     "education",
 ];
 
+const FIXED_MAX_TOTAL_MEMORIES = 20;
+
 const EMPTY_FORM = {
     type: "preference" as MemoryType,
     key: "",
@@ -51,7 +53,7 @@ export function MemoryManager() {
     const [memories, setMemories] = useState<MemoryItem[]>([]);
     const [persona, setPersona] = useState<PersonaSummary | null>(null);
     const [settings, setSettings] = useState<MemorySettings>({
-        maxTotalMemories: 20,
+        maxTotalMemories: FIXED_MAX_TOTAL_MEMORIES,
         tempMemoryTTLDays: 30,
         requireConfirmation: false,
     });
@@ -90,7 +92,11 @@ export function MemoryManager() {
             setMemories(data.memories ?? []);
             setPersona(data.persona ?? null);
             if (data.settings) {
-                setSettings(data.settings);
+                setSettings({
+                    maxTotalMemories: FIXED_MAX_TOTAL_MEMORIES,
+                    tempMemoryTTLDays: Number(data.settings.tempMemoryTTLDays || 30),
+                    requireConfirmation: Boolean(data.settings.requireConfirmation),
+                });
             }
         } catch (err) {
             console.error("[MemoryManager] fetch error:", err);
@@ -198,7 +204,7 @@ export function MemoryManager() {
                 headers,
                 body: JSON.stringify({
                     target: "settings",
-                    maxTotalMemories: settings.maxTotalMemories,
+                    maxTotalMemories: FIXED_MAX_TOTAL_MEMORIES,
                     tempMemoryTTLDays: settings.tempMemoryTTLDays,
                     requireConfirmation: settings.requireConfirmation,
                 }),
@@ -260,22 +266,11 @@ export function MemoryManager() {
                     <p className="mt-1 text-xs text-white/40">{capacityText}</p>
 
                     <div className="mt-4 space-y-4">
-                        <label className="block text-sm text-white/75">
-                            Max memories
-                            <input
-                                type="number"
-                                min={5}
-                                max={100}
-                                value={settings.maxTotalMemories}
-                                onChange={(event) =>
-                                    setSettings((prev) => ({
-                                        ...prev,
-                                        maxTotalMemories: Number(event.target.value || 20),
-                                    }))
-                                }
-                                className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none"
-                            />
-                        </label>
+                        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
+                            <p className="text-sm text-white/75">Max memories</p>
+                            <p className="mt-1 text-xs text-white/45">Fixed at 20 for all users.</p>
+                            <p className="mt-2 text-lg font-semibold text-white">{FIXED_MAX_TOTAL_MEMORIES}</p>
+                        </div>
 
                         <label className="block text-sm text-white/75">
                             Temporary memory TTL (days)
@@ -290,7 +285,7 @@ export function MemoryManager() {
                                         tempMemoryTTLDays: Number(event.target.value || 30),
                                     }))
                                 }
-                                className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none"
+                                className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
                         </label>
 
@@ -326,13 +321,13 @@ export function MemoryManager() {
                     <p className="text-xs text-white/40">Store a fact manually so only installed memory tooling can use it later.</p>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 md:grid-cols-12">
                     <select
                         value={form.type}
                         onChange={(event) =>
                             setForm((prev) => ({ ...prev, type: event.target.value as MemoryType }))
                         }
-                        className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none"
+                        className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none md:col-span-3"
                     >
                         {MEMORY_TYPES.map((type) => (
                             <option key={type} value={type}>
@@ -345,27 +340,38 @@ export function MemoryManager() {
                         value={form.key}
                         onChange={(event) => setForm((prev) => ({ ...prev, key: event.target.value }))}
                         placeholder="Key, e.g. work_style"
-                        className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none"
+                        className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none md:col-span-4"
                     />
 
-                    <select
-                        value={form.scope}
-                        onChange={(event) =>
-                            setForm((prev) => ({
-                                ...prev,
-                                scope: event.target.value as "stable" | "temporary",
-                            }))
-                        }
-                        className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none"
-                    >
-                        <option value="stable">Stable</option>
-                        <option value="temporary">Temporary</option>
-                    </select>
+                    <div className="rounded-xl border border-white/10 bg-black/30 p-1 md:col-span-3">
+                        <div className="grid grid-cols-2 gap-1">
+                            <button
+                                onClick={() => setForm((prev) => ({ ...prev, scope: "stable" }))}
+                                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                                    form.scope === "stable"
+                                        ? "bg-white text-black"
+                                        : "text-white/65 hover:text-white"
+                                }`}
+                            >
+                                Stable
+                            </button>
+                            <button
+                                onClick={() => setForm((prev) => ({ ...prev, scope: "temporary" }))}
+                                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                                    form.scope === "temporary"
+                                        ? "bg-[#F59E0B] text-black"
+                                        : "text-white/65 hover:text-white"
+                                }`}
+                            >
+                                Temporary
+                            </button>
+                        </div>
+                    </div>
 
                     <button
                         onClick={handleCreate}
                         disabled={creating}
-                        className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 md:col-span-2"
                     >
                         {creating ? "Adding..." : "Add Memory"}
                     </button>

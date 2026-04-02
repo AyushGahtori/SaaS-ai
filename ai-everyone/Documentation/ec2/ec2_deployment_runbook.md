@@ -25,10 +25,17 @@ For OAuth-capable agents:
 - Notion/Canva/Discord/Dropbox/GitHub/GitLab/Jira/LinkedIn/Zoom client id + secret
 - Freshdesk: `FRESHDESK_API_KEY` (and `FRESHDESK_DOMAIN` if required)
 - Greenhouse: `GREENHOUSE_API_KEY`
+- Maps/Emergency: `GOOGLE_MAPS_API_KEY`
 
 OAuth callback pattern for provider consoles:
 
 - `${AGENT_PUBLIC_BASE_URL}/<slug>/auth/callback`
+
+Google callback note (important):
+
+- If Google uses the web callback bridge, configure Google Console with `${WEB_BASE_URL}/api/google-auth/callback` instead.
+- The value in Google Console must exactly match the runtime `redirect_uri` (scheme, host, path, trailing slash).
+- If `AGENT_PUBLIC_BASE_URL` or domain changes, update callback URIs immediately or Google auth will fail.
 
 ## Deploy
 
@@ -52,13 +59,14 @@ sudo ./deploy.sh
 
 ```bash
 # Service state
-for s in teams-agent todo-agent google-agent notion-agent maps-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent; do
+for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent; do
   systemctl is-active "$s"
 done
 
 # Public health
 curl "${AGENT_PUBLIC_BASE_URL}/teams/health"
 curl "${AGENT_PUBLIC_BASE_URL}/linkedin/health"
+curl "${AGENT_PUBLIC_BASE_URL}/emergency/health"
 
 # OAuth route readiness (400 without handoff is expected)
 curl -i "${AGENT_PUBLIC_BASE_URL}/linkedin/auth/login"
@@ -72,3 +80,7 @@ curl -i "${AGENT_PUBLIC_BASE_URL}/linkedin/auth/login"
   - Update web app env (`*_AGENT_URL`, `AGENT_SERVER_URL`) and restart Next.js.
 - If OAuth fails with invalid scopes:
   - Verify provider product approvals and requested scope list match exactly.
+- If Google shows `Error 400: invalid_request` or "Access blocked: Authorization Error":
+  - Compare the exact `redirect_uri` sent by runtime with Google Console Authorized redirect URIs.
+  - Ensure the same OAuth client ID is used in runtime and in the console page you updated.
+  - Confirm callback mode is consistent (direct EC2 callback vs web callback bridge).

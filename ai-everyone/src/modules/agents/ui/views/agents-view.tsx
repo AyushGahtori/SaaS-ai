@@ -22,6 +22,40 @@ interface AgentStateResponse {
   connections: Record<string, boolean>;
 }
 
+type AgentFilterChip =
+  | "all"
+  | "productivity"
+  | "google"
+  | "microsoft"
+  | "notion"
+  | "location"
+  | "calendar"
+  | "reminders";
+
+const FILTER_CHIPS: AgentFilterChip[] = [
+  "all",
+  "productivity",
+  "google",
+  "microsoft",
+  "notion",
+  "location",
+  "calendar",
+  "reminders",
+];
+
+const MAX_SECONDARY_SECTIONS = 4;
+
+const CHIP_LABELS: Record<AgentFilterChip, string> = {
+  all: "All",
+  productivity: "Productivity",
+  google: "Google",
+  microsoft: "Microsoft",
+  notion: "Notion",
+  location: "Location",
+  calendar: "Calendar",
+  reminders: "Reminders",
+};
+
 async function getAuthHeaders() {
   const token = await auth.currentUser?.getIdToken();
   if (!token) {
@@ -42,6 +76,7 @@ export const AgentsView = () => {
   const [accessibleIds, setAccessibleIds] = useState<string[]>([]);
   const [connectedBundleIds, setConnectedBundleIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeChip, setActiveChip] = useState<AgentFilterChip>("all");
   const [loading, setLoading] = useState(true);
   const [uid, setUid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +137,7 @@ export const AgentsView = () => {
     }
   }, [uid, loadMarketplace]);
 
-  const filteredAgents = useMemo(() => {
+  const searchedAgents = useMemo(() => {
     if (!searchQuery.trim()) return allAgents;
     const query = searchQuery.toLowerCase();
 
@@ -114,6 +149,65 @@ export const AgentsView = () => {
         (agent.tags || []).some((tag) => tag.toLowerCase().includes(query))
     );
   }, [allAgents, searchQuery]);
+
+  const doesAgentMatchChip = useCallback((agent: Agent, chip: AgentFilterChip) => {
+    if (chip === "all") return true;
+    const normalizedChip = chip.toLowerCase();
+
+    if (agent.category.toLowerCase() === normalizedChip) return true;
+    if (agent.provider.toLowerCase() === normalizedChip) return true;
+
+    return (agent.tags || []).some((tag) => tag.toLowerCase() === normalizedChip);
+  }, []);
+
+  const chipMatchedAgents = useMemo(() => {
+    if (activeChip === "all") return searchedAgents;
+    return searchedAgents.filter((agent) => doesAgentMatchChip(agent, activeChip));
+  }, [activeChip, doesAgentMatchChip, searchedAgents]);
+
+  const groupedBrowseSections = useMemo(() => {
+    if (activeChip === "all") return [];
+
+    const sections: Array<{ title: string; agents: Agent[] }> = [];
+
+    if (chipMatchedAgents.length > 0) {
+      sections.push({
+        title: `${CHIP_LABELS[activeChip]} Agents`,
+        agents: chipMatchedAgents,
+      });
+    }
+
+    const selectedAgentIds = new Set(chipMatchedAgents.map((agent) => agent.id));
+    const buckets = new Map<string, Agent[]>();
+
+    for (const agent of searchedAgents) {
+      if (selectedAgentIds.has(agent.id)) continue;
+      const key = agent.category.toLowerCase();
+      const existing = buckets.get(key);
+      if (existing) {
+        existing.push(agent);
+      } else {
+        buckets.set(key, [agent]);
+      }
+    }
+
+    const normalizeHeading = (value: string) =>
+      value
+        .split(/[-_\s]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+
+    const secondary = Array.from(buckets.entries())
+      .sort((left, right) => right[1].length - left[1].length)
+      .slice(0, MAX_SECONDARY_SECTIONS)
+      .map(([category, agents]) => ({
+        title: `${normalizeHeading(category)} Agents`,
+        agents,
+      }));
+
+    return [...sections, ...secondary];
+  }, [activeChip, chipMatchedAgents, searchedAgents]);
 
   const openConnectionPopup = useCallback(async (target: { bundleId?: string; agentId?: string }) => {
     const headers = await getAuthHeaders();
@@ -283,6 +377,7 @@ export const AgentsView = () => {
   }
 
   const isSearching = searchQuery.trim().length > 0;
+  const showCuratedLayout = !isSearching && activeChip === "all";
 
   return (
     <div className="custom-scrollbar h-[calc(100vh-64px)] overflow-y-auto overflow-x-hidden w-full">
@@ -305,27 +400,23 @@ export const AgentsView = () => {
           </div>
         ) : null}
 
-        {!isSearching ? (
-          <div className="flex flex-wrap gap-2">
-            {["productivity", "google", "microsoft", "notion", "location", "calendar", "reminders"].map((chip) => (
-              <span
-                key={chip}
-                className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium capitalize text-white/65"
-              >
-                {chip}
-              </span>
-            ))}
-          </div>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {FILTER_CHIPS.map((chip) => (
+            <button
+              key={chip}
+              onClick={() => setActiveChip(chip)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                activeChip === chip
+                  ? "border-white/30 bg-white/[0.16] text-white"
+                  : "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/20 hover:text-white"
+              }`}
+            >
+              {CHIP_LABELS[chip]}
+            </button>
+          ))}
+        </div>
 
-        {isSearching ? (
-          <AgentsGrid
-            agents={filteredAgents}
-            installedAgentIds={ownedIds}
-            onInstall={handleInstall}
-            onUninstall={handleUninstall}
-          />
-        ) : (
+        {showCuratedLayout ? (
           <>
             <AgentsFeaturedSection
               agents={featuredAgents}
@@ -357,6 +448,34 @@ export const AgentsView = () => {
               onUninstall={handleUninstall}
             />
           </>
+        ) : activeChip === "all" ? (
+          <AgentsGrid
+            agents={searchedAgents}
+            installedAgentIds={ownedIds}
+            onInstall={handleInstall}
+            onUninstall={handleUninstall}
+          />
+        ) : groupedBrowseSections.length > 0 ? (
+          <div className="space-y-8">
+            {groupedBrowseSections.map((section) => (
+              <AgentsGrid
+                key={section.title}
+                title={section.title}
+                agents={section.agents}
+                installedAgentIds={ownedIds}
+                onInstall={handleInstall}
+                onUninstall={handleUninstall}
+              />
+            ))}
+          </div>
+        ) : (
+          <AgentsGrid
+            title={`${CHIP_LABELS[activeChip]} Agents`}
+            agents={chipMatchedAgents}
+            installedAgentIds={ownedIds}
+            onInstall={handleInstall}
+            onUninstall={handleUninstall}
+          />
         )}
       </div>
     </div>
