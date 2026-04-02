@@ -27,6 +27,12 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
         return <AgentTaskMessage message={message} />;
     }
 
+    // Hide transient empty assistant placeholder messages.
+    // The typing indicator is rendered separately by ChatMessageList.
+    if (message.role === "assistant" && !message.content.trim()) {
+        return null;
+    }
+
     const isUser = message.role === "user";
 
     return (

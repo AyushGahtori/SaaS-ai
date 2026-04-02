@@ -148,6 +148,14 @@
 /* ── Fade mask for sidebar (optional add-on) ──────────────── */
 .sidebar-fade {
   padding-bottom: 24px;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, black 16px, black calc(100% - 16px), transparent);
-  mask-image: linear-gradient(to bottom, transparent, black 16px, black calc(100% - 16px), transparent);
+  /* Keep top fully opaque; fade only near bottom to avoid a washed top tint. */
+  -webkit-mask-image: linear-gradient(to bottom, black 0, black calc(100% - 16px), transparent);
+  mask-image: linear-gradient(to bottom, black 0, black calc(100% - 16px), transparent);
+}
+
+/* Hard override for recent-chat rows to avoid white-tint/overlay artifacts. */
+[data-chat-sidebar-item="true"] {
+  background-image: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
 }

@@ -48,6 +48,32 @@ interface ParsedIntentResult {
     conversationalText: string;
 }
 
+function isAcknowledgementOnlyMessage(text: string): boolean {
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) return false;
+
+    const simpleAck = new Set([
+        "ok",
+        "okay",
+        "kk",
+        "got it",
+        "understood",
+        "cool",
+        "nice",
+        "thanks",
+        "thank you",
+        "thx",
+        "done",
+        "perfect",
+        "great",
+    ]);
+
+    if (simpleAck.has(normalized)) return true;
+
+    const stripped = normalized.replace(/[.!?,\s]+$/g, "");
+    return simpleAck.has(stripped);
+}
+
 function buildOrchestrationPrompt(
     installedAgentIds: string[],
     accessibleAgentIds: string[]
@@ -92,6 +118,7 @@ ${unavailableDescriptions || "All registered agents are available right now."}
 3. NEVER execute actions yourself. Only delegate using <AGENT_INTENT> for available agents.
 4. If you are unsure which agent is needed, ask a concise clarification question instead of emitting <AGENT_INTENT>.
 5. The JSON inside <AGENT_INTENT> must be valid and parseable: no comments, no trailing commas.
+6. For potential medical emergencies (chest pain, breathing issues, severe injury), prefer the emergency-response-agent first.
 
 ## Agent Formatting Rules
 For the teams-agent:
@@ -134,6 +161,11 @@ For the maps-agent:
 - search_places: extract "query", optional "location", and optional "radius"
 - geocode: extract either "address" or "latlng"
 - distance_matrix: extract "origins", "destinations", and optional "mode"
+
+For the emergency-response-agent:
+- assess_emergency: extract "description" from symptoms or emergency statement
+- activate_emergency: extract "lat", "lng", optional "description", optional "radius"
+- Use this agent for medical emergency triage requests (e.g., chest pain, breathing trouble, severe injury, urgent SOS).
 
 For the notion-agent:
 - search_pages: extract "query" and optional "limit"
@@ -516,6 +548,34 @@ export async function POST(req: NextRequest) {
 
         const lastUserMessage =
             [...messages].reverse().find((message) => message.role === "user")?.content || "";
+
+        // Avoid re-triggering agent tasks when user only sends an acknowledgement.
+        if (isAcknowledgementOnlyMessage(lastUserMessage)) {
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream({
+                start(controller) {
+                    const ack = "Got it. Tell me the next task whenever you're ready.";
+                    controller.enqueue(
+                        encoder.encode(`event: text\ndata: ${JSON.stringify({ content: ack })}\n\n`)
+                    );
+                    controller.enqueue(
+                        encoder.encode(
+                            `event: done\ndata: ${JSON.stringify({ type: "chat", content: ack })}\n\n`
+                        )
+                    );
+                    controller.close();
+                },
+            });
+
+            return new Response(stream, {
+                headers: {
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache, no-transform",
+                    Connection: "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            });
+        }
 
         const [installedAgentIds, accessibleAgentIds, personaContext] = await Promise.all([
             getInstalledAgentIds(uid),

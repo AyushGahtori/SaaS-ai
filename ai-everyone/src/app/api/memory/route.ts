@@ -10,7 +10,7 @@ import {
     updateMemorySettings,
 } from "@/lib/memory/memory-repository.server";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
-import type { MemoryScope, MemoryType } from "@/lib/memory/types";
+import { GLOBAL_MAX_MEMORIES, type MemoryScope, type MemoryType } from "@/lib/memory/types";
 
 const ALLOWED_MEMORY_TYPES = new Set<MemoryType>([
     "identity",
@@ -102,11 +102,13 @@ export async function PATCH(req: NextRequest) {
         const body = await req.json();
 
         if (body.target === "settings") {
+            const parsedTTL = typeof body.tempMemoryTTLDays === "number"
+                ? Math.min(90, Math.max(1, Math.trunc(body.tempMemoryTTLDays)))
+                : undefined;
+
             await updateMemorySettings(verifiedUser.uid, {
-                maxTotalMemories:
-                    typeof body.maxTotalMemories === "number" ? body.maxTotalMemories : undefined,
-                tempMemoryTTLDays:
-                    typeof body.tempMemoryTTLDays === "number" ? body.tempMemoryTTLDays : undefined,
+                maxTotalMemories: GLOBAL_MAX_MEMORIES,
+                tempMemoryTTLDays: parsedTTL,
                 requireConfirmation:
                     typeof body.requireConfirmation === "boolean" ? body.requireConfirmation : undefined,
             });

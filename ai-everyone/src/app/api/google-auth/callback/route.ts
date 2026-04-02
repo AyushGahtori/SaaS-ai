@@ -50,8 +50,22 @@ async function forwardCodeToAgent(code: string, redirectUri: string): Promise<Re
 
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get("code");
+    const state = req.nextUrl.searchParams.get("state");
     const error = req.nextUrl.searchParams.get("error");
     const redirectUri = getRedirectUri(req);
+    const base = GOOGLE_AGENT_URL.replace(/\/$/, "");
+
+    // Detached EC2 OAuth bridge:
+    // Google may redirect back to this web callback (e.g. localhost), while EC2 owns
+    // state/token persistence. If state is present, bounce to EC2 callback so EC2
+    // can consume state and complete auth with opener postMessage.
+    if (state) {
+        const params = new URLSearchParams();
+        params.set("state", state);
+        if (code) params.set("code", code);
+        if (error) params.set("error", error);
+        return Response.redirect(`${base}/google/auth/callback?${params.toString()}`, 302);
+    }
 
     if (error) {
         return new Response(

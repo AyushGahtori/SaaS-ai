@@ -12,11 +12,12 @@
 import React, { useState, useEffect } from "react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import type { ChatMessage } from "@/modules/chat/types";
-import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar, Key, ListTodo, Folder, FileText, FileImage } from "lucide-react";
+import { Bot, Loader2, CheckCircle, XCircle, Phone, MessageSquare, ExternalLink, Calendar, Key, ListTodo, Folder, FileText, FileImage, AlertTriangle, MapPin, Share2, Mail } from "lucide-react";
 import { MicrosoftLoginCard, type DeviceFlowData } from "./microsoft-login-card";
 import { GoogleLoginCard } from "./google-login-card";
 import { subscribeToTask, type AgentTask } from "@/lib/firestore-tasks";
 import { GeneratedAvatar } from "@/components/ui/generated-avatar";
+import { auth } from "@/lib/firebase";
 
 interface AgentTaskMessageProps {
     message: ChatMessage;
@@ -30,6 +31,7 @@ const AGENT_NAMES: Record<string, string> = {
     "notion-agent": "Notion Agent",
     "maps-agent": "Google Maps Agent",
     "todo-agent": "To-do Agent",
+    "emergency-response-agent": "Emergency Response Agent",
 };
 
 interface GmailRow {
@@ -189,6 +191,11 @@ function DriveTableCard({ rows }: { rows: DriveRow[] }) {
 export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) => {
     const { taskStatuses } = useChatContext();
     const [localTask, setLocalTask] = useState<AgentTask | null>(null);
+    const [emergencyResult, setEmergencyResult] = useState<Record<string, unknown> | null>(null);
+    const [emergencyLoading, setEmergencyLoading] = useState(false);
+    const [emergencyError, setEmergencyError] = useState<string | null>(null);
+    const [emailTo, setEmailTo] = useState("");
+    const [emailStatus, setEmailStatus] = useState<string | null>(null);
 
     const taskId = message.taskId;
     const agentId = message.agentId || "unknown";
@@ -217,6 +224,98 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
 
         if (url && (resultType === "teams_call" || resultType === "teams_message")) {
             window.open(url, "_blank");
+        }
+    };
+
+    const activateEmergency = async () => {
+        if (!result) return;
+        const triagePayload = (result.result as Record<string, unknown> | undefined) || {};
+        const description =
+            (triagePayload.originalDescription as string) ||
+            (triagePayload.emergencyMessage as string) ||
+            (message.content || "");
+
+        if (!navigator.geolocation) {
+            setEmergencyError("Geolocation is not supported in this browser.");
+            return;
+        }
+
+        setEmergencyLoading(true);
+        setEmergencyError(null);
+
+        try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 0,
+                });
+            });
+
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) {
+                throw new Error("Authentication expired. Please sign in again.");
+            }
+
+            const response = await fetch("/api/agents/emergency/escalate", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    description,
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                    radius: 5000,
+                }),
+            });
+
+            const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+            if (!response.ok || payload.status !== "success") {
+                throw new Error((payload.error as string) || "Failed to activate emergency response.");
+            }
+            const responseResult = (payload.result as Record<string, unknown> | undefined) || payload;
+            setEmergencyResult(responseResult);
+        } catch (error) {
+            setEmergencyError(error instanceof Error ? error.message : "Failed to activate emergency response.");
+        } finally {
+            setEmergencyLoading(false);
+        }
+    };
+
+    const sendEmergencyEmail = async () => {
+        if (!emergencyResult) return;
+        if (!emailTo.trim()) {
+            setEmailStatus("Enter a recipient email first.");
+            return;
+        }
+
+        const share = (emergencyResult.share as Record<string, unknown> | undefined) || {};
+        const subject = (share.emailSubject as string) || "Emergency alert";
+        const body = (share.emailBody as string) || (share.copyMessage as string) || "Emergency assistance required.";
+
+        try {
+            setEmailStatus("Sending...");
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) throw new Error("Authentication expired.");
+
+            const response = await fetch("/api/agents/emergency/share-email", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ to: emailTo.trim(), subject, body }),
+            });
+
+            const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+            if (!response.ok || payload.status !== "success") {
+                throw new Error((payload.error as string) || "Email send failed.");
+            }
+            setEmailStatus("Emergency email sent.");
+        } catch (error) {
+            setEmailStatus(error instanceof Error ? error.message : "Email send failed.");
         }
     };
 
@@ -426,6 +525,78 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             );
         }
 
+        if (resultType === "emergency_triage") {
+            const triage = (result.result as Record<string, unknown> | undefined) || {};
+            const warningSigns = Array.isArray(triage.warningSigns) ? (triage.warningSigns as string[]) : [];
+            const homeRemedies = Array.isArray(triage.homeRemedies) ? (triage.homeRemedies as string[]) : [];
+            const severity = (triage.severity as string) || "high";
+            const severityBadge =
+                severity === "critical"
+                    ? "bg-red-500/15 text-red-300 border-red-500/30"
+                    : severity === "high"
+                        ? "bg-orange-500/15 text-orange-300 border-orange-500/30"
+                        : "bg-yellow-500/15 text-yellow-300 border-yellow-500/30";
+
+            return (
+                <div className="mt-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${severityBadge}`}>
+                            <AlertTriangle className="mr-1 h-3.5 w-3.5" />
+                            {severity}
+                        </span>
+                        <span className="text-xs text-white/60">Immediate caution advised</span>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 whitespace-pre-wrap">
+                        {String(triage.advice || result.message || "Emergency triage generated.")}
+                    </div>
+
+                    {warningSigns.length > 0 ? (
+                        <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                            <p className="text-xs font-semibold uppercase text-white/60">Warning Signs</p>
+                            <ul className="mt-2 space-y-1 text-sm text-white/80">
+                                {warningSigns.map((item, idx) => (
+                                    <li key={`${item}-${idx}`}>• {item}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    ) : null}
+
+                    {homeRemedies.length > 0 ? (
+                        <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                            <p className="text-xs font-semibold uppercase text-white/60">While Waiting For Help</p>
+                            <ul className="mt-2 space-y-1 text-sm text-white/80">
+                                {homeRemedies.map((item, idx) => (
+                                    <li key={`${item}-${idx}`}>• {item}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    ) : null}
+
+                    {!emergencyResult ? (
+                        <button
+                            onClick={activateEmergency}
+                            disabled={emergencyLoading}
+                            className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/20 px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/30 disabled:opacity-60"
+                        >
+                            {emergencyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                            {emergencyLoading ? "Activating Emergency..." : "Emergency"}
+                        </button>
+                    ) : null}
+
+                    {emergencyError ? (
+                        <p className="text-sm text-red-300">{emergencyError}</p>
+                    ) : null}
+
+                    {emergencyResult ? <EmergencyResponsePanel result={emergencyResult} /> : null}
+                </div>
+            );
+        }
+
+        if (resultType === "emergency_response") {
+            const emergencyPayload = emergencyResult || ((result.result as Record<string, unknown> | undefined) || {});
+            return <EmergencyResponsePanel result={emergencyPayload} />;
+        }
+
         if (resultType === "google_gmail") {
             const rows = getGmailRows(result);
             if (rows.length > 0) {
@@ -460,6 +631,110 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
                 <div className="text-xs text-white/50 break-words whitespace-pre-wrap">
                     Result: {JSON.stringify(result, null, 2)}
                 </div>
+            </div>
+        );
+    };
+
+    const EmergencyResponsePanel = ({ result }: { result: Record<string, unknown> }) => {
+        const hospitals = Array.isArray(result.hospitals) ? (result.hospitals as Record<string, unknown>[]) : [];
+        const location = (result.location as Record<string, unknown> | undefined) || {};
+        const share = (result.share as Record<string, unknown> | undefined) || {};
+        const mapEmbedUrl = (location.mapEmbedUrl as string) || "";
+        const mapUrl = (location.mapUrl as string) || "";
+        const whatsappUrl = (share.whatsappUrl as string) || "";
+        const copyMessage = (share.copyMessage as string) || "";
+
+        return (
+            <div className="mt-3 space-y-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+                {mapEmbedUrl ? (
+                    <div className="overflow-hidden rounded-lg border border-white/10 bg-black/30">
+                        <iframe
+                            src={mapEmbedUrl}
+                            title="Emergency map"
+                            className="h-48 w-full"
+                            loading="lazy"
+                            referrerPolicy="no-referrer-when-downgrade"
+                        />
+                    </div>
+                ) : null}
+
+                <div className="flex flex-wrap items-center gap-2 text-xs text-white/70">
+                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        Live Tracking
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {String(location.label || "Location captured")}
+                    </span>
+                    {mapUrl ? (
+                        <a href={mapUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 hover:bg-white/10">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Open map
+                        </a>
+                    ) : null}
+                </div>
+
+                {hospitals.length > 0 ? (
+                    <div className="rounded-lg border border-white/10 bg-black/25 p-2">
+                        <p className="mb-2 text-xs font-semibold uppercase text-white/60">Nearby Hospitals</p>
+                        <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                            {hospitals.map((hospital, idx) => (
+                                <div key={`${String(hospital.placeId || hospital.name)}-${idx}`} className="flex items-center justify-between rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-sm">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-white/90">{String(hospital.name || "Hospital")}</p>
+                                        <p className="truncate text-xs text-white/60">{String(hospital.distanceLabel || hospital.distance || "")}</p>
+                                    </div>
+                                    <a
+                                        href={String(hospital.callUrl || "tel:108")}
+                                        className="ml-2 inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/10 px-2 py-1 text-xs hover:bg-white/15"
+                                    >
+                                        <Phone className="h-3.5 w-3.5" />
+                                        Call
+                                    </a>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                    <a href="tel:108" className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-500/40 bg-red-500/20 px-3 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/30">
+                        <Phone className="h-4 w-4" />
+                        Call Ambulance (108)
+                    </a>
+                    <a href={whatsappUrl || "#"} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white/90 hover:bg-white/15">
+                        <Share2 className="h-4 w-4" />
+                        Share on WhatsApp
+                    </a>
+                </div>
+
+                <div className="space-y-2 rounded-lg border border-white/10 bg-black/25 p-2">
+                    <label className="block text-xs text-white/60">Share via Gmail (Google Agent)</label>
+                    <div className="flex gap-2">
+                        <input
+                            value={emailTo}
+                            onChange={(event) => setEmailTo(event.target.value)}
+                            placeholder="Recipient email"
+                            className="min-w-0 flex-1 rounded-md border border-white/15 bg-black/30 px-2 py-1.5 text-sm text-white outline-none focus:border-white/30"
+                        />
+                        <button
+                            onClick={sendEmergencyEmail}
+                            className="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/10 px-3 py-1.5 text-xs text-white/90 hover:bg-white/15"
+                        >
+                            <Mail className="h-3.5 w-3.5" />
+                            Send
+                        </button>
+                    </div>
+                    {emailStatus ? <p className="text-xs text-white/70">{emailStatus}</p> : null}
+                </div>
+
+                <button
+                    onClick={() => navigator.clipboard.writeText(copyMessage || "")}
+                    className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white/90 hover:bg-white/15"
+                >
+                    Copy emergency message
+                </button>
             </div>
         );
     };

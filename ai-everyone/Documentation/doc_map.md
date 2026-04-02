@@ -15,9 +15,9 @@ chatbot_ui_chat_pipeline_analysis.md: Chat pipeline analysis.
 cost-measurs-for-memory-extration.md: Memory extraction cost notes.
 database-architecture.txt: Database architecture scratch notes.
 docker_networking_guide.md: Docker/networking troubleshooting.
-ec2_api_reference.md: Detached EC2 endpoint/auth contract.
-ec2_deployment_runbook.md: Deploy/runbook + verification.
-ec2_runtime_readme.md: Runtime scope and service map.
+ec2/ec2_api_reference.md: Detached EC2 endpoint/auth contract.
+ec2/ec2_deployment_runbook.md: Deploy/runbook + verification.
+ec2/ec2_runtime_readme.md: Runtime scope and service map.
 implementation_plan.md: Implementation planning doc.
 navbar-search-button.txt: UI note.
 persona_memory_architecture.md: Persona memory architecture.

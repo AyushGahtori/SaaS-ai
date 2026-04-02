@@ -273,7 +273,7 @@ export async function getMemorySettings(uid: string): Promise<MemorySettings> {
     }
     const data = snap.data()!;
     return {
-        maxTotalMemories: data.maxTotalMemories ?? GLOBAL_MAX_MEMORIES,
+        maxTotalMemories: GLOBAL_MAX_MEMORIES,
         tempMemoryTTLDays: data.tempMemoryTTLDays ?? TEMP_MEMORY_TTL_DAYS,
         requireConfirmation: data.requireConfirmation ?? false,
     };
@@ -286,6 +286,7 @@ export async function updateMemorySettings(
     await settingsDoc(uid).set(
         {
             ...settings,
+            maxTotalMemories: GLOBAL_MAX_MEMORIES,
             updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }

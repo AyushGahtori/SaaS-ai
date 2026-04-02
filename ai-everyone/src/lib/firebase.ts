@@ -2,7 +2,7 @@
 // Initializes Firebase using environment variables and exports shared instances.
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore } from "firebase/firestore";
 
 // Firebase configuration — all values are read from environment variables.
 const firebaseConfig = {
@@ -21,6 +21,18 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Firestore instance — used across all database operations.
-export const db = getFirestore(app);
+export const db = (() => {
+    if (typeof window === "undefined") {
+        return getFirestore(app);
+    }
+
+    try {
+        return initializeFirestore(app, {
+            experimentalAutoDetectLongPolling: true,
+        });
+    } catch {
+        return getFirestore(app);
+    }
+})();
 
 export default app;

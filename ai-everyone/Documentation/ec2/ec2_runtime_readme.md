@@ -23,6 +23,7 @@ This runtime is detached from the main web app.
 | `google-agent` | 8300 | `/google/action` | `/google/health` |
 | `notion-agent` | 8400 | `/notion/action` | `/notion/health` |
 | `maps-agent` | 8500 | `/maps/action` | `/maps/health` |
+| `emergency-response-agent` | 8510 | `/emergency/action` | `/emergency/health` |
 | `canva-agent` | 8001 | `/canva/action` | `/canva/health` |
 | `day-planner-agent` | 8002 | `/dayplanner/action` | `/dayplanner/health` |
 | `discord-agent` | 8003 | `/discord/action` | `/discord/health` |

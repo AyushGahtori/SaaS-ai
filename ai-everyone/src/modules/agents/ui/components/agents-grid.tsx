@@ -9,6 +9,7 @@ interface AgentsGridProps {
   installedAgentIds: string[];
   onInstall: (agentId: string) => Promise<void>;
   onUninstall: (agentId: string) => Promise<void>;
+  title?: string;
 }
 
 export const AgentsGrid = ({
@@ -16,6 +17,7 @@ export const AgentsGrid = ({
   installedAgentIds,
   onInstall,
   onUninstall,
+  title = "All Agents",
 }: AgentsGridProps) => {
   if (agents.length === 0) {
     return (
@@ -29,7 +31,7 @@ export const AgentsGrid = ({
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-[18px] font-semibold text-white/95 tracking-tight">All Agents</h2>
+        <h2 className="text-[18px] font-semibold text-white/95 tracking-tight">{title}</h2>
       </div>
 
       <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
