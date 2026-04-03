@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { adminDb, adminStorage } from "@/lib/firebase-admin";
+import { MAX_SINGLE_ATTACHMENT_BYTES } from "@/lib/uploads/attachment-policy";
 
-export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = MAX_SINGLE_ATTACHMENT_BYTES;
 export const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type UploadedDocSource = "computer" | "drive";

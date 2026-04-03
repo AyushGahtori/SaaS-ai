@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-    MAX_UPLOAD_BYTES,
     persistUploadedDoc,
     type UploadedDocSource,
 } from "@/lib/uploads/uploaded-docs.server";
+import {
+    validateAttachmentType,
+    validateSingleAttachmentSize,
+} from "@/lib/uploads/attachment-policy";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
 
 type UploadBody = {
@@ -45,11 +48,12 @@ export async function POST(req: NextRequest) {
     if (!Number.isFinite(size) || size <= 0) {
         return NextResponse.json({ error: "File size is required." }, { status: 400 });
     }
-    if (size > MAX_UPLOAD_BYTES) {
-        return NextResponse.json(
-            { error: "File is too large. Maximum allowed size is 20MB." },
-            { status: 400 }
-        );
+    try {
+        validateSingleAttachmentSize(size, name);
+        validateAttachmentType(name, mimeType);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Invalid file upload.";
+        return NextResponse.json({ error: message }, { status: 400 });
     }
 
     const dataBase64 =

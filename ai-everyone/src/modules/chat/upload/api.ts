@@ -1,19 +1,15 @@
 import { auth } from "@/lib/firebase";
+import {
+    MAX_SINGLE_ATTACHMENT_BYTES,
+} from "@/lib/uploads/attachment-policy";
 import type { DrivePickerFile } from "@/modules/chat/upload/types";
 
-const MAX_UPLOAD_MB = 20;
-export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = MAX_SINGLE_ATTACHMENT_BYTES;
 
 async function getBearerToken(): Promise<string> {
     const token = await auth.currentUser?.getIdToken();
     if (!token) throw new Error("Authentication expired. Please sign in again.");
     return token;
-}
-
-export function validateUploadSize(size: number): void {
-    if (size > MAX_UPLOAD_BYTES) {
-        throw new Error(`File is too large. Maximum allowed size is ${MAX_UPLOAD_MB}MB.`);
-    }
 }
 
 export async function listDriveFiles(query = ""): Promise<DrivePickerFile[]> {

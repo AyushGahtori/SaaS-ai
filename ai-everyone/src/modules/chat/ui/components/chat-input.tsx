@@ -41,8 +41,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
         driveFiles,
         isLoadingDrive,
         pendingUploads,
-        hasUploadError,
         readyAttachments,
+        failedAttachments,
         modelSupportsUpload,
         fileInputRef,
         removeAttachment,
@@ -76,9 +76,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
     const handleSend = async () => {
         const trimmed = value.trim();
         if ((!trimmed && attachments.length === 0) || isGenerating) return;
-        if (pendingUploads > 0 || hasUploadError) return;
+        if (pendingUploads > 0) return;
         if (attachments.length > 0 && !modelSupportsUpload) {
             setAttachError("This model does not support file upload. Switch to a Gemini model.");
+            return;
+        }
+        if (attachments.length > 0 && readyAttachments.length === 0 && trimmed.length === 0) {
+            setAttachError("No valid file is ready yet. Please remove failed files or upload again.");
             return;
         }
 
@@ -86,7 +90,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
         onFirstMessage?.();
 
         const content = trimmed || "Please analyze the attached file.";
-        const result = await sendMessage(content, false, readyAttachments);
+        const result = await sendMessage(content, false, readyAttachments, failedAttachments);
         if (result) clearAttachments();
     };
 
@@ -98,7 +102,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
     };
 
     const hasInput = value.trim().length > 0 || attachments.length > 0;
-    const sendDisabled = isGenerating || pendingUploads > 0 || hasUploadError;
+    const sendDisabled = isGenerating || pendingUploads > 0;
     const currentModelLabel =
         availableModels.find((model) => model.id === selectedModel)?.label || selectedModel;
 

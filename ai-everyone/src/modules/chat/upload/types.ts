@@ -17,3 +17,8 @@ export interface DrivePickerFile {
     size?: string;
 }
 
+export interface UploadFailure {
+    name: string;
+    reason: string;
+}
+

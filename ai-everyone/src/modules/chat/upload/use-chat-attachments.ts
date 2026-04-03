@@ -2,16 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { supportsFileUpload } from "@/lib/model-capabilities";
+import {
+    validateAttachmentCount,
+    validateAttachmentType,
+    validateSingleAttachmentSize,
+    validateTotalAttachmentSize,
+} from "@/lib/uploads/attachment-policy";
 import type { ChatAttachment } from "@/modules/chat/types";
 import type {
     ChatUploadAttachment,
     DrivePickerFile,
+    UploadFailure,
 } from "@/modules/chat/upload/types";
 import {
     fileToDataUrl,
     listDriveFiles,
     persistUploadedDoc,
-    validateUploadSize,
 } from "@/modules/chat/upload/api";
 
 function createAttachmentId(prefix: string, name: string): string {
@@ -36,15 +42,21 @@ export function useChatAttachments(selectedModel: string) {
         () => attachments.filter((item) => item.uploadState === "uploading").length,
         [attachments]
     );
-    const hasUploadError = useMemo(
-        () => attachments.some((item) => item.uploadState === "error"),
-        [attachments]
-    );
     const readyAttachments = useMemo<ChatAttachment[]>(
         () =>
             attachments
                 .filter((item) => item.uploadState === "ready")
                 .map(({ uploadState: _uploadState, uploadError: _uploadError, ...rest }) => rest),
+        [attachments]
+    );
+    const failedAttachments = useMemo<UploadFailure[]>(
+        () =>
+            attachments
+                .filter((item) => item.uploadState === "error")
+                .map((item) => ({
+                    name: item.name,
+                    reason: item.uploadError || "Upload failed",
+                })),
         [attachments]
     );
 
@@ -67,6 +79,22 @@ export function useChatAttachments(selectedModel: string) {
         setAttachments((prev) => prev.filter((item) => item.id !== attachmentId));
     };
 
+    const getCurrentTotalBytes = () =>
+        attachments.reduce((sum, item) => sum + (Number(item.size || 0) > 0 ? Number(item.size) : 0), 0);
+
+    const validateBeforeQueueing = (
+        name: string,
+        mimeType: string,
+        size: number,
+        additionalCount: number,
+        additionalBytes: number
+    ) => {
+        validateAttachmentCount(attachments.length + additionalCount);
+        validateAttachmentType(name, mimeType);
+        validateSingleAttachmentSize(size, name);
+        validateTotalAttachmentSize(getCurrentTotalBytes() + additionalBytes + size);
+    };
+
     const openComputerPicker = () => {
         if (!ensureModelSupportsUpload()) return;
         setAttachError(null);
@@ -81,10 +109,20 @@ export function useChatAttachments(selectedModel: string) {
             return;
         }
 
-        for (const file of Array.from(files)) {
+        const selected = Array.from(files);
+        let queuedThisBatch = 0;
+        let queuedBytes = 0;
+
+        for (const file of selected) {
             const attachmentId = createAttachmentId("computer", file.name);
             try {
-                validateUploadSize(file.size);
+                validateBeforeQueueing(
+                    file.name,
+                    file.type || "application/octet-stream",
+                    file.size,
+                    queuedThisBatch + 1,
+                    queuedBytes
+                );
                 setAttachError(null);
 
                 const dataUrl = await fileToDataUrl(file);
@@ -99,6 +137,8 @@ export function useChatAttachments(selectedModel: string) {
                     uploadState: "uploading",
                 };
                 setAttachments((prev) => [...prev, initialAttachment]);
+                queuedThisBatch += 1;
+                queuedBytes += file.size;
 
                 const persisted = await persistUploadedDoc({
                     source: "computer",
@@ -168,7 +208,22 @@ export function useChatAttachments(selectedModel: string) {
 
     const addDriveAttachment = async (file: DrivePickerFile) => {
         const parsedSize = Number(file.size || "0");
-        if (parsedSize > 0) validateUploadSize(parsedSize);
+        const normalizedSize = parsedSize > 0 ? parsedSize : 1;
+
+        try {
+            validateBeforeQueueing(
+                file.name,
+                file.mimeType || "application/octet-stream",
+                normalizedSize,
+                1,
+                0
+            );
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : "This Drive file cannot be attached.";
+            setAttachError(message);
+            return;
+        }
 
         const attachmentId = createAttachmentId("drive", file.name);
         const initialAttachment: ChatUploadAttachment = {
@@ -176,7 +231,7 @@ export function useChatAttachments(selectedModel: string) {
             source: "drive",
             name: file.name,
             mimeType: file.mimeType,
-            size: parsedSize > 0 ? parsedSize : undefined,
+            size: normalizedSize,
             driveFileId: file.id,
             webViewLink: file.webViewLink,
             uploadState: "uploading",
@@ -189,7 +244,7 @@ export function useChatAttachments(selectedModel: string) {
                 source: "drive",
                 name: file.name,
                 mimeType: file.mimeType,
-                size: parsedSize > 0 ? parsedSize : 1,
+                size: normalizedSize,
                 driveFileId: file.id,
                 webViewLink: file.webViewLink,
             });
@@ -241,8 +296,8 @@ export function useChatAttachments(selectedModel: string) {
         driveFiles,
         isLoadingDrive,
         pendingUploads,
-        hasUploadError,
         readyAttachments,
+        failedAttachments,
         modelSupportsUpload,
         fileInputRef,
         removeAttachment,
