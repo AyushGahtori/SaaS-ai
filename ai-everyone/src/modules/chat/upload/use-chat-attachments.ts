@@ -15,10 +15,13 @@ import type {
     UploadFailure,
 } from "@/modules/chat/upload/types";
 import {
+    downloadDriveFileAsDataUrl,
+    isDriveAuthRequiredError,
     fileToDataUrl,
     listDriveFiles,
     persistUploadedDoc,
 } from "@/modules/chat/upload/api";
+import { useDriveUploadAuth } from "@/modules/chat/upload/use-drive-upload-auth";
 
 function createAttachmentId(prefix: string, name: string): string {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${name}`;
@@ -31,7 +34,16 @@ export function useChatAttachments(selectedModel: string) {
     const [driveSearch, setDriveSearch] = useState("");
     const [driveFiles, setDriveFiles] = useState<DrivePickerFile[]>([]);
     const [isLoadingDrive, setIsLoadingDrive] = useState(false);
+    const [showDriveSigninOverlay, setShowDriveSigninOverlay] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const {
+        isReady: isDriveSigninReady,
+        isSigningIn: isDriveSigningIn,
+        authError: driveSigninError,
+        requireDriveAccessToken,
+        signInForDriveUpload,
+        clearDriveUploadSession,
+    } = useDriveUploadAuth();
 
     const modelSupportsUpload = useMemo(
         () => supportsFileUpload(selectedModel),
@@ -188,9 +200,18 @@ export function useChatAttachments(selectedModel: string) {
         setIsLoadingDrive(true);
         setAttachError(null);
         try {
-            const files = await listDriveFiles(query);
+            const driveAccessToken = await requireDriveAccessToken();
+            const files = await listDriveFiles(driveAccessToken, query);
             setDriveFiles(files);
+            setShowDriveSigninOverlay(false);
         } catch (error) {
+            if (isDriveAuthRequiredError(error)) {
+                setIsDriveDialogOpen(false);
+                setShowDriveSigninOverlay(true);
+                setDriveFiles([]);
+                setAttachError(null);
+                return;
+            }
             const message =
                 error instanceof Error ? error.message : "Failed to load Drive files.";
             setDriveFiles([]);
@@ -203,64 +224,74 @@ export function useChatAttachments(selectedModel: string) {
     const openDrivePicker = () => {
         if (!ensureModelSupportsUpload()) return;
         setIsDriveDialogOpen(true);
+        setShowDriveSigninOverlay(false);
         void fetchDriveResults(driveSearch);
     };
 
-    const addDriveAttachment = async (file: DrivePickerFile) => {
-        const parsedSize = Number(file.size || "0");
-        const normalizedSize = parsedSize > 0 ? parsedSize : 1;
-
+    const signInForDrivePicker = async () => {
         try {
+            await signInForDriveUpload();
+            setShowDriveSigninOverlay(false);
+            setAttachError(null);
+            setIsDriveDialogOpen(true);
+            void fetchDriveResults(driveSearch);
+        } catch (error) {
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : "Drive sign-in failed. Please try again.";
+            setAttachError(message);
+        }
+    };
+
+    const addDriveAttachment = async (file: DrivePickerFile) => {
+        try {
+            const driveAccessToken = await requireDriveAccessToken();
+            const downloaded = await downloadDriveFileAsDataUrl(driveAccessToken, file);
             validateBeforeQueueing(
                 file.name,
-                file.mimeType || "application/octet-stream",
-                normalizedSize,
+                downloaded.mimeType || file.mimeType || "application/octet-stream",
+                downloaded.size,
                 1,
                 0
             );
-        } catch (error) {
-            const message =
-                error instanceof Error ? error.message : "This Drive file cannot be attached.";
-            setAttachError(message);
-            return;
-        }
 
-        const attachmentId = createAttachmentId("drive", file.name);
-        const initialAttachment: ChatUploadAttachment = {
-            id: attachmentId,
-            source: "drive",
-            name: file.name,
-            mimeType: file.mimeType,
-            size: normalizedSize,
-            driveFileId: file.id,
-            webViewLink: file.webViewLink,
-            uploadState: "uploading",
-        };
-        setAttachments((prev) => [...prev, initialAttachment]);
-        setIsDriveDialogOpen(false);
-
-        try {
-            const persisted = await persistUploadedDoc({
-                source: "drive",
+            const attachmentId = createAttachmentId("drive", file.name);
+            const initialAttachment: ChatUploadAttachment = {
+                id: attachmentId,
+                source: "computer",
                 name: file.name,
-                mimeType: file.mimeType,
-                size: normalizedSize,
-                driveFileId: file.id,
-                webViewLink: file.webViewLink,
+                mimeType: downloaded.mimeType || file.mimeType || "application/octet-stream",
+                size: downloaded.size,
+                dataBase64: downloaded.dataBase64,
+                uploadState: "uploading",
+            };
+            setAttachments((prev) => [...prev, initialAttachment]);
+            setIsDriveDialogOpen(false);
+
+            const persisted = await persistUploadedDoc({
+                source: "computer",
+                name: file.name,
+                mimeType: downloaded.mimeType || file.mimeType || "application/octet-stream",
+                size: downloaded.size,
+                dataBase64: downloaded.dataBase64,
             });
+
             updateAttachment(attachmentId, (current) => ({
                 ...current,
                 uploadState: "ready",
                 uploadedDocId: persisted.uploadedDocId,
             }));
         } catch (error) {
+            if (isDriveAuthRequiredError(error)) {
+                clearDriveUploadSession();
+                setIsDriveDialogOpen(false);
+                setShowDriveSigninOverlay(true);
+                setAttachError(null);
+                return;
+            }
             const message =
                 error instanceof Error ? error.message : "Failed to store Drive attachment.";
-            updateAttachment(attachmentId, (current) => ({
-                ...current,
-                uploadState: "error",
-                uploadError: message,
-            }));
             setAttachError(message);
         }
     };
@@ -271,11 +302,12 @@ export function useChatAttachments(selectedModel: string) {
 
     useEffect(() => {
         if (!isDriveDialogOpen) return;
+        if (showDriveSigninOverlay) return;
         const timeout = window.setTimeout(() => {
             void fetchDriveResults(driveSearch);
         }, 300);
         return () => window.clearTimeout(timeout);
-    }, [driveSearch, isDriveDialogOpen]);
+    }, [driveSearch, isDriveDialogOpen, showDriveSigninOverlay]);
 
     useEffect(() => {
         if (modelSupportsUpload) {
@@ -297,6 +329,12 @@ export function useChatAttachments(selectedModel: string) {
         setDriveSearch,
         driveFiles,
         isLoadingDrive,
+        showDriveSigninOverlay,
+        setShowDriveSigninOverlay,
+        signInForDrivePicker,
+        isDriveSigninReady,
+        isDriveSigningIn,
+        driveSigninError,
         pendingUploads,
         readyAttachments,
         failedAttachments,

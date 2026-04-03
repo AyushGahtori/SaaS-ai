@@ -44,7 +44,7 @@ export function DrivePickerDialog({
                     value={query}
                     onChange={(event) => onQueryChange(event.target.value)}
                     placeholder="Search files by name"
-                    className="bg-white/5 border-white/10 text-white"
+                    className="border-[#243246] bg-[#121a2b] text-cyan-50 placeholder:text-cyan-200/40 focus-visible:ring-cyan-400/40"
                 />
 
                 <div className="max-h-72 overflow-y-auto rounded-md border border-white/10">
