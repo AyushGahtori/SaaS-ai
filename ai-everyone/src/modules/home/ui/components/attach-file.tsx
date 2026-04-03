@@ -11,12 +11,19 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PlusIcon } from "lucide-react";
 
 // Props interface — extend this when adding file attachment logic
 interface AttachFileProps {
-    // TODO: Add props such as onFileSelect, acceptedFileTypes, etc. when implementing functionality
-    onClick?: () => void;
+    onUploadFromComputer?: () => void;
+    onUploadFromDrive?: () => void;
+    disabled?: boolean;
 }
 
 /**
@@ -24,18 +31,33 @@ interface AttachFileProps {
  * Placed on the left side of the AI prompt input bar.
  * Clicking this will eventually trigger a file picker or attachment flow.
  */
-export const AttachFile = ({ onClick }: AttachFileProps) => {
+export const AttachFile = ({
+    onUploadFromComputer,
+    onUploadFromDrive,
+    disabled = false,
+}: AttachFileProps) => {
     return (
-        <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 shrink-0 text-muted-foreground hover:text-foreground hover:bg-transparent"
-            onClick={onClick}
-            aria-label="Attach file"
-            title="Attach file"
-        >
-            {/* Plus / Attach icon from lucide-react */}
-            <PlusIcon className="size-4" stroke="white" strokeWidth={2} />
-        </Button>
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 shrink-0 text-muted-foreground hover:text-foreground hover:bg-transparent"
+                    aria-label="Attach file"
+                    title="Attach file"
+                    disabled={disabled}
+                >
+                    <PlusIcon className="size-4" stroke="white" strokeWidth={2} />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52">
+                <DropdownMenuItem onClick={onUploadFromComputer}>
+                    Upload from computer
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onUploadFromDrive}>
+                    Upload from Drive
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
     );
 };

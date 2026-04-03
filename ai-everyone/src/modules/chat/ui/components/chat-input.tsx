@@ -1,205 +1,276 @@
-/**
- * ChatInput — message input bar for the chat view.
- *
- * Features:
- * - Rounded container with #0C0D0D background
- * - AttachFile button on the left
- * - Textarea in the center (auto-grows)
- * - Model selector dropdown (cloud / local)
- * - Send button on the right (replaces TextToSpeech when text is present)
- * - Inline VoiceBar mode: clicking mic shrinks the bar into a voice input
- */
-
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Cloud, Cpu, Loader2, SendHorizonal, Sparkles } from "lucide-react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import { AttachFile } from "@/modules/home/ui/components/attach-file";
 import { TextToSpeech } from "@/modules/home/ui/components/text-to-speech";
-import { SendHorizonal, ChevronDown, ChevronUp, Cloud, Cpu } from "lucide-react";
+import { useChatAttachments } from "@/modules/chat/upload/use-chat-attachments";
+import { AttachmentStrip } from "@/modules/chat/upload/components/attachment-strip";
+import { DrivePickerDialog } from "@/modules/chat/upload/components/drive-picker-dialog";
 import VoiceBar from "@/modules/chat/ui/components/VoiceBar";
 
 interface ChatInputProps {
-    /** Optional: called when a message is submitted but no active chat exists (new chat flow). */
     onFirstMessage?: () => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
-    const { sendMessage, isGenerating, selectedModel, setSelectedModel, availableModels, isVoiceActive, setIsVoiceActive } = useChatContext();
+    const {
+        sendMessage,
+        isGenerating,
+        selectedModel,
+        setSelectedModel,
+        availableModels,
+        isVoiceActive,
+        setIsVoiceActive,
+    } = useChatContext();
+
     const [value, setValue] = useState("");
     const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const modelMenuRef = useRef<HTMLDivElement>(null);
 
-    // Auto-resize the textarea as the user types.
+    const {
+        attachments,
+        attachError,
+        setAttachError,
+        isDriveDialogOpen,
+        setIsDriveDialogOpen,
+        driveSearch,
+        setDriveSearch,
+        driveFiles,
+        isLoadingDrive,
+        pendingUploads,
+        hasUploadError,
+        readyAttachments,
+        modelSupportsUpload,
+        fileInputRef,
+        removeAttachment,
+        openComputerPicker,
+        openDrivePicker,
+        handleComputerFilesSelected,
+        addDriveAttachment,
+        clearAttachments,
+    } = useChatAttachments(selectedModel);
+
     useEffect(() => {
-        const ta = textareaRef.current;
-        if (ta) {
-            ta.style.height = "auto";
-            ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`; // max ~6 lines
-        }
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+        textarea.style.height = "auto";
+        textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
     }, [value]);
 
-    // Close model menu when clicking outside
     useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
-            if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) {
+        const onClickOutside = (event: MouseEvent) => {
+            if (
+                modelMenuRef.current &&
+                !modelMenuRef.current.contains(event.target as Node)
+            ) {
                 setIsModelMenuOpen(false);
             }
         };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        document.addEventListener("mousedown", onClickOutside);
+        return () => document.removeEventListener("mousedown", onClickOutside);
     }, []);
 
     const handleSend = async () => {
         const trimmed = value.trim();
-        if (!trimmed || isGenerating) return;
+        if ((!trimmed && attachments.length === 0) || isGenerating) return;
+        if (pendingUploads > 0 || hasUploadError) return;
+        if (attachments.length > 0 && !modelSupportsUpload) {
+            setAttachError("This model does not support file upload. Switch to a Gemini model.");
+            return;
+        }
 
         setValue("");
         onFirstMessage?.();
-        await sendMessage(trimmed);
+
+        const content = trimmed || "Please analyze the attached file.";
+        const result = await sendMessage(content, false, readyAttachments);
+        if (result) clearAttachments();
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
+    const onTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            void handleSend();
         }
     };
 
-    const hasText = value.trim().length > 0;
-    const currentModelLabel = availableModels.find((m) => m.id === selectedModel)?.label || selectedModel;
-    const isCloud = selectedModel.includes("cloud");
+    const hasInput = value.trim().length > 0 || attachments.length > 0;
+    const sendDisabled = isGenerating || pendingUploads > 0 || hasUploadError;
+    const currentModelLabel =
+        availableModels.find((model) => model.id === selectedModel)?.label || selectedModel;
 
     return (
         <div className="w-full px-4 pb-6 pt-2">
-            <div className="max-w-3xl mx-auto">
-                {/* Wrapper with transition for voice bar swap */}
+            <div className="mx-auto max-w-3xl">
                 <div
                     className="transition-all duration-300 ease-in-out"
-                    style={{
-                        maxWidth: isVoiceActive ? 420 : '100%',
-                        margin: '0 auto',
-                    }}
+                    style={{ maxWidth: isVoiceActive ? 420 : "100%", margin: "0 auto" }}
                 >
                     {isVoiceActive ? (
-                        /* ── Voice Bar Mode ─────────────────────────────────── */
                         <VoiceBar
                             onSendMessage={sendMessage}
                             onClose={() => setIsVoiceActive(false)}
                             onFirstMessage={onFirstMessage}
                         />
                     ) : (
-                        /* ── Normal Chat Input Mode ─────────────────────────── */
-                        <div
-                            className="flex items-center w-full rounded-2xl border border-white/5 px-4 py-2 gap-2 transition-all duration-300 ease-in-out"
-                            style={{ backgroundColor: "#0C0D0D" }}
-                        >
-                            {/* LEFT — Attach File button */}
-                            <div className="flex-shrink-0">
-                                <AttachFile onClick={() => { }} />
-                            </div>
+                        <div className="space-y-2">
+                            <AttachmentStrip attachments={attachments} onRemove={removeAttachment} />
 
-                            {/* CENTER — Textarea */}
-                            <textarea
-                                ref={textareaRef}
-                                className="
-                                    flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground
-                                    outline-none border-none resize-none overflow-hidden leading-6
-                                    py-1 px-2 min-h-[32px]
-                                "
-                                rows={1}
-                                placeholder="Ask anything..."
-                                value={value}
-                                onChange={(e) => setValue(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                disabled={isGenerating}
-                                aria-label="Chat message input"
-                            />
+                            {pendingUploads > 0 && (
+                                <p className="px-1 text-xs text-cyan-300">
+                                    Uploading {pendingUploads} file{pendingUploads > 1 ? "s" : ""}...
+                                </p>
+                            )}
+                            {attachError && <p className="px-1 text-xs text-red-400">{attachError}</p>}
 
-                            {/* MODEL SELECTOR — Dropdown toggle */}
-                            <div className="flex-shrink-0 relative" ref={modelMenuRef}>
-                                <button
-                                    onClick={() => setIsModelMenuOpen((prev) => !prev)}
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs text-white/70 hover:text-white"
-                                    aria-label="Select AI model"
-                                    title={`Model: ${selectedModel}`}
-                                >
-                                    {isCloud ? (
-                                        <Cloud className="w-3.5 h-3.5" />
-                                    ) : (
-                                        <Cpu className="w-3.5 h-3.5" />
-                                    )}
-                                    <span className="hidden sm:inline max-w-[120px] truncate">{currentModelLabel}</span>
-                                    {isModelMenuOpen ? (
-                                        <ChevronUp className="w-3 h-3" />
-                                    ) : (
-                                        <ChevronDown className="w-3 h-3" />
-                                    )}
-                                </button>
-
-                                {/* Dropdown menu */}
-                                {isModelMenuOpen && (
-                                    <div
-                                        className="absolute bottom-full mb-2 right-0 w-56 rounded-xl border border-white/10 shadow-xl overflow-hidden z-50"
-                                        style={{ backgroundColor: "#1A1B1E" }}
-                                    >
-                                        <div className="px-3 py-2 border-b border-white/5">
-                                            <p className="text-[10px] uppercase tracking-wider text-white/40 font-medium">Select Model</p>
-                                        </div>
-                                        {availableModels.map((model) => {
-                                            const isActive = model.id === selectedModel;
-                                            const isCloudModel = model.id.includes("cloud");
-                                            return (
-                                                <button
-                                                    key={model.id}
-                                                    onClick={() => {
-                                                        setSelectedModel(model.id);
-                                                        setIsModelMenuOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2.5 flex items-center gap-2.5 transition-colors ${
-                                                        isActive
-                                                            ? "bg-white/10 text-white"
-                                                            : "text-white/60 hover:bg-white/5 hover:text-white/90"
-                                                    }`}
-                                                >
-                                                    {isCloudModel ? (
-                                                        <Cloud className="w-4 h-4 flex-shrink-0" />
-                                                    ) : (
-                                                        <Cpu className="w-4 h-4 flex-shrink-0" />
-                                                    )}
-                                                    <div className="flex flex-col min-w-0">
-                                                        <span className="text-sm font-medium truncate">{model.label}</span>
-                                                        <span className="text-[10px] text-white/30 truncate">{model.id}</span>
-                                                    </div>
-                                                    {isActive && (
-                                                        <span className="ml-auto text-emerald-400 text-xs">✓</span>
-                                                    )}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* RIGHT — Send button or TextToSpeech */}
-                            <div className="flex-shrink-0">
-                                {hasText ? (
-                                    <button
-                                        onClick={handleSend}
+                            <div
+                                className="flex w-full items-center gap-2 rounded-2xl border border-white/5 px-4 py-2 transition-all duration-300 ease-in-out"
+                                style={{ backgroundColor: "#0C0D0D" }}
+                            >
+                                <div className="shrink-0">
+                                    <AttachFile
+                                        onUploadFromComputer={openComputerPicker}
+                                        onUploadFromDrive={openDrivePicker}
                                         disabled={isGenerating}
-                                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors disabled:opacity-40"
-                                        aria-label="Send message"
+                                    />
+                                </div>
+
+                                <textarea
+                                    ref={textareaRef}
+                                    className="min-h-[32px] flex-1 resize-none overflow-hidden border-none bg-transparent px-2 py-1 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+                                    rows={1}
+                                    placeholder="Ask anything..."
+                                    value={value}
+                                    onChange={(event) => setValue(event.target.value)}
+                                    onKeyDown={onTextareaKeyDown}
+                                    disabled={isGenerating}
+                                    aria-label="Chat message input"
+                                />
+
+                                <div className="relative shrink-0" ref={modelMenuRef}>
+                                    <button
+                                        onClick={() => setIsModelMenuOpen((prev) => !prev)}
+                                        className="flex items-center gap-1.5 rounded-lg bg-white/5 px-2.5 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                                        aria-label="Select AI model"
+                                        title={`Model: ${selectedModel}`}
                                     >
-                                        <SendHorizonal className="w-4 h-4 text-white" />
+                                        {selectedModel.includes("cloud") ? (
+                                            <Cloud className="h-3.5 w-3.5" />
+                                        ) : selectedModel.toLowerCase().includes("gemini") ? (
+                                            <Sparkles className="h-3.5 w-3.5" />
+                                        ) : (
+                                            <Cpu className="h-3.5 w-3.5" />
+                                        )}
+                                        <span className="hidden max-w-[120px] truncate sm:inline">
+                                            {currentModelLabel}
+                                        </span>
+                                        {isModelMenuOpen ? (
+                                            <ChevronUp className="h-3 w-3" />
+                                        ) : (
+                                            <ChevronDown className="h-3 w-3" />
+                                        )}
                                     </button>
-                                ) : (
-                                    <TextToSpeech onClick={() => setIsVoiceActive(true)} />
-                                )}
+
+                                    {isModelMenuOpen && (
+                                        <div
+                                            className="absolute bottom-full right-0 z-50 mb-2 w-56 overflow-hidden rounded-xl border border-white/10 shadow-xl"
+                                            style={{ backgroundColor: "#1A1B1E" }}
+                                        >
+                                            <div className="border-b border-white/5 px-3 py-2">
+                                                <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">
+                                                    Select Model
+                                                </p>
+                                            </div>
+                                            {availableModels.map((model) => {
+                                                const isActive = model.id === selectedModel;
+                                                const isCloudModel = model.id.includes("cloud");
+                                                const isGeminiModel = model.id
+                                                    .toLowerCase()
+                                                    .includes("gemini");
+
+                                                return (
+                                                    <button
+                                                        key={model.id}
+                                                        onClick={() => {
+                                                            setSelectedModel(model.id);
+                                                            setIsModelMenuOpen(false);
+                                                        }}
+                                                        className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
+                                                            isActive
+                                                                ? "bg-white/10 text-white"
+                                                                : "text-white/60 hover:bg-white/5 hover:text-white/90"
+                                                        }`}
+                                                    >
+                                                        {isCloudModel ? (
+                                                            <Cloud className="h-4 w-4 shrink-0" />
+                                                        ) : isGeminiModel ? (
+                                                            <Sparkles className="h-4 w-4 shrink-0" />
+                                                        ) : (
+                                                            <Cpu className="h-4 w-4 shrink-0" />
+                                                        )}
+                                                        <div className="min-w-0">
+                                                            <span className="block truncate text-sm font-medium">
+                                                                {model.label}
+                                                            </span>
+                                                            <span className="block truncate text-[10px] text-white/30">
+                                                                {model.id}
+                                                            </span>
+                                                        </div>
+                                                        {isActive && (
+                                                            <span className="ml-auto text-xs text-emerald-400">
+                                                                ✓
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="shrink-0">
+                                    {hasInput ? (
+                                        <button
+                                            onClick={() => void handleSend()}
+                                            disabled={sendDisabled}
+                                            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20 disabled:opacity-40"
+                                            aria-label="Send message"
+                                        >
+                                            {pendingUploads > 0 ? (
+                                                <Loader2 className="h-4 w-4 animate-spin text-white" />
+                                            ) : (
+                                                <SendHorizonal className="h-4 w-4 text-white" />
+                                            )}
+                                        </button>
+                                    ) : (
+                                        <TextToSpeech onClick={() => setIsVoiceActive(true)} />
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
                 </div>
+
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleComputerFilesSelected}
+                    multiple
+                />
+
+                <DrivePickerDialog
+                    open={isDriveDialogOpen}
+                    onOpenChange={setIsDriveDialogOpen}
+                    query={driveSearch}
+                    onQueryChange={setDriveSearch}
+                    files={driveFiles}
+                    isLoading={isLoadingDrive}
+                    onSelectFile={(file) => void addDriveAttachment(file)}
+                />
             </div>
         </div>
     );
