@@ -14,6 +14,7 @@ import { Bot, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AgentTaskMessage } from "./agent-task-message";
+import { MessageAttachmentList } from "./message-attachment-list";
 
 interface ChatMessageItemProps {
     message: ChatMessage;
@@ -55,8 +56,11 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                     }`}
             >
                 {isUser ? (
-                    // User messages — plain text
-                    <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                    <>
+                        <MessageAttachmentList attachments={message.attachments || []} />
+                        {/* User messages — plain text */}
+                        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                    </>
                 ) : (
                     // Assistant messages — rendered as markdown
                     <div className="prose prose-invert prose-sm max-w-none break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">

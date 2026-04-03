@@ -18,7 +18,12 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { CHAT_MODELS } from "@/lib/model-capabilities";
 
-import type { Chat, ChatMessage, ChatAttachment } from "@/modules/chat/types";
+import type {
+    Chat,
+    ChatMessage,
+    ChatAttachment,
+    ChatFailedAttachment,
+} from "@/modules/chat/types";
 import {
     createChat,
     getChats,
@@ -58,7 +63,8 @@ interface ChatContextValue {
     sendMessage: (
         content: string,
         isVoice?: boolean,
-        attachments?: ChatAttachment[]
+        attachments?: ChatAttachment[],
+        failedAttachments?: ChatFailedAttachment[]
     ) => Promise<{ type: string; content?: string; taskId?: string } | undefined>;
     removeChatById: (chatId: string) => Promise<void>;
     renameChat: (chatId: string, newTitle: string) => Promise<void>;
@@ -192,7 +198,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         async (
             content: string,
             isVoice?: boolean,
-            attachments: ChatAttachment[] = []
+            attachments: ChatAttachment[] = [],
+            failedAttachments: ChatFailedAttachment[] = []
         ): Promise<{ type: string; content?: string; taskId?: string } | undefined> => {
             if (!uid || !content.trim()) return undefined;
 
@@ -225,7 +232,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     content,
                     undefined,
                     undefined,
-                    isVoice
+                    isVoice,
+                    attachments
                 );
                 setMessages((prev) => [...prev, userMsg]);
 
@@ -266,6 +274,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         chatId: resolvedChatId,
                         model: selectedModel,
                         attachments,
+                        failedAttachments,
                     }),
                 });
 

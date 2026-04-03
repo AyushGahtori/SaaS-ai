@@ -19,7 +19,7 @@ import {
     Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import type { ChatMessage, MessageRole } from "@/modules/chat/types";
+import type { ChatAttachment, ChatMessage, MessageRole } from "@/modules/chat/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,8 +54,21 @@ export async function createMessage(
     content: string,
     taskId?: string,
     agentId?: string,
-    isVoice?: boolean
+    isVoice?: boolean,
+    attachments: ChatAttachment[] = []
 ): Promise<ChatMessage> {
+    // Never persist raw file bytes in chat messages.
+    const normalizedAttachments = attachments.map((item) => ({
+        id: item.id,
+        source: item.source,
+        name: item.name,
+        mimeType: item.mimeType,
+        ...(typeof item.size === "number" ? { size: item.size } : {}),
+        ...(item.driveFileId ? { driveFileId: item.driveFileId } : {}),
+        ...(item.webViewLink ? { webViewLink: item.webViewLink } : {}),
+        ...(item.storagePath ? { storagePath: item.storagePath } : {}),
+    }));
+
     const messageData: Record<string, unknown> = {
         role,
         content,
@@ -66,6 +79,9 @@ export async function createMessage(
     if (taskId) messageData.taskId = taskId;
     if (agentId) messageData.agentId = agentId;
     if (isVoice) messageData.isVoice = isVoice;
+    if (normalizedAttachments.length > 0) {
+        messageData.attachments = normalizedAttachments;
+    }
 
     const docRef = await addDoc(messagesCol(uid, chatId), messageData);
 
@@ -78,6 +94,7 @@ export async function createMessage(
         ...(taskId && { taskId }),
         ...(agentId && { agentId }),
         ...(isVoice && { isVoice }),
+        ...(normalizedAttachments.length > 0 && { attachments: normalizedAttachments }),
     };
 }
 
@@ -102,6 +119,7 @@ export async function getMessages(
             ...(data.taskId && { taskId: data.taskId }),
             ...(data.agentId && { agentId: data.agentId }),
             ...(data.isVoice && { isVoice: data.isVoice }),
+            ...(Array.isArray(data.attachments) && { attachments: data.attachments as ChatAttachment[] }),
         };
     });
 }

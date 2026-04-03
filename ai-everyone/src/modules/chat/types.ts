@@ -32,6 +32,11 @@ export interface ChatAttachment {
     storagePath?: string;
 }
 
+export interface ChatFailedAttachment {
+    name: string;
+    reason: string;
+}
+
 /** A single message within a chat conversation. */
 export interface ChatMessage {
     id: string;
@@ -45,6 +50,8 @@ export interface ChatMessage {
     agentId?: string;
     /** If true, this message was part of a Voice Session. */
     isVoice?: boolean;
+    /** Files user attached with this prompt (metadata only). */
+    attachments?: ChatAttachment[];
 }
 
 /** Payload sent from the frontend to the /api/chat route. */
@@ -54,6 +61,7 @@ export interface ChatRequestPayload {
     userId?: string;
     model?: string;
     attachments?: ChatAttachment[];
+    failedAttachments?: ChatFailedAttachment[];
 }
 
 /** Response returned by the /api/chat route (normal chat). */
