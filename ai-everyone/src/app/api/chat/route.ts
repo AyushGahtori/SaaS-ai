@@ -212,6 +212,7 @@ function buildDirectAttachmentPrompt(personaContext: string): string {
 
 Current request contains user-uploaded files. You MUST answer directly from those uploaded files and MUST NOT emit <AGENT_INTENT>.
 Do not delegate to Drive/Gmail/any other agent for this turn.
+Exception: if the user explicitly asks for Stara/Strata financial analysis on uploaded files, you MAY delegate to strata-agent (action: upload_report).
 If some files are missing or invalid, continue with valid files and clearly mention which files were skipped.`;
 
     return [attachmentDirective, personaContext].filter(Boolean).join("\n\n");
@@ -407,6 +408,16 @@ For the zoom-agent:
 - list_upcoming_meetings: extract optional "type" (scheduled/upcoming, default upcoming)
 - get_meeting_summary: extract "meetingId"
 
+For the strata-agent:
+- open_workspace: extract optional "symbol", optional "month", optional "months"
+- dashboard: extract optional "symbol", optional "month"
+- trends: extract optional "symbol", optional "months"
+- categories: extract optional "symbol", optional "month"
+- ai_insights: extract optional "symbol"
+- ask: extract "question" and optional "symbol"
+- upload_report: extract optional "reportName" and pass through uploaded attachments only if explicitly present in this request
+- Use strata-agent for company financial analytics, stock trend/snapshot interpretation, profitability breakdowns, and decision insights.
+
 If an agent is needed, output ONLY:
 <AGENT_INTENT>
 {
@@ -492,6 +503,12 @@ function normalizeGoogleIntent(intent: AgentIntent): AgentIntent {
     else if (/\b(search|web|internet|lookup|look up)\b/.test(paramsText)) normalized.parameters.agent_type = "web_search";
 
     return normalized;
+}
+
+function isStrataUploadIntent(intent: AgentIntent): boolean {
+    if (intent.agent_required !== "strata-agent") return false;
+    const action = intent.action.toLowerCase().trim();
+    return action === "upload_report" || action === "analyze_report";
 }
 
 function tryParseAgentIntent(content: string): ParsedIntentResult | { error: true; fallback: string } | null {
@@ -1355,9 +1372,14 @@ export async function POST(req: NextRequest) {
                                   upstreamAbortController.signal
                               );
 
-                        const parseResult = shouldForceDirectAttachmentResponse
-                            ? null
-                            : tryParseAgentIntent(assistantContent);
+                        const parsedIntentOrError = tryParseAgentIntent(assistantContent);
+                        const parseResult =
+                            shouldForceDirectAttachmentResponse &&
+                            parsedIntentOrError &&
+                            !("error" in parsedIntentOrError) &&
+                            !isStrataUploadIntent(parsedIntentOrError.intent)
+                                ? null
+                                : parsedIntentOrError;
                         if (parseResult && "error" in parseResult) {
                             const fallback = parseResult.fallback;
                             if (!streamedText.trim()) {
@@ -1400,15 +1422,32 @@ export async function POST(req: NextRequest) {
                                 return;
                             }
 
+                            const agentInput: Record<string, unknown> = {
+                                action: intent.action,
+                                ...intent.parameters,
+                            };
+
+                            if (
+                                isStrataUploadIntent(intent) &&
+                                !Array.isArray(agentInput.attachments) &&
+                                effectiveAttachments.length > 0
+                            ) {
+                                agentInput.attachments = effectiveAttachments.map((attachment) => ({
+                                    name: attachment.name,
+                                    mimeType: attachment.mimeType,
+                                    size: attachment.size,
+                                    source: attachment.source,
+                                    driveFileId: attachment.driveFileId,
+                                    storagePath: attachment.storagePath,
+                                }));
+                            }
+
                             const task = await createAgentTask({
                                 userId: uid,
                                 chatId,
                                 agentId: intent.agent_required,
                                 parentLLMRequest: intent as unknown as Record<string, unknown>,
-                                agentInput: {
-                                    action: intent.action,
-                                    ...intent.parameters,
-                                },
+                                agentInput,
                             });
 
                             executeAgentTask(task).catch((err) =>

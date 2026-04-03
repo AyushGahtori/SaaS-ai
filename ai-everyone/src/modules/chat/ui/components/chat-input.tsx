@@ -274,6 +274,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
                     className="hidden"
                     onChange={handleComputerFilesSelected}
                     multiple
+                    aria-label="Upload files from computer"
+                    title="Upload files from computer"
                 />
 
                 <DrivePickerDialog

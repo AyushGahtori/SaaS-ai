@@ -22,6 +22,7 @@ Detached runtime contract for all EC2 agents.
 - `GET /notion/health`
 - `GET /maps/health`
 - `GET /emergency/health`
+- `GET /strata/health`
 - `GET /canva/health`
 - `GET /dayplanner/health`
 - `GET /discord/health`
@@ -44,6 +45,7 @@ Detached runtime contract for all EC2 agents.
 - `POST /notion/action`
 - `POST /maps/action`
 - `POST /emergency/action`
+- `POST /strata/action`
 - `POST /canva/action`
 - `POST /dayplanner/action`
 - `POST /discord/action`
@@ -118,7 +120,7 @@ Stored fields:
 
 - OAuth: `teams-agent`, `google-agent`, `notion-agent`, `canva-agent`, `discord-agent`, `dropbox-agent`, `github-agent`, `gitlab-agent`, `jira-agent`, `linkedin-agent`, `zoom-agent`
 - API key: `freshdesk-agent`, `greenhouse-agent`
-- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`
+- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`
 
 ## JS-Parity Notes
 

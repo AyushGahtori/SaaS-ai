@@ -12,6 +12,7 @@ AGENTS = {
     'jira-agent':        ('8009', 'Jira Agent'),
     'linkedin-agent':    ('8010', 'LinkedIn Agent'),
     'zoom-agent':        ('8011', 'Zoom Agent'),
+    'strata-agent':      ('8012', 'Strata Agent'),
 }
 
 base = r'e:\SaaS-ai\ai-everyone\agents'

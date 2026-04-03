@@ -104,6 +104,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 845,
     },
+    "strata-agent": {
+        iconUrl: makeMonogramIcon("Stara", "#0f172a", "#1e3a8a"),
+        installCount: 10200,
+        rating: 4.7,
+        createdAt: "2026-04-03T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 835,
+    },
     "notion-agent": {
         iconUrl: makeMonogramIcon("Notion", "#111827", "#374151"),
         installCount: 15400,

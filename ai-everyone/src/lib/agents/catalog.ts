@@ -156,6 +156,22 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         requiresConnection: false,
     },
     {
+        id: "strata-agent",
+        name: "Stara Agent",
+        description:
+            "Analyze company financials with dashboard snapshots, trend forecasting, category breakdowns, and AI decision insights.",
+        actions: ["open_workspace", "dashboard", "trends", "categories", "ai_insights", "ask", "upload_report"],
+        examplePrompts: [
+            "Open Stara workspace for AAPL",
+            "Show trend analysis for Microsoft",
+            "Ask Stara: why did margin decline this period?",
+        ],
+        provider: "internal",
+        category: "finance",
+        tags: ["finance", "stocks", "analytics", "insights"],
+        requiresConnection: false,
+    },
+    {
         id: "notion-agent",
         name: "Notion Agent",
         description:

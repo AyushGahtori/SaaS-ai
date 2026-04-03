@@ -12,7 +12,8 @@ AGENTS = {
     "greenhouse-agent": 8008,
     "jira-agent": 8009,
     "linkedin-agent": 8010,
-    "zoom-agent": 8011
+    "zoom-agent": 8011,
+    "strata-agent": 8012,
 }
 
 def sync_agents():
