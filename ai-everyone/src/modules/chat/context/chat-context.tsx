@@ -50,6 +50,7 @@ interface ChatContextValue {
     activeChatId: string | null;
     messages: ChatMessage[];
     isGenerating: boolean;
+    isStopping: boolean;
     isLoadingChats: boolean;
     error: string | null;
     taskStatuses: Record<string, { status: string; result?: Record<string, unknown> }>;
@@ -66,6 +67,7 @@ interface ChatContextValue {
         attachments?: ChatAttachment[],
         failedAttachments?: ChatFailedAttachment[]
     ) => Promise<{ type: string; content?: string; taskId?: string } | undefined>;
+    stopGeneration: () => void;
     removeChatById: (chatId: string) => Promise<void>;
     renameChat: (chatId: string, newTitle: string) => Promise<void>;
     setSelectedModel: (model: string) => void;
@@ -95,6 +97,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isStopping, setIsStopping] = useState(false);
     const [isLoadingChats, setIsLoadingChats] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [taskStatuses, setTaskStatuses] = useState<
@@ -105,6 +108,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [pendingVoiceResponse, setPendingVoiceResponse] = useState<string | null>(null);
 
     const abortRef = useRef(false);
+    const requestAbortControllerRef = useRef<AbortController | null>(null);
     const taskListenersRef = useRef<Record<string, () => void>>({});
 
     useEffect(() => {
@@ -116,6 +120,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         return () => {
+            requestAbortControllerRef.current?.abort();
             Object.values(taskListenersRef.current).forEach((unsub) => unsub());
         };
     }, []);
@@ -194,6 +199,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         taskListenersRef.current[taskId] = unsub;
     }, []);
 
+    const stopGeneration = useCallback(() => {
+        if (!isGenerating) return;
+        abortRef.current = true;
+        setIsStopping(true);
+        requestAbortControllerRef.current?.abort();
+    }, [isGenerating]);
+
     const sendMessage = useCallback(
         async (
             content: string,
@@ -204,6 +216,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             if (!uid || !content.trim()) return undefined;
 
             setIsGenerating(true);
+            setIsStopping(false);
             setError(null);
             abortRef.current = false;
 
@@ -262,9 +275,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 if (!token) {
                     throw new Error("Authentication expired. Please sign in again.");
                 }
+                const controller = new AbortController();
+                requestAbortControllerRef.current = controller;
 
                 const res = await fetch("/api/chat", {
                     method: "POST",
+                    signal: controller.signal,
                     headers: {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${token}`,
@@ -414,11 +430,25 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 }
 
                 await updateChat(uid, resolvedChatId, {});
-                setIsGenerating(false);
 
                 return resolvedPayload;
             } catch (err: unknown) {
                 console.error("[sendMessage]", err);
+                const aborted =
+                    (err instanceof DOMException && err.name === "AbortError") ||
+                    (err instanceof Error && err.name === "AbortError") ||
+                    abortRef.current;
+
+                if (aborted) {
+                    // Keep partial response if any text already streamed; otherwise remove placeholder.
+                    setMessages((prev) =>
+                        prev.filter((message) =>
+                            message.id === tempAssistantId ? Boolean(message.content?.trim()) : true
+                        )
+                    );
+                    return { type: "aborted" };
+                }
+
                 if (tempAssistantId) {
                     setMessages((prev) =>
                         prev.filter((message) => message.id !== tempAssistantId)
@@ -427,8 +457,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 setError(
                     err instanceof Error ? err.message : "Failed to send message."
                 );
-                setIsGenerating(false);
                 return undefined;
+            } finally {
+                requestAbortControllerRef.current = null;
+                abortRef.current = false;
+                setIsGenerating(false);
+                setIsStopping(false);
             }
         },
         [uid, activeChatId, messages, watchTask, selectedModel]
@@ -475,6 +509,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         activeChatId,
         messages,
         isGenerating,
+        isStopping,
         isLoadingChats,
         error,
         taskStatuses,
@@ -486,6 +521,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         createNewChat,
         selectChat,
         sendMessage,
+        stopGeneration,
         removeChatById,
         renameChat,
         setSelectedModel,

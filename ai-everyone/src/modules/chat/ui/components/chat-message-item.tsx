@@ -50,7 +50,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
             {/* Message content */}
             <div
-                className={`relative max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${isUser
+                className={`relative max-w-[68%] overflow-hidden rounded-2xl px-4 py-3 text-sm leading-relaxed ${isUser
                         ? "bg-white/10 text-white rounded-br-sm"
                         : "bg-white/5 text-[#E5E5E5] rounded-bl-sm"
                     }`}
@@ -64,7 +64,37 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 ) : (
                     // Assistant messages — rendered as markdown
                     <div className="prose prose-invert prose-sm max-w-none break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                pre: ({ children, ...props }) => (
+                                    <pre
+                                        {...props}
+                                        className="custom-scrollbar max-w-full overflow-x-auto rounded-lg bg-black/25 p-3"
+                                    >
+                                        {children}
+                                    </pre>
+                                ),
+                                code: ({ className, children, ...props }) => {
+                                    const isBlock = Boolean(className && className.includes("language-"));
+                                    if (isBlock) {
+                                        return (
+                                            <code {...props} className={className}>
+                                                {children}
+                                            </code>
+                                        );
+                                    }
+                                    return (
+                                        <code
+                                            {...props}
+                                            className="rounded bg-white/10 px-1.5 py-0.5 text-[0.9em]"
+                                        >
+                                            {children}
+                                        </code>
+                                    );
+                                },
+                            }}
+                        >
                             {message.content}
                         </ReactMarkdown>
                     </div>
