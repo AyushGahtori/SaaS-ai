@@ -266,6 +266,8 @@ export function useChatAttachments(selectedModel: string) {
     };
 
     const clearAttachments = () => setAttachments([]);
+    const restoreAttachments = (snapshot: ChatUploadAttachment[]) =>
+        setAttachments(snapshot);
 
     useEffect(() => {
         if (!isDriveDialogOpen) return;
@@ -306,5 +308,6 @@ export function useChatAttachments(selectedModel: string) {
         handleComputerFilesSelected,
         addDriveAttachment,
         clearAttachments,
+        restoreAttachments,
     };
 }

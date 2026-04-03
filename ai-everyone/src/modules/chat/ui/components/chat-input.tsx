@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Cloud, Cpu, Loader2, SendHorizonal, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Cloud, Cpu, Sparkles } from "lucide-react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import { AttachFile } from "@/modules/home/ui/components/attach-file";
 import { TextToSpeech } from "@/modules/home/ui/components/text-to-speech";
 import { useChatAttachments } from "@/modules/chat/upload/use-chat-attachments";
 import { AttachmentStrip } from "@/modules/chat/upload/components/attachment-strip";
 import { DrivePickerDialog } from "@/modules/chat/upload/components/drive-picker-dialog";
+import { SendStopButton } from "@/modules/chat/ui/components/send-stop-button";
 import VoiceBar from "@/modules/chat/ui/components/VoiceBar";
 
 interface ChatInputProps {
@@ -18,6 +19,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
     const {
         sendMessage,
         isGenerating,
+        isStopping,
+        stopGeneration,
         selectedModel,
         setSelectedModel,
         availableModels,
@@ -51,6 +54,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
         handleComputerFilesSelected,
         addDriveAttachment,
         clearAttachments,
+        restoreAttachments,
     } = useChatAttachments(selectedModel);
 
     useEffect(() => {
@@ -88,10 +92,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
 
         setValue("");
         onFirstMessage?.();
+        const snapshot = [...attachments];
+        clearAttachments();
 
         const content = trimmed || "Please analyze the attached file.";
         const result = await sendMessage(content, false, readyAttachments, failedAttachments);
-        if (result) clearAttachments();
+        if (!result) {
+            restoreAttachments(snapshot);
+        }
     };
 
     const onTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -150,7 +158,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
                                     value={value}
                                     onChange={(event) => setValue(event.target.value)}
                                     onKeyDown={onTextareaKeyDown}
-                                    disabled={isGenerating}
                                     aria-label="Chat message input"
                                 />
 
@@ -236,19 +243,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
                                 </div>
 
                                 <div className="shrink-0">
-                                    {hasInput ? (
-                                        <button
-                                            onClick={() => void handleSend()}
-                                            disabled={sendDisabled}
-                                            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20 disabled:opacity-40"
-                                            aria-label="Send message"
-                                        >
-                                            {pendingUploads > 0 ? (
-                                                <Loader2 className="h-4 w-4 animate-spin text-white" />
-                                            ) : (
-                                                <SendHorizonal className="h-4 w-4 text-white" />
-                                            )}
-                                        </button>
+                                    {hasInput || isGenerating ? (
+                                        <SendStopButton
+                                            isGenerating={isGenerating}
+                                            isStopping={isStopping}
+                                            hasInput={hasInput}
+                                            sendDisabled={sendDisabled}
+                                            onSend={() => void handleSend()}
+                                            onStop={stopGeneration}
+                                        />
                                     ) : (
                                         <TextToSpeech onClick={() => setIsVoiceActive(true)} />
                                     )}

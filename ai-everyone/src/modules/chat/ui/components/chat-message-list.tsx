@@ -25,7 +25,7 @@ export const ChatMessageList: React.FC = () => {
 
     return (
         <div className="flex-1 custom-scrollbar">
-            <div className="max-w-3xl mx-auto py-4 px-4">
+            <div className="max-w-5xl mx-auto py-4 px-4">
                 {/* Render all messages uniformly — no voice session grouping */}
                 {messages.map((msg) => (
                     <ChatMessageItem key={msg.id} message={msg} />

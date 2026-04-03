@@ -583,7 +583,41 @@ function stripBase64Prefix(value: string): string {
     return trimmed.slice(commaIndex + 1);
 }
 
-async function refreshGoogleAccessToken(refreshToken: string): Promise<string | null> {
+function createAbortError(): Error {
+    const error = new Error("The operation was aborted.");
+    error.name = "AbortError";
+    return error;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+        throw createAbortError();
+    }
+}
+
+function isAbortLikeError(error: unknown): boolean {
+    if (!error) return false;
+
+    if (error instanceof Error) {
+        const name = (error.name || "").toLowerCase();
+        const message = (error.message || "").toLowerCase();
+        if (name === "aborterror") return true;
+        if (message.includes("aborted")) return true;
+        if (message.includes("controller is already closed")) return true;
+    }
+
+    if (typeof error === "object" && error !== null) {
+        const code = String((error as { code?: unknown }).code || "").toUpperCase();
+        if (code === "ABORT_ERR" || code === "ERR_ABORTED") return true;
+    }
+
+    return false;
+}
+
+async function refreshGoogleAccessToken(
+    refreshToken: string,
+    abortSignal?: AbortSignal
+): Promise<string | null> {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     if (!clientId || !clientSecret || !refreshToken) return null;
@@ -598,6 +632,7 @@ async function refreshGoogleAccessToken(refreshToken: string): Promise<string | 
     const response = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        signal: abortSignal,
         body,
     });
     if (!response.ok) return null;
@@ -621,8 +656,11 @@ function resolveDriveExportMimeType(sourceMimeType: string): string | null {
 
 async function fetchDriveAttachmentAsBase64(
     uid: string,
-    attachment: ChatAttachment
+    attachment: ChatAttachment,
+    abortSignal?: AbortSignal
 ): Promise<{ mimeType: string; dataBase64: string }> {
+    throwIfAborted(abortSignal);
+
     const connection = await getProviderConnection(uid, "google");
     if (!connection?.accessToken) {
         throw new Error("Google Drive connection is required for Drive attachments.");
@@ -642,11 +680,12 @@ async function fetchDriveAttachmentAsBase64(
     const requestWithToken = async (token: string) =>
         fetch(requestUrl, {
             headers: { Authorization: `Bearer ${token}` },
+            signal: abortSignal,
         });
 
     let response = await requestWithToken(accessToken);
     if (response.status === 401 && connection.refreshToken) {
-        const refreshed = await refreshGoogleAccessToken(connection.refreshToken);
+        const refreshed = await refreshGoogleAccessToken(connection.refreshToken, abortSignal);
         if (refreshed) {
             accessToken = refreshed;
             response = await requestWithToken(accessToken);
@@ -664,6 +703,7 @@ async function fetchDriveAttachmentAsBase64(
         validateSingleAttachmentSize(contentLength, attachment.name || "drive-file");
     }
 
+    throwIfAborted(abortSignal);
     const bytes = Buffer.from(await response.arrayBuffer());
     validateSingleAttachmentSize(bytes.length, attachment.name || "drive-file");
 
@@ -686,13 +726,15 @@ interface BuildAttachmentPartsResult {
 
 async function buildGeminiAttachmentParts(
     uid: string,
-    attachments: ChatAttachment[]
+    attachments: ChatAttachment[],
+    abortSignal?: AbortSignal
 ): Promise<BuildAttachmentPartsResult> {
     const parts: PreparedGeminiAttachmentPart[] = [];
     const failed: ChatFailedAttachment[] = [];
     let totalBytes = 0;
 
     for (const attachment of attachments) {
+        throwIfAborted(abortSignal);
         try {
             if (attachment.source === "computer") {
                 let dataBase64 = attachment.dataBase64 ? stripBase64Prefix(attachment.dataBase64) : "";
@@ -722,7 +764,7 @@ async function buildGeminiAttachmentParts(
             }
 
             if (attachment.source === "drive") {
-                const fetched = await fetchDriveAttachmentAsBase64(uid, attachment);
+                const fetched = await fetchDriveAttachmentAsBase64(uid, attachment, abortSignal);
                 const approxBytes = Math.ceil((fetched.dataBase64.length * 3) / 4);
                 validateSingleAttachmentSize(approxBytes, attachment.name || "attachment");
                 validateTotalAttachmentSize(totalBytes + approxBytes);
@@ -844,11 +886,15 @@ async function streamOllamaChat(
     baseUrl: string,
     model: string,
     messages: { role: string; content: string }[],
-    onDelta: (delta: string) => void
+    onDelta: (delta: string) => void,
+    abortSignal?: AbortSignal
 ): Promise<string> {
+    throwIfAborted(abortSignal);
+
     const response = await fetch(`${baseUrl}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortSignal,
         body: JSON.stringify({
             model,
             messages,
@@ -873,6 +919,14 @@ async function streamOllamaChat(
     let fullContent = "";
 
     while (true) {
+        if (abortSignal?.aborted) {
+            try {
+                await reader.cancel();
+            } catch {
+                // Ignore reader cancel races.
+            }
+            throw createAbortError();
+        }
         const { value, done } = await reader.read();
         if (done) break;
 
@@ -916,8 +970,11 @@ async function streamGeminiChat(
     messages: { role: string; content: string }[],
     attachments: ChatAttachment[],
     uid: string,
-    onDelta: (delta: string) => void
+    onDelta: (delta: string) => void,
+    abortSignal?: AbortSignal
 ): Promise<{ content: string; failedAttachments: ChatFailedAttachment[] }> {
+    throwIfAborted(abortSignal);
+
     const geminiModel = resolveGeminiModel(model);
     const ai = new GoogleGenAI({ apiKey });
     const geminiContentsBase: Array<{ role: "user" | "model"; parts: Part[] }> = [];
@@ -941,7 +998,7 @@ async function streamGeminiChat(
         });
     }
 
-    const builtAttachments = await buildGeminiAttachmentParts(uid, attachments);
+    const builtAttachments = await buildGeminiAttachmentParts(uid, attachments, abortSignal);
     let usableAttachments = [...builtAttachments.parts];
     const failedAttachments: ChatFailedAttachment[] = [...builtAttachments.failed];
 
@@ -970,17 +1027,20 @@ async function streamGeminiChat(
     };
 
     const streamWithAttachments = async (attachmentParts: PreparedGeminiAttachmentPart[]) => {
+        throwIfAborted(abortSignal);
         const stream = await ai.models.generateContentStream({
             model: geminiModel,
             config: {
                 systemInstruction: systemPrompt,
                 temperature: 0.2,
+                abortSignal,
             },
             contents: buildContentsWithAttachments(attachmentParts),
         });
 
         let fullContent = "";
         for await (const chunk of stream) {
+            throwIfAborted(abortSignal);
             const delta = chunk.text || "";
             if (!delta) continue;
             fullContent += delta;
@@ -1004,6 +1064,7 @@ async function streamGeminiChat(
 
         const stillUsable: PreparedGeminiAttachmentPart[] = [];
         for (const item of usableAttachments) {
+            throwIfAborted(abortSignal);
             try {
                 await ai.models.generateContent({
                     model: geminiModel,
@@ -1011,6 +1072,7 @@ async function streamGeminiChat(
                         systemInstruction:
                             "Check if this file can be read. Reply with only OK if readable.",
                         temperature: 0,
+                        abortSignal,
                     },
                     contents: [
                         {
@@ -1183,12 +1245,38 @@ export async function POST(req: NextRequest) {
         ];
 
         const encoder = new TextEncoder();
+        const upstreamAbortController = new AbortController();
+        let streamClosed = false;
         const stream = new ReadableStream({
             start(controller) {
-                const sendEvent = (event: string, data: Record<string, unknown>) => {
-                    controller.enqueue(
-                        encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-                    );
+                const abortUpstream = () => {
+                    if (!upstreamAbortController.signal.aborted) {
+                        upstreamAbortController.abort();
+                    }
+                };
+
+                const safeClose = () => {
+                    if (streamClosed) return;
+                    streamClosed = true;
+                    try {
+                        controller.close();
+                    } catch {
+                        // Ignore close races when stream is already closed/cancelled.
+                    }
+                };
+
+                const sendEvent = (event: string, data: Record<string, unknown>): boolean => {
+                    if (streamClosed) return false;
+                    try {
+                        controller.enqueue(
+                            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+                        );
+                        return true;
+                    } catch {
+                        streamClosed = true;
+                        abortUpstream();
+                        return false;
+                    }
                 };
 
                 const run = async () => {
@@ -1198,6 +1286,11 @@ export async function POST(req: NextRequest) {
                         let streamMode: "undecided" | "text" | "intent" = "undecided";
 
                         const handleDelta = (delta: string) => {
+                            if (streamClosed) {
+                                abortUpstream();
+                                return;
+                            }
+
                             heldBuffer += delta;
 
                             if (streamMode === "undecided") {
@@ -1243,7 +1336,8 @@ export async function POST(req: NextRequest) {
                                       })),
                                       effectiveAttachments,
                                       uid,
-                                      handleDelta
+                                      handleDelta,
+                                      upstreamAbortController.signal
                                   );
                                   if (result.failedAttachments.length > 0) {
                                       attachmentFailuresForResponse = [
@@ -1253,7 +1347,13 @@ export async function POST(req: NextRequest) {
                                   }
                                   return result.content;
                               })()
-                            : await streamOllamaChat(baseUrl, model, messagesForModel, handleDelta);
+                            : await streamOllamaChat(
+                                  baseUrl,
+                                  model,
+                                  messagesForModel,
+                                  handleDelta,
+                                  upstreamAbortController.signal
+                              );
 
                         const parseResult = shouldForceDirectAttachmentResponse
                             ? null
@@ -1264,7 +1364,7 @@ export async function POST(req: NextRequest) {
                                 sendEvent("text", { content: fallback });
                             }
                             sendEvent("done", { type: "chat", content: fallback });
-                            controller.close();
+                            safeClose();
                             return;
                         }
 
@@ -1276,7 +1376,7 @@ export async function POST(req: NextRequest) {
                                     sendEvent("text", { content: googleLimitMessage });
                                 }
                                 sendEvent("done", { type: "chat", content: googleLimitMessage });
-                                controller.close();
+                                safeClose();
                                 return;
                             }
 
@@ -1286,7 +1386,7 @@ export async function POST(req: NextRequest) {
                                     sendEvent("text", { content: installMessage });
                                 }
                                 sendEvent("done", { type: "chat", content: installMessage });
-                                controller.close();
+                                safeClose();
                                 return;
                             }
 
@@ -1296,7 +1396,7 @@ export async function POST(req: NextRequest) {
                                     sendEvent("text", { content: connectMessage });
                                 }
                                 sendEvent("done", { type: "chat", content: connectMessage });
-                                controller.close();
+                                safeClose();
                                 return;
                             }
 
@@ -1336,7 +1436,7 @@ export async function POST(req: NextRequest) {
                                 status: "queued",
                                 content,
                             });
-                            controller.close();
+                            safeClose();
                             return;
                         }
 
@@ -1359,17 +1459,29 @@ export async function POST(req: NextRequest) {
                             type: "chat",
                             content: combinedContent || streamedText || "No response received.",
                         });
-                        controller.close();
+                        safeClose();
                     } catch (error) {
+                        if (isAbortLikeError(error) || upstreamAbortController.signal.aborted) {
+                            safeClose();
+                            return;
+                        }
                         console.error("[Chat API Error]", error);
                         const message =
                             error instanceof Error ? error.message : "Internal server error";
                         sendEvent("error", { error: message });
-                        controller.close();
+                        safeClose();
                     }
                 };
 
                 void run();
+            },
+            cancel() {
+                // Client disconnected (tab close/navigation/abort). Prevent late enqueue calls.
+                // Abort upstream provider call too, so token/cost consumption stops ASAP.
+                streamClosed = true;
+                if (!upstreamAbortController.signal.aborted) {
+                    upstreamAbortController.abort();
+                }
             },
         });
 
