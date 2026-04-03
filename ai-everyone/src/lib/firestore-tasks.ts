@@ -25,7 +25,13 @@ import { db } from "@/lib/firebase";
 // Types
 // ---------------------------------------------------------------------------
 
-export type TaskStatus = "queued" | "running" | "success" | "failed" | "action_required";
+export type TaskStatus =
+    | "queued"
+    | "running"
+    | "success"
+    | "failed"
+    | "action_required"
+    | "needs_input";
 
 export interface AgentTask {
     taskId: string;

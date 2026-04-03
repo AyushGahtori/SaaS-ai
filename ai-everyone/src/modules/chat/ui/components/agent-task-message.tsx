@@ -49,6 +49,30 @@ interface DriveRow {
     modifiedTime: string;
 }
 
+function getNeedsInputSummary(result?: Record<string, unknown>): string | null {
+    if (!result) return null;
+    const summary = result.summary;
+    if (typeof summary === "string" && summary.trim()) {
+        return summary.trim();
+    }
+
+    const message = result.message;
+    if (typeof message === "string" && message.trim()) {
+        return message.trim();
+    }
+
+    const payload =
+        typeof result.result === "object" && result.result !== null
+            ? (result.result as Record<string, unknown>)
+            : undefined;
+    const missing = payload?.missing_fields;
+    if (Array.isArray(missing) && missing.length > 0) {
+        return `More details are needed: ${missing.map((field) => String(field)).join(", ")}.`;
+    }
+
+    return null;
+}
+
 function normalizeString(value: unknown, fallback = "-") {
     if (typeof value === "string" && value.trim().length > 0) {
         return value.trim();
@@ -306,7 +330,12 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({ to: emailTo.trim(), subject, body }),
+                body: JSON.stringify({
+                    to: emailTo.trim(),
+                    subject,
+                    body,
+                    emergencyPayload: emergencyResult,
+                }),
             });
 
             const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
@@ -328,6 +357,8 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
                 return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
             case "action_required":
                 return <Key className="w-4 h-4 text-sky-400" />;
+            case "needs_input":
+                return <AlertTriangle className="w-4 h-4 text-amber-300" />;
             case "success":
                 return <CheckCircle className="w-4 h-4 text-green-400" />;
             case "failed":
@@ -341,6 +372,7 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
         queued: "border-yellow-500/20 bg-yellow-500/5",
         running: "border-blue-500/20 bg-blue-500/5",
         action_required: "border-sky-500/20 bg-sky-500/5",
+        needs_input: "border-amber-500/20 bg-amber-500/5",
         success: "border-green-500/20 bg-green-500/5",
         failed: "border-red-500/20 bg-red-500/5",
     };
@@ -349,6 +381,7 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
         queued: "Queued",
         running: "Running...",
         action_required: "Auth Required",
+        needs_input: "Needs Input",
         success: "Completed",
         failed: "Failed",
     };
@@ -386,6 +419,16 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
                         }).catch(console.error);
                     }}
                 />
+            );
+        }
+
+        if (status === "needs_input") {
+            const needsSummary = getNeedsInputSummary(result);
+            if (!needsSummary) return null;
+            return (
+                <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                    {needsSummary}
+                </div>
             );
         }
 

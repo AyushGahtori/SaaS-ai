@@ -18,6 +18,20 @@ export interface Chat {
 /** The role of a message sender. */
 export type MessageRole = "user" | "assistant" | "agent";
 
+export type ChatAttachmentSource = "computer" | "drive";
+
+export interface ChatAttachment {
+    id: string;
+    source: ChatAttachmentSource;
+    name: string;
+    mimeType: string;
+    size?: number;
+    dataBase64?: string;
+    driveFileId?: string;
+    webViewLink?: string;
+    storagePath?: string;
+}
+
 /** A single message within a chat conversation. */
 export interface ChatMessage {
     id: string;
@@ -38,6 +52,8 @@ export interface ChatRequestPayload {
     messages: { role: MessageRole; content: string; isVoice?: boolean }[];
     chatId?: string;
     userId?: string;
+    model?: string;
+    attachments?: ChatAttachment[];
 }
 
 /** Response returned by the /api/chat route (normal chat). */

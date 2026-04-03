@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { GoogleGenAI, type Part } from "@google/genai";
 import { createAgentTask, executeAgentTask } from "@/lib/firestore-tasks.server";
 import { isTriggerMessage, isPersonalContextQuery } from "@/lib/memory/trigger-detector";
 import { extractMemories } from "@/lib/memory/extractor";
@@ -25,15 +26,34 @@ import {
 } from "@/lib/agents/catalog";
 import {
     getAccessibleAgentIds,
+    getProviderConnection,
     getInstalledAgentIds,
 } from "@/lib/agents/user-access.server";
+import { isGeminiModel as isGeminiChatModel } from "@/lib/model-capabilities";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
+import {
+    cleanupExpiredUploadedDocs,
+    listRecentUploadedDocs,
+    readStoredUploadedDocAsBase64,
+    type UploadedDocRecord,
+} from "@/lib/uploads/uploaded-docs.server";
 
 const GOOGLE_AGENT_TYPES = new Set(["calendar", "gmail", "meet", "drive", "tasks", "web_search"]);
 
 interface ChatRequestMessage {
     role: string;
     content: string;
+}
+
+interface ChatAttachment {
+    id: string;
+    source: "computer" | "drive";
+    name: string;
+    mimeType: string;
+    size?: number;
+    dataBase64?: string;
+    driveFileId?: string;
+    storagePath?: string;
 }
 
 interface AgentIntent {
@@ -46,6 +66,83 @@ interface AgentIntent {
 interface ParsedIntentResult {
     intent: AgentIntent;
     conversationalText: string;
+}
+
+const GEMINI_MODEL_ALIASES: Record<string, string> = {
+    "gemini-3-pro": process.env.GEMINI_MODEL_PRO || "gemini-3-pro",
+    "gemini-3-flash": process.env.GEMINI_MODEL_FLASH || "gemini-3-flash",
+    "gemini-3.1-flash-lite":
+        process.env.GEMINI_MODEL_FLASH_LITE || "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview":
+        process.env.GEMINI_MODEL_FLASH || "gemini-3-flash-preview",
+    "gemini-3.1-pro-preview":
+        process.env.GEMINI_MODEL_PRO || "gemini-3.1-pro-preview",
+    "gemini-3.1-flash-lite-preview":
+        process.env.GEMINI_MODEL_FLASH_LITE || "gemini-3.1-flash-lite-preview",
+};
+
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+function normalizeName(value: string): string {
+    return value.toLowerCase().replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function extractPossibleFileNameHints(message: string): string[] {
+    const lower = message.toLowerCase();
+    const hints = new Set<string>();
+
+    const withExtension = lower.match(/\b[a-z0-9 _.-]+\.(pdf|docx|doc|txt|md|csv|xlsx|pptx)\b/g) || [];
+    for (const item of withExtension) hints.add(normalizeName(item));
+
+    const quoted = lower.match(/["“](.*?)["”]/g) || [];
+    for (const raw of quoted) {
+        const cleaned = raw.replace(/["“”]/g, "").trim();
+        if (cleaned) hints.add(normalizeName(cleaned));
+    }
+
+    const stem = lower.match(/\b(?:file|pdf|document|doc)\s+(?:named|called)\s+([a-z0-9 _.-]{2,80})\b/);
+    if (stem?.[1]) hints.add(normalizeName(stem[1]));
+
+    return Array.from(hints);
+}
+
+function isUploadFollowupMessage(message: string): boolean {
+    const lower = message.toLowerCase();
+    const followupSignals = [
+        "that file",
+        "this file",
+        "uploaded file",
+        "the uploaded file",
+        "that pdf",
+        "this pdf",
+        "that document",
+        "this document",
+        "from earlier",
+        "i uploaded",
+        "previous file",
+        "last file",
+        "summarize the file",
+        "read the file",
+    ];
+
+    if (followupSignals.some((signal) => lower.includes(signal))) return true;
+    if (extractPossibleFileNameHints(message).length > 0) return true;
+    return false;
+}
+
+function matchDocsByHint(message: string, docs: UploadedDocRecord[]): UploadedDocRecord[] {
+    const hints = extractPossibleFileNameHints(message);
+    if (hints.length === 0) return [];
+
+    const result: UploadedDocRecord[] = [];
+    for (const doc of docs) {
+        const normalizedDocName = normalizeName(doc.name);
+        const matched = hints.some(
+            (hint) => normalizedDocName.includes(hint) || hint.includes(normalizedDocName)
+        );
+        if (matched) result.push(doc);
+    }
+    return result;
 }
 
 function isAcknowledgementOnlyMessage(text: string): boolean {
@@ -396,6 +493,189 @@ function getGoogleIntentLimitViolation(intent: AgentIntent, userMessage: string)
     return null;
 }
 
+function resolveGeminiModel(model: string): string {
+    return GEMINI_MODEL_ALIASES[model] || model;
+}
+
+function stripBase64Prefix(value: string): string {
+    const trimmed = value.trim();
+    const commaIndex = trimmed.indexOf(",");
+    if (commaIndex === -1) return trimmed;
+    return trimmed.slice(commaIndex + 1);
+}
+
+async function refreshGoogleAccessToken(refreshToken: string): Promise<string | null> {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret || !refreshToken) return null;
+
+    const body = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: "refresh_token",
+    });
+
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+    });
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as { access_token?: string };
+    return payload.access_token || null;
+}
+
+function resolveDriveExportMimeType(sourceMimeType: string): string | null {
+    switch (sourceMimeType) {
+        case "application/vnd.google-apps.document":
+            return "text/plain";
+        case "application/vnd.google-apps.presentation":
+            return "text/plain";
+        case "application/vnd.google-apps.spreadsheet":
+            return "text/csv";
+        default:
+            return null;
+    }
+}
+
+async function fetchDriveAttachmentAsBase64(
+    uid: string,
+    attachment: ChatAttachment
+): Promise<{ mimeType: string; dataBase64: string }> {
+    const connection = await getProviderConnection(uid, "google");
+    if (!connection?.accessToken) {
+        throw new Error("Google Drive connection is required for Drive attachments.");
+    }
+    if (!attachment.driveFileId) {
+        throw new Error(`Drive attachment "${attachment.name}" is missing a file id.`);
+    }
+
+    let accessToken = connection.accessToken;
+    const exportMimeType = resolveDriveExportMimeType(attachment.mimeType);
+    const requestUrl = exportMimeType
+        ? `https://www.googleapis.com/drive/v3/files/${attachment.driveFileId}/export?mimeType=${encodeURIComponent(
+              exportMimeType
+          )}`
+        : `https://www.googleapis.com/drive/v3/files/${attachment.driveFileId}?alt=media`;
+
+    const requestWithToken = async (token: string) =>
+        fetch(requestUrl, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+
+    let response = await requestWithToken(accessToken);
+    if (response.status === 401 && connection.refreshToken) {
+        const refreshed = await refreshGoogleAccessToken(connection.refreshToken);
+        if (refreshed) {
+            accessToken = refreshed;
+            response = await requestWithToken(accessToken);
+        }
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            `Could not download Drive file "${attachment.name}" (status ${response.status}).`
+        );
+    }
+
+    const contentLength = Number(response.headers.get("content-length") || "0");
+    if (contentLength > MAX_ATTACHMENT_BYTES) {
+        throw new Error(
+            `Drive file "${attachment.name}" is too large. Max size is ${Math.round(
+                MAX_ATTACHMENT_BYTES / (1024 * 1024)
+            )}MB.`
+        );
+    }
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > MAX_ATTACHMENT_BYTES) {
+        throw new Error(
+            `Drive file "${attachment.name}" is too large. Max size is ${Math.round(
+                MAX_ATTACHMENT_BYTES / (1024 * 1024)
+            )}MB.`
+        );
+    }
+
+    return {
+        mimeType: exportMimeType || attachment.mimeType || "application/octet-stream",
+        dataBase64: bytes.toString("base64"),
+    };
+}
+
+async function buildGeminiAttachmentParts(
+    uid: string,
+    attachments: ChatAttachment[]
+): Promise<Part[]> {
+    const parts: Part[] = [];
+
+    for (const attachment of attachments) {
+        if (attachment.source === "computer") {
+            let dataBase64 = attachment.dataBase64 ? stripBase64Prefix(attachment.dataBase64) : "";
+            if (!dataBase64 && attachment.storagePath) {
+                dataBase64 = await readStoredUploadedDocAsBase64(uid, attachment.storagePath);
+            }
+            if (!dataBase64) {
+                throw new Error(`Attachment "${attachment.name}" is missing file data.`);
+            }
+            const approxBytes = Math.ceil((dataBase64.length * 3) / 4);
+            if (approxBytes > MAX_ATTACHMENT_BYTES) {
+                throw new Error(
+                    `Attachment "${attachment.name}" is too large. Max size is ${Math.round(
+                        MAX_ATTACHMENT_BYTES / (1024 * 1024)
+                    )}MB.`
+                );
+            }
+            parts.push({
+                inlineData: {
+                    mimeType: attachment.mimeType || "application/octet-stream",
+                    data: dataBase64,
+                },
+            });
+            continue;
+        }
+
+        if (attachment.source === "drive") {
+            const fetched = await fetchDriveAttachmentAsBase64(uid, attachment);
+            parts.push({
+                inlineData: {
+                    mimeType: fetched.mimeType,
+                    data: fetched.dataBase64,
+                },
+            });
+        }
+    }
+
+    return parts;
+}
+
+function uploadedDocToAttachment(doc: UploadedDocRecord): ChatAttachment | null {
+    if (doc.source === "drive" && doc.driveFileId) {
+        return {
+            id: `uploaded-${doc.docId}`,
+            source: "drive",
+            name: doc.name,
+            mimeType: doc.mimeType,
+            size: doc.size,
+            driveFileId: doc.driveFileId,
+        };
+    }
+
+    if (doc.source === "computer" && doc.storagePath) {
+        return {
+            id: `uploaded-${doc.docId}`,
+            source: "computer",
+            name: doc.name,
+            mimeType: doc.mimeType,
+            size: doc.size,
+            storagePath: doc.storagePath || undefined,
+        };
+    }
+
+    return null;
+}
+
 function triggerMemoryExtraction(
     uid: string,
     chatId: string | undefined,
@@ -521,6 +801,80 @@ async function streamOllamaChat(
     return fullContent;
 }
 
+async function streamGeminiChat(
+    apiKey: string,
+    model: string,
+    systemPrompt: string,
+    messages: { role: string; content: string }[],
+    attachments: ChatAttachment[],
+    uid: string,
+    onDelta: (delta: string) => void
+): Promise<string> {
+    const geminiModel = resolveGeminiModel(model);
+    const geminiContents: Array<{ role: "user" | "model"; parts: Part[] }> = [];
+
+    for (const message of messages) {
+        const role: "user" | "model" =
+            message.role === "assistant" || message.role === "agent" ? "model" : "user";
+        const content = message.content?.trim();
+        if (!content) continue;
+
+        geminiContents.push({
+            role,
+            parts: [{ text: content }],
+        });
+    }
+
+    if (attachments.length > 0) {
+        const attachmentParts = await buildGeminiAttachmentParts(uid, attachments);
+        if (attachmentParts.length > 0) {
+            const attachmentLabel = attachments
+                .map((attachment) => attachment.name)
+                .filter(Boolean)
+                .join(", ");
+
+            geminiContents.push({
+                role: "user",
+                parts: [
+                    {
+                        text: attachmentLabel
+                            ? `Use the attached file(s): ${attachmentLabel}`
+                            : "Use the attached file(s).",
+                    },
+                    ...attachmentParts,
+                ],
+            });
+        }
+    }
+
+    if (geminiContents.length === 0) {
+        geminiContents.push({
+            role: "user",
+            parts: [{ text: "Hello" }],
+        });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const stream = await ai.models.generateContentStream({
+        model: geminiModel,
+        config: {
+            systemInstruction: systemPrompt,
+            temperature: 0.2,
+        },
+        contents: geminiContents,
+    });
+
+    let fullContent = "";
+    for await (const chunk of stream) {
+        const delta = chunk.text || "";
+        if (!delta) continue;
+        fullContent += delta;
+        onDelta(delta);
+    }
+
+    return fullContent.trim();
+}
+
 export async function POST(req: NextRequest) {
     const verifiedUser = await verifyFirebaseRequest(req);
     if (!verifiedUser) {
@@ -529,10 +883,11 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { messages, chatId } = body as {
+        const { messages, chatId, attachments = [] } = body as {
             messages: ChatRequestMessage[];
             chatId?: string;
             model?: string;
+            attachments?: ChatAttachment[];
         };
 
         if (!Array.isArray(messages) || messages.length === 0) {
@@ -543,11 +898,51 @@ export async function POST(req: NextRequest) {
         }
 
         const uid = verifiedUser.uid;
+        cleanupExpiredUploadedDocs(uid).catch((error) => {
+            console.error("[UploadedDocsCleanup] failed:", error);
+        });
         const baseUrl = process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434";
         const model = body.model || process.env.OLLAMA_DEFAULT_MODEL || "qwen3.5:397b-cloud";
-
+        const normalizedAttachments = Array.isArray(attachments) ? attachments : [];
+        const usingGemini = isGeminiChatModel(model);
+        const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || "";
         const lastUserMessage =
             [...messages].reverse().find((message) => message.role === "user")?.content || "";
+        let effectiveAttachments = normalizedAttachments;
+
+        if (
+            usingGemini &&
+            effectiveAttachments.length === 0 &&
+            lastUserMessage &&
+            isUploadFollowupMessage(lastUserMessage)
+        ) {
+            const recentUploadedDocs = await listRecentUploadedDocs(uid, 10);
+            let matchedDocs = matchDocsByHint(lastUserMessage, recentUploadedDocs);
+            if (matchedDocs.length === 0 && recentUploadedDocs.length > 0) {
+                matchedDocs = [recentUploadedDocs[0] as UploadedDocRecord];
+            }
+
+            effectiveAttachments = matchedDocs
+                .map(uploadedDocToAttachment)
+                .filter((item): item is ChatAttachment => Boolean(item));
+        }
+
+        if (effectiveAttachments.length > 0 && !usingGemini) {
+            return NextResponse.json(
+                {
+                    error:
+                        "File attachments currently require a Gemini model. Please switch the model and try again.",
+                },
+                { status: 400 }
+            );
+        }
+
+        if (usingGemini && !geminiApiKey) {
+            return NextResponse.json(
+                { error: "GEMINI_API_KEY is not configured on the server." },
+                { status: 500 }
+            );
+        }
 
         // Avoid re-triggering agent tasks when user only sends an acknowledgement.
         if (isAcknowledgementOnlyMessage(lastUserMessage)) {
@@ -594,7 +989,7 @@ export async function POST(req: NextRequest) {
             .filter(Boolean)
             .join("\n\n");
 
-        const messagesForOllama = [
+        const messagesForModel = [
             { role: "system", content: systemPrompt },
             ...messages.map((message) => ({
                 role: message.role === "agent" ? "assistant" : message.role,
@@ -651,12 +1046,20 @@ export async function POST(req: NextRequest) {
                             }
                         };
 
-                        const assistantContent = await streamOllamaChat(
-                            baseUrl,
-                            model,
-                            messagesForOllama,
-                            handleDelta
-                        );
+                        const assistantContent = usingGemini
+                            ? await streamGeminiChat(
+                                  geminiApiKey,
+                                  model,
+                                  systemPrompt,
+                                  messages.map((message) => ({
+                                      role: message.role === "agent" ? "assistant" : message.role,
+                                      content: message.content,
+                                  })),
+                                  effectiveAttachments,
+                                  uid,
+                                  handleDelta
+                              )
+                            : await streamOllamaChat(baseUrl, model, messagesForModel, handleDelta);
 
                         const parseResult = tryParseAgentIntent(assistantContent);
                         if (parseResult && "error" in parseResult) {

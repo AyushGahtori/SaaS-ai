@@ -9,10 +9,22 @@
 
 import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getStorage, type Storage } from "firebase-admin/storage";
 import path from "path";
 import fs from "fs";
 
 let adminApp: App;
+
+function normalizeBucketName(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+
+    // Accept both "bucket-name" and "gs://bucket-name[/...]" formats.
+    const noScheme = trimmed.replace(/^gs:\/\//i, "");
+    const bucketOnly = noScheme.split("/")[0];
+    return bucketOnly || undefined;
+}
 
 if (!getApps().length) {
     const keyPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "./serviceAccountKey.json";
@@ -26,9 +38,17 @@ if (!getApps().length) {
     }
 
     const serviceAccount = JSON.parse(fs.readFileSync(resolvedPath, "utf-8"));
+    const bucketName = normalizeBucketName(
+        process.env.FIREBASE_STORAGE_BUCKET ||
+            process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
+            (serviceAccount.project_id
+                ? `${serviceAccount.project_id}.appspot.com`
+                : undefined)
+    );
 
     adminApp = initializeApp({
         credential: cert(serviceAccount),
+        ...(bucketName ? { storageBucket: bucketName } : {}),
     }, "admin");
 } else {
     adminApp = getApps()[0]!;
@@ -36,5 +56,6 @@ if (!getApps().length) {
 
 /** Admin Firestore instance — bypasses client security rules. */
 export const adminDb: Firestore = getFirestore(adminApp);
+export const adminStorage: Storage = getStorage(adminApp);
 
 export default adminApp;

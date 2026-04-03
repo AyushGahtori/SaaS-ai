@@ -16,8 +16,9 @@ import React, {
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { CHAT_MODELS } from "@/lib/model-capabilities";
 
-import type { Chat, ChatMessage } from "@/modules/chat/types";
+import type { Chat, ChatMessage, ChatAttachment } from "@/modules/chat/types";
 import {
     createChat,
     getChats,
@@ -56,7 +57,8 @@ interface ChatContextValue {
     selectChat: (chatId: string) => Promise<void>;
     sendMessage: (
         content: string,
-        isVoice?: boolean
+        isVoice?: boolean,
+        attachments?: ChatAttachment[]
     ) => Promise<{ type: string; content?: string; taskId?: string } | undefined>;
     removeChatById: (chatId: string) => Promise<void>;
     renameChat: (chatId: string, newTitle: string) => Promise<void>;
@@ -76,10 +78,10 @@ export function useChatContext(): ChatContextValue {
     return ctx;
 }
 
-const AVAILABLE_MODELS = [
-    { id: "qwen3.5:397b-cloud", label: "Cloud · High Accuracy" },
-    { id: "qwen2.5:7b", label: "Local · Fast" },
-];
+const AVAILABLE_MODELS = CHAT_MODELS.map((model) => ({
+    id: model.id,
+    label: model.label,
+}));
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [uid, setUid] = useState<string | null>(null);
@@ -173,7 +175,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 },
             }));
 
-            if (task.status === "success" || task.status === "failed") {
+            if (
+                task.status === "success" ||
+                task.status === "failed" ||
+                task.status === "needs_input"
+            ) {
                 unsub();
                 delete taskListenersRef.current[taskId];
             }
@@ -185,7 +191,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const sendMessage = useCallback(
         async (
             content: string,
-            isVoice?: boolean
+            isVoice?: boolean,
+            attachments: ChatAttachment[] = []
         ): Promise<{ type: string; content?: string; taskId?: string } | undefined> => {
             if (!uid || !content.trim()) return undefined;
 
@@ -258,6 +265,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         messages: historyForApi,
                         chatId: resolvedChatId,
                         model: selectedModel,
+                        attachments,
                     }),
                 });
 

@@ -207,11 +207,16 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         console.log(`[executeAgentTask] Agent result`, result);
 
         // ── 4. Update task with result ────────────────────────────────
-        if (result.status === "success" || result.status === "action_required") {
+        if (
+            result.status === "success" ||
+            result.status === "action_required" ||
+            result.status === "needs_input"
+        ) {
             await taskRef.update({
                 status: result.status,
                 agentOutput: result,
-                finishedAt: result.status === "success" ? FieldValue.serverTimestamp() : null, // leave unfinished if action_required
+                // Keep non-success tasks open for follow-up context and potential retry.
+                finishedAt: result.status === "success" ? FieldValue.serverTimestamp() : null,
             });
         } else {
             await taskRef.update({

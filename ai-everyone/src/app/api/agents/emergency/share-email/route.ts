@@ -10,6 +10,66 @@ import { verifyFirebaseRequest } from "@/lib/server-auth";
 
 const GOOGLE_AGENT_ID = "google-agent";
 
+type EmergencyPayload = {
+    severity?: unknown;
+    advice?: unknown;
+    location?: unknown;
+    hospitals?: unknown;
+    share?: unknown;
+    emergencyMessage?: unknown;
+    originalDescription?: unknown;
+};
+
+function toText(value: unknown): string {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function buildEmergencyEmailFromPayload(payload: EmergencyPayload): { subject: string; body: string } {
+    const severity = toText(payload.severity).toUpperCase() || "HIGH";
+    const advice = toText(payload.advice) || "Please call emergency services immediately (108).";
+    const description =
+        toText(payload.originalDescription) ||
+        toText(payload.emergencyMessage) ||
+        "Medical emergency reported.";
+
+    const locationObj =
+        payload.location && typeof payload.location === "object"
+            ? (payload.location as Record<string, unknown>)
+            : {};
+    const locationLabel = toText(locationObj.label) || "Unknown";
+    const mapUrl = toText(locationObj.mapUrl);
+
+    const hospitals = Array.isArray(payload.hospitals) ? payload.hospitals : [];
+    const nearestHospital = hospitals[0] && typeof hospitals[0] === "object"
+        ? (hospitals[0] as Record<string, unknown>)
+        : null;
+    const nearestName = nearestHospital ? toText(nearestHospital.name) || "Unknown hospital" : "Unknown hospital";
+    const nearestDistance = nearestHospital ? toText(nearestHospital.distanceLabel) : "";
+
+    const subject = `[${severity}] Emergency Alert - Immediate Assistance Needed`;
+    const body = [
+        "EMERGENCY ALERT",
+        "",
+        `Severity: ${severity}`,
+        `Situation: ${description}`,
+        "",
+        "Immediate advice:",
+        `- ${advice}`,
+        "- Call ambulance: 108",
+        "",
+        "Location:",
+        `- ${locationLabel}`,
+        mapUrl ? `- ${mapUrl}` : "- Map link unavailable",
+        "",
+        "Nearest hospital:",
+        `- ${nearestName}${nearestDistance ? ` (${nearestDistance})` : ""}`,
+        "",
+        "Please contact me urgently.",
+    ].join("\n");
+
+    return { subject, body };
+}
+
 export async function POST(req: NextRequest) {
     const verifiedUser = await verifyFirebaseRequest(req);
     if (!verifiedUser) {
@@ -19,12 +79,29 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         const to = typeof body?.to === "string" ? body.to.trim() : "";
-        const subject = typeof body?.subject === "string" ? body.subject.trim() : "";
-        const emailBody = typeof body?.body === "string" ? body.body.trim() : "";
+        let subject = typeof body?.subject === "string" ? body.subject.trim() : "";
+        let emailBody = typeof body?.body === "string" ? body.body.trim() : "";
+
+        if (!subject || !emailBody) {
+            const emergencyPayload = (body?.emergencyPayload || {}) as EmergencyPayload;
+            const share =
+                emergencyPayload.share && typeof emergencyPayload.share === "object"
+                    ? (emergencyPayload.share as Record<string, unknown>)
+                    : {};
+
+            subject = subject || toText(share.emailSubject);
+            emailBody = emailBody || toText(share.emailBody) || toText(share.copyMessage);
+
+            if (!subject || !emailBody) {
+                const generated = buildEmergencyEmailFromPayload(emergencyPayload);
+                subject = subject || generated.subject;
+                emailBody = emailBody || generated.body;
+            }
+        }
 
         if (!to || !subject || !emailBody) {
             return NextResponse.json(
-                { error: "to, subject, and body are required." },
+                { error: "Recipient email is required. Could not build emergency subject/body payload." },
                 { status: 400 }
             );
         }
