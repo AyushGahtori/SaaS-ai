@@ -26,6 +26,7 @@ For OAuth-capable agents:
 - Freshdesk: `FRESHDESK_API_KEY` (and `FRESHDESK_DOMAIN` if required)
 - Greenhouse: `GREENHOUSE_API_KEY`
 - Maps/Emergency: `GOOGLE_MAPS_API_KEY`
+- Strata: `FMP_API_KEY` (optional `FMP_BASE_URL`, `STRATA_DEFAULT_SYMBOL`)
 
 OAuth callback pattern for provider consoles:
 
@@ -59,7 +60,7 @@ sudo ./deploy.sh
 
 ```bash
 # Service state
-for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent; do
+for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent strata-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent; do
   systemctl is-active "$s"
 done
 

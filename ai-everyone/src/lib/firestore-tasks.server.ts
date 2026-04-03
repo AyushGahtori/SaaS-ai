@@ -32,6 +32,7 @@ const AGENT_ROUTES: Record<string, string> = {
     "notion-agent":      "/notion/action",
     "maps-agent":        "/maps/action",
     "emergency-response-agent": "/emergency/action",
+    "strata-agent":      "/strata/action",
     // New integration agents
     "canva-agent":       "/canva/action",
     "day-planner-agent": "/dayplanner/action",
@@ -152,6 +153,7 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "notion-agent":      process.env.NOTION_AGENT_URL,
         "maps-agent":        process.env.MAPS_AGENT_URL,
         "emergency-response-agent": process.env.EMERGENCY_RESPONSE_AGENT_URL,
+        "strata-agent":      process.env.STRATA_AGENT_URL,
         "canva-agent":       process.env.CANVA_AGENT_URL,
         "day-planner-agent": process.env.DAY_PLANNER_AGENT_URL,
         "discord-agent":     process.env.DISCORD_AGENT_URL,

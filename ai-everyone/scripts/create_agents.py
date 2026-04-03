@@ -11,7 +11,8 @@ AGENTS = {
     "greenhouse-agent": {"port": 8008, "env": "GREENHOUSE_API_KEY="},
     "jira-agent": {"port": 8009, "env": "JIRA_CLIENT_ID=\nJIRA_CLIENT_SECRET="},
     "linkedin-agent": {"port": 8010, "env": "LINKEDIN_CLIENT_ID=\nLINKEDIN_CLIENT_SECRET="},
-    "zoom-agent": {"port": 8011, "env": "ZOOM_CLIENT_ID=\nZOOM_CLIENT_SECRET="}
+    "zoom-agent": {"port": 8011, "env": "ZOOM_CLIENT_ID=\nZOOM_CLIENT_SECRET="},
+    "strata-agent": {"port": 8012, "env": "FMP_API_KEY=\nFMP_BASE_URL=https://financialmodelingprep.com/stable/income-statement\nSTRATA_DEFAULT_SYMBOL=AAPL"}
 }
 
 SERVER_PY = '''"""

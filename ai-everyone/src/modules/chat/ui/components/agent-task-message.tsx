@@ -18,6 +18,7 @@ import { GoogleLoginCard } from "./google-login-card";
 import { subscribeToTask, type AgentTask } from "@/lib/firestore-tasks";
 import { GeneratedAvatar } from "@/components/ui/generated-avatar";
 import { auth } from "@/lib/firebase";
+import { StrataResultCard } from "./agent-renderers/strata-result-card";
 
 interface AgentTaskMessageProps {
     message: ChatMessage;
@@ -32,6 +33,7 @@ const AGENT_NAMES: Record<string, string> = {
     "maps-agent": "Google Maps Agent",
     "todo-agent": "To-do Agent",
     "emergency-response-agent": "Emergency Response Agent",
+    "strata-agent": "Stara Agent",
 };
 
 interface GmailRow {
@@ -652,6 +654,10 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             if (rows.length > 0) {
                 return <DriveTableCard rows={rows} />;
             }
+        }
+
+        if (typeof resultType === "string" && resultType.startsWith("strata_")) {
+            return <StrataResultCard result={result} />;
         }
 
         // Generic result
