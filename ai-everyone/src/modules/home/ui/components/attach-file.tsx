@@ -50,11 +50,20 @@ export const AttachFile = ({
                     <PlusIcon className="size-4" stroke="white" strokeWidth={2} />
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
-                <DropdownMenuItem onClick={onUploadFromComputer}>
+            <DropdownMenuContent
+                align="start"
+                className="w-52 border border-white/10 bg-[#0C0D0D] text-white backdrop-blur-md"
+            >
+                <DropdownMenuItem
+                    onClick={onUploadFromComputer}
+                    className="cursor-pointer text-white focus:bg-white/10 focus:text-white"
+                >
                     Upload from computer
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={onUploadFromDrive}>
+                <DropdownMenuItem
+                    onClick={onUploadFromDrive}
+                    className="cursor-pointer text-white focus:bg-white/10 focus:text-white"
+                >
                     Upload from Drive
                 </DropdownMenuItem>
             </DropdownMenuContent>

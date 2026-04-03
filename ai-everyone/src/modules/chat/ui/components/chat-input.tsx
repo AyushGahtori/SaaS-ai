@@ -8,6 +8,7 @@ import { TextToSpeech } from "@/modules/home/ui/components/text-to-speech";
 import { useChatAttachments } from "@/modules/chat/upload/use-chat-attachments";
 import { AttachmentStrip } from "@/modules/chat/upload/components/attachment-strip";
 import { DrivePickerDialog } from "@/modules/chat/upload/components/drive-picker-dialog";
+import { DriveUploadSigninOverlay } from "@/modules/chat/upload/components/drive-upload-signin-overlay";
 import { SendStopButton } from "@/modules/chat/ui/components/send-stop-button";
 import VoiceBar from "@/modules/chat/ui/components/VoiceBar";
 
@@ -43,6 +44,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
         setDriveSearch,
         driveFiles,
         isLoadingDrive,
+        showDriveSigninOverlay,
+        setShowDriveSigninOverlay,
+        signInForDrivePicker,
+        isDriveSigninReady,
+        isDriveSigningIn,
+        driveSigninError,
         pendingUploads,
         readyAttachments,
         failedAttachments,
@@ -277,6 +284,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
                     files={driveFiles}
                     isLoading={isLoadingDrive}
                     onSelectFile={(file) => void addDriveAttachment(file)}
+                />
+
+                <DriveUploadSigninOverlay
+                    open={showDriveSigninOverlay}
+                    onOpenChange={setShowDriveSigninOverlay}
+                    onSignIn={() => void signInForDrivePicker()}
+                    isReady={isDriveSigninReady}
+                    isSigningIn={isDriveSigningIn}
+                    authError={driveSigninError}
                 />
             </div>
         </div>
