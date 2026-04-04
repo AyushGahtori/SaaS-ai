@@ -191,7 +191,7 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
     {
         id: "todo-agent",
         name: "To-do Agent",
-        description: "Manage tasks, reminders, and daily planning stored inside SnitchX.",
+        description: "Manage tasks, reminders, and daily planning stored inside Pian.",
         actions: [
             "add_task",
             "add_to_plan",

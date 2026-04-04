@@ -1,6 +1,6 @@
 // Marketplace catalog helpers.
 //
-// Historically this file read the `agents` Firestore collection. SnitchX now
+// Historically this file read the `agents` Firestore collection. Pian now
 // uses a curated in-repo catalog backed by real agent implementations and
 // bundle definitions, while per-user install/auth state still lives in
 // Firestore.

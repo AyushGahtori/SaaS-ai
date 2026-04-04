@@ -287,7 +287,7 @@ Used only for **ranking** relevant memories against the current user query — n
 
 ```bash
 # Enter the Docker container
-docker exec -it snitchx bash
+docker exec -it Pian bash
 
 # Type-check all new files
 npx tsc --noEmit

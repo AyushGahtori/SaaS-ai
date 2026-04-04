@@ -1,4 +1,4 @@
-# SnitchX — Architecture, Data Flow & System Design
+# Pian — Architecture, Data Flow & System Design
 
 ## 1. High-level summary
 
@@ -83,7 +83,7 @@
   "agent_priority": "primary",
   "agent_args": {
     "subject": "Follow up: proposal submission",
-    "body_instructions": "Compose a professional email for client 'ACME Corp' describing project delays, include apology and a two-point mitigation plan, sign as 'Ajay from SnitchX'",
+    "body_instructions": "Compose a professional email for client 'ACME Corp' describing project delays, include apology and a two-point mitigation plan, sign as 'Ajay from Pian'",
     "attachments": []
   },
   "safety": {
@@ -271,7 +271,7 @@ Results -> Firestore (agentTasks, chats) -> Frontend via Realtime listener
   "installedAt":"2026-03-13T15:00:00Z",
   "permissionScopes":["https://www.googleapis.com/auth/gmail.compose","https://www.googleapis.com/auth/gmail.send"],
   "credentialRef":"projects/myproject/secrets/user-123-email-agent-refresh-token",
-  "config": {"signature":"Ajay from SnitchX"}
+  "config": {"signature":"Ajay from Pian"}
 }
 ```
 

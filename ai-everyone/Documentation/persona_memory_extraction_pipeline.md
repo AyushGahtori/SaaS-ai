@@ -257,7 +257,7 @@ Logs: [MemoryDedup] skipped identical key=role
 
 ### Test 5 — Python CLI
 ```bash
-docker exec -it snitchx bash
+docker exec -it Pian bash
 cd memory-extraction
 python main.py --message "I am a developer working on React"
 # Expected: [{"key":"role","value":"developer",...},{"key":"current_project","value":"React",...}]

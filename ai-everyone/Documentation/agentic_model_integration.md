@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the **agentic model integration** into SnitchX (AI Everywhere).
+This document describes the **agentic model integration** into Pian (AI Everywhere).
 The system transforms the chat from a simple Ollama Q&A into an **agent orchestration platform** where the parent LLM can detect user intents and delegate tasks to specialized agents.
 
 > [!TIP]
@@ -133,11 +133,11 @@ match /agentTasks/{taskId} {
 
 ## Running the Agent Server (Inside Docker Container)
 
-If running inside the `snitchx` container:
+If running inside the `Pian` container:
 
 ```bash
 # 1. Enter the container
-docker exec -it snitchx bash
+docker exec -it Pian bash
 
 # 2. Install pip (if missing)
 apt-get update && apt-get install -y python3-pip

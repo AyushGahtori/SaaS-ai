@@ -22,7 +22,7 @@ function htmlResult(
     agentId = ""
 ): Response {
     const payload = JSON.stringify({
-        type: success ? "snitchx_oauth_success" : "snitchx_oauth_error",
+        type: success ? "Pian_oauth_success" : "Pian_oauth_error",
         bundleId,
         agentId,
         message,

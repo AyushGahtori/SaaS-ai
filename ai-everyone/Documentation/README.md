@@ -31,7 +31,7 @@ Single source of docs for `ai-everyone`.
 
 - `architecture_dev_vs_prod.md`
 - `api_vs_local_execution.md`
-- `snitchx_architecture.md`
+- `Pian_architecture.md`
 - `production_plan.md`
 - `implementation_plan.md`
 

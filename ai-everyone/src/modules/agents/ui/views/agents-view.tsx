@@ -260,13 +260,13 @@ export const AgentsView = () => {
           (target.bundleId && event.data.bundleId === target.bundleId) ||
           (target.agentId && event.data.agentId === target.agentId);
 
-        if (event.data.type === "snitchx_oauth_success" && sameTarget) {
+        if (event.data.type === "Pian_oauth_success" && sameTarget) {
           settled = true;
           cleanup();
           resolve();
         }
 
-        if (event.data.type === "snitchx_oauth_error" && sameTarget) {
+        if (event.data.type === "Pian_oauth_error" && sameTarget) {
           settled = true;
           cleanup();
           reject(new Error(event.data.message || "Bundle connection failed."));
@@ -405,11 +405,10 @@ export const AgentsView = () => {
             <button
               key={chip}
               onClick={() => setActiveChip(chip)}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                activeChip === chip
+              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${activeChip === chip
                   ? "border-white/30 bg-white/[0.16] text-white"
                   : "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/20 hover:text-white"
-              }`}
+                }`}
             >
               {CHIP_LABELS[chip]}
             </button>

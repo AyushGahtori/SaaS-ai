@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 app = FastAPI(
-    title="SnitchX Notion Agent",
+    title="Pian Notion Agent",
     description="Search, read, create, and append Notion pages.",
     version="1.0.0",
 )

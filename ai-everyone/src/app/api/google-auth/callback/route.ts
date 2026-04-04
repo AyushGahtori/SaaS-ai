@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
                 `<html><body style="background:#111;color:#4f4;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
                     <div style="text-align:center">
                         <h2>✅ Google account connected!</h2>
-                        <p style="color:#ccc">You can close this tab and go back to SnitchX.</p>
+                        <p style="color:#ccc">You can close this tab and go back to Pian.</p>
                         <script>setTimeout(()=>window.close(),3000)</script>
                     </div>
                 </body></html>`,

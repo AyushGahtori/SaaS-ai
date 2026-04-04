@@ -7,8 +7,8 @@ import { FirestoreAbortNoiseGuard } from '@/components/dev/firestore-abort-noise
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
-  title: 'SnitchX',
-  description: 'SnitchX - AI-powered workspace',
+  title: 'Pian',
+  description: 'Pian - AI-powered workspace',
 }
 
 export default function RootLayout({

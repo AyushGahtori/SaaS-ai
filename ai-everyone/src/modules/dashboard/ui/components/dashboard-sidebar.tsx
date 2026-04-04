@@ -58,13 +58,13 @@ export const DashboardSidebar = () => {
           {/* logo can get mutated by browser extensions (e.g. Dark Reader) which inject inline styles
               and cause hydration mismatches; suppress the warning so it doesn't break the layout */}
           <Image
-            src="/logo.svg"
+            src="/logo.png"
             height={36}
             width={36}
-            alt="SnitchX"
+            alt="Pian"
             suppressHydrationWarning
           />
-          <p className="text-2xl font-bold text-white">SnitchX</p>
+          <p className="text-2xl font-bold text-white">Pian</p>
         </Link>
       </SidebarHeader>
 

@@ -94,12 +94,12 @@ export function useSession(): { data: SessionData | null; isPending: boolean } {
       });
     };
 
-    window.addEventListener("snitchx-profile-updated", handleProfileUpdate as EventListener);
+    window.addEventListener("Pian-profile-updated", handleProfileUpdate as EventListener);
 
     return () => {
       isMounted = false;
       unsubscribe();
-      window.removeEventListener("snitchx-profile-updated", handleProfileUpdate as EventListener);
+      window.removeEventListener("Pian-profile-updated", handleProfileUpdate as EventListener);
     };
   }, []);
 

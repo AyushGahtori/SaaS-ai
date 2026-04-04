@@ -1,6 +1,6 @@
 # Agent Integration Checklist
 
-Current checklist for adding a new agent to SnitchX / AI Everyone end to end.
+Current checklist for adding a new agent to Pian / AI Everyone end to end.
 
 ## Web App
 

@@ -45,5 +45,5 @@ next-env.d.ts
 # Nested infrastructure repo (managed separately)
 /ai-everyone/EC2/
 
-# External reference app (not part of SnitchX source control)
+# External reference app (not part of Pian source control)
 /marketplace copy/
