@@ -17,6 +17,11 @@ import {
     getInstalledAgentIds,
 } from "@/lib/agents/user-access.server";
 import { getInstallHintForAgent } from "@/lib/agents/catalog";
+import {
+    interpretAgentError,
+    normalizeAgentExecutionResult,
+    type AgentExecutionContract,
+} from "@/lib/agent-error";
 
 // ---------------------------------------------------------------------------
 // Agent routing map — maps agentId to its API endpoint path.
@@ -46,6 +51,82 @@ const AGENT_ROUTES: Record<string, string> = {
     "linkedin-agent":    "/linkedin/action",
     "zoom-agent":        "/zoom/action",
 };
+
+async function persistInterpretedFailure(params: {
+    taskRef: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
+    task: AgentTask;
+    rawError: string;
+    originalResult?: Record<string, unknown>;
+    incrementRetry?: boolean;
+}): Promise<void> {
+    const mergedAgentInput: Record<string, unknown> = {
+        ...(params.task.agentInput || {}),
+    };
+    if (params.originalResult) {
+        mergedAgentInput._agentResult = params.originalResult;
+    }
+
+    const interpreted = await interpretAgentError({
+        agentId: params.task.agentId,
+        rawError: params.rawError,
+        agentInput: mergedAgentInput,
+    });
+    const nextStatus = interpreted.status;
+    const isActionableFollowup = nextStatus === "needs_input" || nextStatus === "action_required";
+
+    const payload: AgentExecutionContract = {
+        ...interpreted,
+        status: nextStatus,
+        error_code: interpreted.code || "INTERPRETED_FAILURE",
+        error_context: {
+            raw_error: params.rawError,
+            original_status:
+                params.originalResult && typeof params.originalResult.status === "string"
+                    ? params.originalResult.status
+                    : null,
+        },
+        recommended_next_actions: interpreted.suggestedAction
+            ? interpreted.suggestedInputs && interpreted.suggestedInputs.length > 0
+                ? [interpreted.suggestedAction, `Needed input: ${interpreted.suggestedInputs.join(", ")}`]
+                : [interpreted.suggestedAction]
+            : [],
+        ui_payload: {
+            kind: "interpreted_failure",
+            summary: interpreted.summary,
+            suggestedAction: interpreted.suggestedAction || null,
+            suggestedInputs: interpreted.suggestedInputs || [],
+        },
+        internal_payload: {
+            rootCause: interpreted.rootCause,
+            code: interpreted.code || null,
+        },
+        originalResult: params.originalResult || null,
+    };
+
+    await params.taskRef.update({
+        status: nextStatus,
+        agentOutput: payload,
+        finishedAt: isActionableFollowup ? null : FieldValue.serverTimestamp(),
+        retryCount: params.incrementRetry ? (params.task.retryCount || 0) + 1 : params.task.retryCount || 0,
+    });
+}
+
+function extractRawErrorMessage(result: AgentExecutionContract): string {
+    if (typeof result.error === "string" && result.error.trim()) {
+        return result.error.trim();
+    }
+    if (typeof result.summary === "string" && result.summary.trim()) {
+        return result.summary.trim();
+    }
+    if (
+        result.error_context &&
+        typeof result.error_context.raw_error === "string" &&
+        result.error_context.raw_error.trim()
+    ) {
+        return result.error_context.raw_error.trim();
+    }
+    return "Agent execution failed.";
+}
 
 /**
  * Create a new agent task in Firestore (server-side only).
@@ -105,10 +186,11 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     const agentRoute = AGENT_ROUTES[task.agentId];
     if (!agentRoute) {
         console.error(`[executeAgentTask] Unknown agent: ${task.agentId}`);
-        await taskRef.update({
-            status: "failed",
-            agentOutput: { error: `Unknown agent: ${task.agentId}` },
-            finishedAt: FieldValue.serverTimestamp(),
+        await persistInterpretedFailure({
+            taskRef,
+            task,
+            rawError: `Unknown agent: ${task.agentId}`,
+            incrementRetry: false,
         });
         return;
     }
@@ -119,19 +201,21 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     ]);
 
     if (!installedAgentIds.includes(task.agentId)) {
-        await taskRef.update({
-            status: "failed",
-            agentOutput: { error: `Access denied. ${getInstallHintForAgent(task.agentId)}` },
-            finishedAt: FieldValue.serverTimestamp(),
+        await persistInterpretedFailure({
+            taskRef,
+            task,
+            rawError: `Access denied. ${getInstallHintForAgent(task.agentId)}`,
+            incrementRetry: false,
         });
         return;
     }
 
     if (!accessibleAgentIds.includes(task.agentId)) {
-        await taskRef.update({
-            status: "failed",
-            agentOutput: { error: `Access denied. ${getInstallHintForAgent(task.agentId)}` },
-            finishedAt: FieldValue.serverTimestamp(),
+        await persistInterpretedFailure({
+            taskRef,
+            task,
+            rawError: `Access denied. ${getInstallHintForAgent(task.agentId)}`,
+            incrementRetry: false,
         });
         return;
     }
@@ -183,6 +267,7 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
                 taskId: task.taskId,
                 userId: task.userId,
                 agentId: task.agentId,
+                chatId: task.chatId,
                 ...task.agentInput,
                 ...executionAuth,
             }),
@@ -194,38 +279,47 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
                 `[executeAgentTask] Agent returned ${response.status}`,
                 errorText
             );
-            await taskRef.update({
-                status: "failed",
-                agentOutput: {
-                    error: `Agent returned status ${response.status}: ${errorText}`,
-                },
-                finishedAt: FieldValue.serverTimestamp(),
-                retryCount: (task.retryCount || 0) + 1,
+            await persistInterpretedFailure({
+                taskRef,
+                task,
+                rawError: `Agent returned status ${response.status}: ${errorText}`,
+                incrementRetry: true,
             });
             return;
         }
 
-        const result = await response.json();
+        const rawResult = (await response.json()) as unknown;
+        const result = normalizeAgentExecutionResult(rawResult);
         console.log(`[executeAgentTask] Agent result`, result);
 
         // ── 4. Update task with result ────────────────────────────────
-        if (
-            result.status === "success" ||
-            result.status === "action_required" ||
-            result.status === "needs_input"
-        ) {
+        if (result.status === "success" || result.status === "partial_success") {
             await taskRef.update({
                 status: result.status,
                 agentOutput: result,
-                // Keep non-success tasks open for follow-up context and potential retry.
-                finishedAt: result.status === "success" ? FieldValue.serverTimestamp() : null,
+                finishedAt: FieldValue.serverTimestamp(),
+            });
+        } else if (result.status === "action_required") {
+            await taskRef.update({
+                status: result.status,
+                agentOutput: result,
+                finishedAt: null,
+            });
+        } else if (result.status === "needs_input") {
+            await persistInterpretedFailure({
+                taskRef,
+                task,
+                rawError: extractRawErrorMessage(result),
+                originalResult: result,
+                incrementRetry: false,
             });
         } else {
-            await taskRef.update({
-                status: "failed",
-                agentOutput: result,
-                finishedAt: FieldValue.serverTimestamp(),
-                retryCount: (task.retryCount || 0) + 1,
+            await persistInterpretedFailure({
+                taskRef,
+                task,
+                rawError: extractRawErrorMessage(result),
+                originalResult: result,
+                incrementRetry: true,
             });
         }
     } catch (error: unknown) {
@@ -237,15 +331,13 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
             errorMessage.includes("ECONNREFUSED") ||
             errorMessage.includes("fetch failed");
 
-        await taskRef.update({
-            status: "failed",
-            agentOutput: {
-                error: isConnectionError
-                    ? `Cannot connect to agent server at ${agentServerUrl}. Is the agent running?`
-                    : `Agent execution error: ${errorMessage}`,
-            },
-            finishedAt: FieldValue.serverTimestamp(),
-            retryCount: (task.retryCount || 0) + 1,
+        await persistInterpretedFailure({
+            taskRef,
+            task,
+            rawError: isConnectionError
+                ? `Cannot connect to agent server at ${agentServerUrl}. Is the agent running?`
+                : `Agent execution error: ${errorMessage}`,
+            incrementRetry: true,
         });
     }
 }

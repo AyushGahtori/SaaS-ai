@@ -19,6 +19,8 @@ import { subscribeToTask, type AgentTask } from "@/lib/firestore-tasks";
 import { GeneratedAvatar } from "@/components/ui/generated-avatar";
 import { auth } from "@/lib/firebase";
 import { StrataResultCard } from "./agent-renderers/strata-result-card";
+import { InterpretedAgentGuidance } from "./agent-renderers/interpreted-agent-guidance";
+import { GenericAgentResultCard } from "./agent-renderers/generic-agent-result-card";
 
 interface AgentTaskMessageProps {
     message: ChatMessage;
@@ -49,6 +51,64 @@ interface DriveRow {
     typeLabel: string;
     modifiedDate: string;
     modifiedTime: string;
+}
+
+interface DriveListMeta {
+    hasMore: boolean;
+    returnedCount: number;
+    totalShown: number;
+}
+
+interface GuidancePayload {
+    summary: string;
+    suggestedAction?: string;
+    suggestedInputs?: string[];
+}
+
+function getGuidanceFromTaskResult(
+    rawStatus: string,
+    result?: Record<string, unknown>
+): GuidancePayload | null {
+    if (!result) return null;
+    if (rawStatus !== "needs_input" && rawStatus !== "failed") return null;
+
+    const suggestedInputs = Array.isArray(result?.suggestedInputs)
+        ? result.suggestedInputs.map((value) => String(value)).filter(Boolean)
+        : undefined;
+
+    const suggestedActionFromResult =
+        typeof result?.suggestedAction === "string" && result.suggestedAction.trim()
+            ? result.suggestedAction.trim()
+            : undefined;
+
+    const recommendedActions = Array.isArray(result?.recommended_next_actions)
+        ? result.recommended_next_actions
+            .map((value) => String(value).trim())
+            .filter(Boolean)
+        : [];
+
+    const summary =
+        (typeof result?.summary === "string" && result.summary.trim()) ||
+        (typeof result?.message === "string" && result.message.trim()) ||
+        (typeof result?.error === "string" && result.error.trim()) ||
+        (rawStatus === "needs_input"
+            ? "I need one more specific detail to continue."
+            : "I couldn't complete this request yet.");
+
+    const suggestedAction =
+        suggestedActionFromResult ||
+        recommendedActions[0] ||
+        (suggestedInputs && suggestedInputs.length > 0
+            ? `Please provide: ${suggestedInputs.join(", ")}.`
+            : rawStatus === "needs_input"
+                ? "Please share one specific detail and I'll retry immediately."
+                : "Please share one additional detail so I can retry right away.");
+
+    return {
+        summary,
+        suggestedAction,
+        suggestedInputs,
+    };
 }
 
 function getNeedsInputSummary(result?: Record<string, unknown>): string | null {
@@ -155,6 +215,16 @@ function getDriveRows(result: Record<string, unknown>): DriveRow[] {
     });
 }
 
+function getDriveListMeta(result: Record<string, unknown>, rows: DriveRow[]): DriveListMeta {
+    const payload = (result.result as Record<string, unknown> | undefined) || result;
+    const hasMore = payload.hasMore === true;
+    const returnedCount =
+        typeof payload.returnedCount === "number" ? Number(payload.returnedCount) : rows.length;
+    const totalShown =
+        typeof payload.totalShown === "number" ? Number(payload.totalShown) : returnedCount;
+    return { hasMore, returnedCount, totalShown };
+}
+
 function DriveTypeIcon({ typeLabel }: { typeLabel: string }) {
     const lower = typeLabel.toLowerCase();
     if (lower === "folder") return <Folder className="w-3.5 h-3.5 text-yellow-300" />;
@@ -188,7 +258,7 @@ function GmailTableCard({ rows }: { rows: GmailRow[] }) {
     );
 }
 
-function DriveTableCard({ rows }: { rows: DriveRow[] }) {
+function DriveTableCard({ rows, meta }: { rows: DriveRow[]; meta: DriveListMeta }) {
     return (
         <div className="mt-3 rounded-xl border border-white/10 bg-black/35 overflow-hidden">
             <div className="grid grid-cols-[2fr_1.1fr_1fr_1fr] gap-3 px-3 py-2.5 text-[11px] uppercase tracking-wide text-white/50 border-b border-white/10">
@@ -197,7 +267,7 @@ function DriveTableCard({ rows }: { rows: DriveRow[] }) {
                 <span>Modified Date</span>
                 <span>Modified Time</span>
             </div>
-            <div className="custom-scrollbar max-h-48 overflow-y-auto">
+            <div className="custom-scrollbar-always max-h-48 overflow-y-auto">
                 {rows.map((row, idx) => (
                     <div key={`${row.name}-${idx}`} className="grid grid-cols-[2fr_1.1fr_1fr_1fr] gap-3 px-3 py-2.5 text-xs text-white/85 border-b border-white/5 last:border-b-0">
                         <span className="truncate">{row.name}</span>
@@ -209,6 +279,10 @@ function DriveTableCard({ rows }: { rows: DriveRow[] }) {
                         <span className="truncate text-white/70">{row.modifiedTime}</span>
                     </div>
                 ))}
+            </div>
+            <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2 text-[11px] text-white/55">
+                <span>Showing {meta.returnedCount} item(s)</span>
+                <span>{meta.hasMore ? "More files available. Ask for next batch." : `Total shown in this session: ${meta.totalShown}`}</span>
             </div>
         </div>
     );
@@ -238,8 +312,84 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
     const globalTaskStatus = taskId ? taskStatuses[taskId] : undefined;
     
     // priority local firestore task over global contextual fallback 
-    const status = localTask?.status || globalTaskStatus?.status || "queued";
+    const rawStatus = localTask?.status || globalTaskStatus?.status || "queued";
     const result = (localTask?.agentOutput || globalTaskStatus?.result) as Record<string, unknown> | undefined;
+    const interpretedFailed =
+        rawStatus === "failed" && Boolean(result && result.interpreted === true);
+    const status = interpretedFailed ? "needs_input" : rawStatus;
+    const guidancePayload = getGuidanceFromTaskResult(rawStatus, result);
+    if (guidancePayload) {
+        return (
+            <InterpretedAgentGuidance
+                summary={guidancePayload.summary}
+                suggestedAction={guidancePayload.suggestedAction}
+                suggestedInputs={guidancePayload.suggestedInputs}
+            />
+        );
+    }
+
+    const isInterpretedGuidance = Boolean(
+        result &&
+            result.interpreted === true &&
+            (rawStatus === "failed" || rawStatus === "needs_input")
+    );
+
+    if (isInterpretedGuidance) {
+        const summary =
+            (typeof result?.summary === "string" && result.summary) ||
+            (typeof result?.error === "string" && result.error) ||
+            "I couldn't complete that yet. Please share one more detail so I can continue.";
+        const suggestedAction =
+            typeof result?.suggestedAction === "string" ? result.suggestedAction : undefined;
+        const suggestedInputs = Array.isArray(result?.suggestedInputs)
+            ? result.suggestedInputs.map((value) => String(value))
+            : undefined;
+
+        return (
+            <InterpretedAgentGuidance
+                summary={summary}
+                suggestedAction={suggestedAction}
+                suggestedInputs={suggestedInputs}
+            />
+        );
+    }
+
+    if (rawStatus === "needs_input" && result) {
+        const summary = getNeedsInputSummary(result);
+        if (summary) {
+            const nestedResult =
+                typeof result.result === "object" && result.result !== null
+                    ? (result.result as Record<string, unknown>)
+                    : undefined;
+            const missingFields = Array.isArray(nestedResult?.missing_fields)
+                ? nestedResult?.missing_fields.map((value) => String(value)).filter(Boolean)
+                : undefined;
+            const suggestedAction =
+                missingFields && missingFields.length > 0
+                    ? `Please share: ${missingFields.join(", ")}.`
+                    : "Please share one more specific detail and I’ll retry immediately.";
+            return (
+                <InterpretedAgentGuidance
+                    summary={summary}
+                    suggestedAction={suggestedAction}
+                    suggestedInputs={missingFields}
+                />
+            );
+        }
+    }
+
+    if (rawStatus === "failed" && result) {
+        const summary =
+            (typeof result.summary === "string" && result.summary.trim()) ||
+            (typeof result.error === "string" && result.error.trim()) ||
+            "I couldn't complete that request yet.";
+        return (
+            <InterpretedAgentGuidance
+                summary={summary}
+                suggestedAction="Share one more specific detail and I’ll retry immediately."
+            />
+        );
+    }
 
     // ── Handle action buttons based on agent result ──────────────────────
     const handleAction = () => {
@@ -363,6 +513,8 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
                 return <AlertTriangle className="w-4 h-4 text-amber-300" />;
             case "success":
                 return <CheckCircle className="w-4 h-4 text-green-400" />;
+            case "partial_success":
+                return <CheckCircle className="w-4 h-4 text-emerald-300" />;
             case "failed":
                 return <XCircle className="w-4 h-4 text-red-400" />;
             default:
@@ -376,6 +528,7 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
         action_required: "border-sky-500/20 bg-sky-500/5",
         needs_input: "border-amber-500/20 bg-amber-500/5",
         success: "border-green-500/20 bg-green-500/5",
+        partial_success: "border-emerald-500/20 bg-emerald-500/5",
         failed: "border-red-500/20 bg-red-500/5",
     };
 
@@ -385,6 +538,7 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
         action_required: "Auth Required",
         needs_input: "Needs Input",
         success: "Completed",
+        partial_success: "Partial Success",
         failed: "Failed",
     };
 
@@ -421,16 +575,6 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
                         }).catch(console.error);
                     }}
                 />
-            );
-        }
-
-        if (status === "needs_input") {
-            const needsSummary = getNeedsInputSummary(result);
-            if (!needsSummary) return null;
-            return (
-                <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-                    {needsSummary}
-                </div>
             );
         }
 
@@ -652,7 +796,7 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
         if (resultType === "google_drive") {
             const rows = getDriveRows(result);
             if (rows.length > 0) {
-                return <DriveTableCard rows={rows} />;
+                return <DriveTableCard rows={rows} meta={getDriveListMeta(result, rows)} />;
             }
         }
 
@@ -670,18 +814,21 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             (result.summary as string | undefined) ||
             (nestedResult?.summary as string | undefined);
 
-        return (
-            <div className="mt-3 space-y-3">
-                {summary ? (
-                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 whitespace-pre-wrap break-words">
-                        {summary}
-                    </div>
-                ) : null}
-                <div className="text-xs text-white/50 break-words whitespace-pre-wrap">
-                    Result: {JSON.stringify(result, null, 2)}
-                </div>
-            </div>
-        );
+        const details: Array<{ label: string; value: string }> = [];
+        if (typeof result.status === "string") {
+            details.push({ label: "Status", value: result.status });
+        }
+        if (typeof result.type === "string") {
+            details.push({ label: "Type", value: result.type });
+        }
+        if (typeof result.action === "string") {
+            details.push({ label: "Action", value: result.action });
+        }
+        if (typeof result.error_code === "string") {
+            details.push({ label: "Code", value: result.error_code });
+        }
+
+        return <GenericAgentResultCard summary={summary || undefined} details={details} />;
     };
 
     const EmergencyResponsePanel = ({ result }: { result: Record<string, unknown> }) => {

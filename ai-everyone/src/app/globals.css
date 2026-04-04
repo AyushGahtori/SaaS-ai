@@ -145,6 +145,23 @@
   background: transparent;
 }
 
+/* Always-visible variant for lists where discoverability matters (Drive batches). */
+.custom-scrollbar-always {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+}
+.custom-scrollbar-always::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar-always::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+}
+.custom-scrollbar-always::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* ── Fade mask for sidebar (optional add-on) ──────────────── */
 .sidebar-fade {
   padding-bottom: 24px;

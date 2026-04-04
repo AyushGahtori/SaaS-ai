@@ -47,7 +47,7 @@ export function DrivePickerDialog({
                     className="border-[#243246] bg-[#121a2b] text-cyan-50 placeholder:text-cyan-200/40 focus-visible:ring-cyan-400/40"
                 />
 
-                <div className="max-h-72 overflow-y-auto rounded-md border border-white/10">
+                <div className="custom-scrollbar-always max-h-72 overflow-y-auto rounded-md border border-white/10">
                     {isLoading ? (
                         <div className="flex items-center gap-2 px-4 py-6 text-sm text-white/60">
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -75,6 +75,9 @@ export function DrivePickerDialog({
                         ))
                     )}
                 </div>
+                <p className="text-[11px] text-white/45">
+                    Scroll to view more files in this batch.
+                </p>
             </DialogContent>
         </Dialog>
     );

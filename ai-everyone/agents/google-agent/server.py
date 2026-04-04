@@ -115,6 +115,7 @@ class GoogleActionRequest(BaseModel):
     taskId: str | None = None
     userId: str | None = None
     agentId: str | None = None
+    chatId: str | None = None
     access_token: str | None = None
     refresh_token: str | None = None
 
@@ -227,6 +228,7 @@ async def google_action(data: GoogleActionRequest):
             context={
                 "direct": True,
                 "taskId": data.taskId,
+                "chatId": data.chatId,
                 "forced_action": normalized_action,
             },
         )

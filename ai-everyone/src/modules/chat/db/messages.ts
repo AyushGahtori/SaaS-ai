@@ -36,6 +36,23 @@ const toISO = (val: unknown): string => {
     return new Date().toISOString();
 };
 
+function stripUndefinedDeep<T>(value: T): T {
+    if (Array.isArray(value)) {
+        return value
+            .map((item) => stripUndefinedDeep(item))
+            .filter((item) => item !== undefined) as T;
+    }
+    if (value && typeof value === "object") {
+        const out: Record<string, unknown> = {};
+        for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+            if (item === undefined) continue;
+            out[key] = stripUndefinedDeep(item);
+        }
+        return out as T;
+    }
+    return value;
+}
+
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
@@ -84,7 +101,7 @@ export async function createMessage(
         messageData.attachments = normalizedAttachments;
     }
     if (meta && typeof meta === "object") {
-        messageData.meta = meta;
+        messageData.meta = stripUndefinedDeep(meta);
     }
 
     const docRef = await addDoc(messagesCol(uid, chatId), messageData);
