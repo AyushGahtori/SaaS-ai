@@ -31,7 +31,8 @@ export type TaskStatus =
     | "success"
     | "failed"
     | "action_required"
-    | "needs_input";
+    | "needs_input"
+    | "partial_success";
 
 export interface AgentTask {
     taskId: string;

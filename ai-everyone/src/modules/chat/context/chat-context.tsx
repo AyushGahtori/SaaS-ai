@@ -190,7 +190,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             if (
                 task.status === "success" ||
                 task.status === "failed" ||
-                task.status === "needs_input"
+                task.status === "needs_input" ||
+                task.status === "action_required" ||
+                task.status === "partial_success"
             ) {
                 unsub();
                 delete taskListenersRef.current[taskId];
