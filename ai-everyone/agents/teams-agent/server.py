@@ -29,8 +29,8 @@ from calendar_agent import run_calendar_action
 from graph_client import auth_store
 
 app = FastAPI(
-    title="SnitchX Teams Agent",
-    description="Microsoft Teams agent for SnitchX — handles calls and messages.",
+    title="Pian Teams Agent",
+    description="Microsoft Teams agent for Pian — handles calls and messages.",
     version="1.0.0",
 )
 

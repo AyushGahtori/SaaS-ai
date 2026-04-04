@@ -30,7 +30,7 @@ async function requestDriveTokenViaFirebasePopup(): Promise<{
 }> {
     const currentUser = auth.currentUser;
     if (!currentUser) {
-        throw new Error("Please sign in to SnitchX first, then retry Drive upload sign-in.");
+        throw new Error("Please sign in to Pian first, then retry Drive upload sign-in.");
     }
 
     const provider = new GoogleAuthProvider();

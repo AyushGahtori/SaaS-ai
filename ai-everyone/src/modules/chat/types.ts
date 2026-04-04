@@ -52,6 +52,8 @@ export interface ChatMessage {
     isVoice?: boolean;
     /** Files user attached with this prompt (metadata only). */
     attachments?: ChatAttachment[];
+    /** Optional UI metadata for rich assistant cards. */
+    meta?: Record<string, unknown>;
 }
 
 /** Payload sent from the frontend to the /api/chat route. */

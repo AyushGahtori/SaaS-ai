@@ -55,7 +55,8 @@ export async function createMessage(
     taskId?: string,
     agentId?: string,
     isVoice?: boolean,
-    attachments: ChatAttachment[] = []
+    attachments: ChatAttachment[] = [],
+    meta?: Record<string, unknown>
 ): Promise<ChatMessage> {
     // Never persist raw file bytes in chat messages.
     const normalizedAttachments = attachments.map((item) => ({
@@ -82,6 +83,9 @@ export async function createMessage(
     if (normalizedAttachments.length > 0) {
         messageData.attachments = normalizedAttachments;
     }
+    if (meta && typeof meta === "object") {
+        messageData.meta = meta;
+    }
 
     const docRef = await addDoc(messagesCol(uid, chatId), messageData);
 
@@ -95,6 +99,7 @@ export async function createMessage(
         ...(agentId && { agentId }),
         ...(isVoice && { isVoice }),
         ...(normalizedAttachments.length > 0 && { attachments: normalizedAttachments }),
+        ...(meta && { meta }),
     };
 }
 
@@ -120,6 +125,7 @@ export async function getMessages(
             ...(data.agentId && { agentId: data.agentId }),
             ...(data.isVoice && { isVoice: data.isVoice }),
             ...(Array.isArray(data.attachments) && { attachments: data.attachments as ChatAttachment[] }),
+            ...(data.meta && typeof data.meta === "object" && { meta: data.meta as Record<string, unknown> }),
         };
     });
 }

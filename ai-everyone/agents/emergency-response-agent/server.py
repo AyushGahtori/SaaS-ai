@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 app = FastAPI(
-    title="SnitchX Emergency Response Agent",
+    title="Pian Emergency Response Agent",
     description="Medical emergency triage, nearby hospital discovery, and emergency sharing payloads.",
     version="1.0.0",
 )

@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 app = FastAPI(
-    title="SnitchX Maps Agent",
+    title="Pian Maps Agent",
     description="Directions, place search, geocoding, and travel-time calculations.",
     version="1.0.0",
 )

@@ -12,7 +12,7 @@ pip install -r requirements.txt
 Or inside Docker:
 
 ```bash
-docker exec -it snitchx bash
+docker exec -it Pian bash
 cd /app/memory-extraction
 pip install -r requirements.txt
 ```

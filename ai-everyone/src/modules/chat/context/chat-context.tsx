@@ -43,6 +43,7 @@ interface StreamPayload {
     taskId?: string;
     agentId?: string;
     status?: string;
+    meta?: Record<string, unknown>;
 }
 
 interface ChatContextValue {
@@ -420,7 +421,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         assistantContent,
                         undefined,
                         undefined,
-                        isVoice
+                        isVoice,
+                        [],
+                        resolvedPayload.meta && typeof resolvedPayload.meta === "object"
+                            ? resolvedPayload.meta
+                            : undefined
                     );
                     setMessages((prev) =>
                         prev.map((message) =>

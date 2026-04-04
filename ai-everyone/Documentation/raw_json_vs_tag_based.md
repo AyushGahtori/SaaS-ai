@@ -1,6 +1,6 @@
 # Raw JSON vs Tag-Based Agent Intent Detection
 
-This document compares the two methods used for detecting agent intents from the parent LLM's output. SnitchX migrated from Raw JSON to Tag-Based extraction in March 2026.
+This document compares the two methods used for detecting agent intents from the parent LLM's output. Pian migrated from Raw JSON to Tag-Based extraction in March 2026.
 
 ---
 

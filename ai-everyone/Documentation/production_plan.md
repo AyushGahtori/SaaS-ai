@@ -1,6 +1,6 @@
 # Production Architecture Plan: Agent Cloud Deployment
 
-This document is the single source of truth for deploying SnitchX agents from your local development environment to the cloud. It covers **why** we need cloud deployment, **what** changes, **how** everything connects, and the **exact steps** to make it happen.
+This document is the single source of truth for deploying Pian agents from your local development environment to the cloud. It covers **why** we need cloud deployment, **what** changes, **how** everything connects, and the **exact steps** to make it happen.
 
 > [!IMPORTANT]
 > Read this document end-to-end before starting any deployment work. Every section builds on the previous one.
@@ -161,7 +161,7 @@ graph TD
     style G fill:#f59e0b,color:#000
 ```
 
-**Why EC2 is the right choice for SnitchX:**
+**Why EC2 is the right choice for Pian:**
 
 1. **Zero cold starts** — meets our 3-second budget easily.
 2. **All agents on one box** — 4 agents today, 70 tomorrow, all behind one URL.
@@ -188,7 +188,7 @@ The short answer: **RunPod is the wrong tool for this job.** It's like renting a
 | **Our agents need GPUs?** | ❌ No — our agents are simple Python scripts making HTTP API calls | RunPod charges for GPUs you'll never use |
 | **Cheapest option** | `t3.small` = **$15/month** (2 vCPU, 2GB RAM, no GPU) | Community GPU pod = **$0.20/hr = ~$144/month** minimum, and that includes a GPU you don't need |
 | **CPU-only option** | ✅ Yes, dozens of CPU-only instance types | ❌ RunPod has limited CPU-only options; its entire infrastructure revolves around GPU allocation |
-| **Static IP / Domain** | ✅ Elastic IP + Route 53 = `agents.snitchx.com` | ❌ No native Elastic IP. Pod IPs change on restart. You'd need external DNS workarounds. |
+| **Static IP / Domain** | ✅ Elastic IP + Route 53 = `agents.Pian.com` | ❌ No native Elastic IP. Pod IPs change on restart. You'd need external DNS workarounds. |
 | **Nginx / Reverse Proxy** | ✅ Full control — install Nginx, configure SSL, rate limiting | ⚠️ Possible but awkward. RunPod pods are meant for single-process GPU jobs, not multi-service web servers. |
 | **systemd (auto-restart)** | ✅ Full OS access, set up any service manager | ⚠️ RunPod pods can restart, but you don't get a traditional Linux init system. |
 | **Uptime SLA** | ✅ 99.99% SLA on EC2 | ❌ No SLA. Community GPUs can be preempted (taken away) at any time. Secure GPUs exist but cost 2–3× more. |
@@ -197,13 +197,13 @@ The short answer: **RunPod is the wrong tool for this job.** It's like renting a
 | **AWS ecosystem** | ✅ CloudWatch, ALB, Auto Scaling, IAM, VPC, Security Groups — enterprise-grade | ❌ None of this. RunPod is a bare GPU rental platform. |
 | **Community / Support** | ✅ Millions of tutorials, Stack Overflow answers, AWS documentation | ⚠️ Small community, focused on ML/AI researchers, not web app deployment |
 
-### 12 Reasons RunPod is Wrong for SnitchX Agents
+### 12 Reasons RunPod is Wrong for Pian Agents
 
 **1. You're paying for GPUs you don't use.**
 Our agents (`teams_agent.py`, `email_agent.py`, `calendar_agent.py`, `todo_agent.py`) do zero machine learning. They make HTTP requests to Microsoft Graph and read/write Firestore. That's pure CPU work — a $15/month EC2 instance handles it effortlessly. A RunPod GPU pod costs 10× more for hardware that sits completely idle.
 
 **2. No stable public IP address.**
-Firebase Cloud Functions need to call our agent server at a fixed URL like `https://agents.snitchx.com`. EC2 gives you an **Elastic IP** — a permanent, static IPv4 address that never changes. RunPod pods get dynamic IPs that change every time the pod restarts. You would need to set up a third-party Dynamic DNS service and pray it updates fast enough — adding another failure point.
+Firebase Cloud Functions need to call our agent server at a fixed URL like `https://agents.Pian.com`. EC2 gives you an **Elastic IP** — a permanent, static IPv4 address that never changes. RunPod pods get dynamic IPs that change every time the pod restarts. You would need to set up a third-party Dynamic DNS service and pray it updates fast enough — adding another failure point.
 
 **3. Pods are ephemeral — your data can vanish.**
 RunPod pods are designed to be spun up, run a GPU job, and be destroyed. If a Community Cloud pod is preempted (which RunPod can do at any time to give the GPU to a higher-paying customer), your entire server — including the Python environment, `.env` files, and MSAL auth tokens — **disappears**. EC2 instances persist until you explicitly terminate them. The EBS volume survives reboots.
@@ -243,7 +243,7 @@ RunPod is excellent when:
 - You need a **temporary GPU environment** for a few hours
 - You're doing **AI research** and want quick access to A100s
 
-None of these apply to SnitchX agent hosting.
+None of these apply to Pian agent hosting.
 
 ### Visual Summary
 
@@ -268,7 +268,7 @@ graph TD
 ```
 
 > [!CAUTION]
-> **Bottom line**: RunPod is a GPU rental platform for AI/ML researchers. SnitchX agents are lightweight Python scripts that make REST API calls. Using RunPod for this is like renting a supercomputer to run a calculator app — it works, but you're paying 10× more for resources you'll never touch, while missing critical infrastructure (static IPs, load balancers, monitoring, SSL) that EC2 gives you out of the box.
+> **Bottom line**: RunPod is a GPU rental platform for AI/ML researchers. Pian agents are lightweight Python scripts that make REST API calls. Using RunPod for this is like renting a supercomputer to run a calculator app — it works, but you're paying 10× more for resources you'll never touch, while missing critical infrastructure (static IPs, load balancers, monitoring, SSL) that EC2 gives you out of the box.
 
 ---
 
@@ -355,7 +355,7 @@ sequenceDiagram
     Note over FS,CF: ~100-300ms trigger latency
 
     CF->>FS: 7. Update status → "running"
-    CF->>EC2: 8. POST https://agents.snitchx.com/calendar/action
+    CF->>EC2: 8. POST https://agents.Pian.com/calendar/action
     Note over CF,EC2: ~50ms network hop
 
     EC2->>API: 9. Graph API calls (auth, create event)
@@ -406,8 +406,8 @@ These are the new environment variables needed for production:
 **Firebase Cloud Functions (set via `firebase functions:config:set`):**
 | Variable | Value |  Why |
 |:--|:--|:--|
-| `agent.server_url` | `https://agents.snitchx.com` | The public URL of the EC2 agent server |
-| `agent.todo_url` | `https://agents.snitchx.com` | Same server; different route |
+| `agent.server_url` | `https://agents.Pian.com` | The public URL of the EC2 agent server |
+| `agent.todo_url` | `https://agents.Pian.com` | Same server; different route |
 
 **EC2 Server (.env on the EC2 instance):**
 | Variable | Value |  Why |
@@ -439,10 +439,10 @@ This is the **most critical file** for production. It currently runs when a new 
 +// Teams/Email/Calendar agents run on port 8100
 +// Todo agent runs on port 8200
 +const AGENT_SERVERS = {
-+  "teams-agent": process.env.AGENT_SERVER_URL || "https://agents.snitchx.com",
-+  "email-agent": process.env.AGENT_SERVER_URL || "https://agents.snitchx.com",
-+  "calendar-agent": process.env.AGENT_SERVER_URL || "https://agents.snitchx.com",
-+  "todo-agent": process.env.TODO_AGENT_URL || "https://agents.snitchx.com",
++  "teams-agent": process.env.AGENT_SERVER_URL || "https://agents.Pian.com",
++  "email-agent": process.env.AGENT_SERVER_URL || "https://agents.Pian.com",
++  "calendar-agent": process.env.AGENT_SERVER_URL || "https://agents.Pian.com",
++  "todo-agent": process.env.TODO_AGENT_URL || "https://agents.Pian.com",
 +};
 +
 +const agentServerUrl = AGENT_SERVERS[task.agentId] || process.env.AGENT_SERVER_URL;
@@ -583,7 +583,7 @@ When a single EC2 instance can't handle the load (e.g., > 500 concurrent agent t
 
 ```mermaid
 graph TB
-    CF["Cloud Function"] --> ALB["AWS Application<br/>Load Balancer<br/>(agents.snitchx.com)"]
+    CF["Cloud Function"] --> ALB["AWS Application<br/>Load Balancer<br/>(agents.Pian.com)"]
     ALB --> EC2a["EC2 Instance 1<br/>(us-east-1a)"]
     ALB --> EC2b["EC2 Instance 2<br/>(us-east-1b)"]
     ALB --> EC2c["EC2 Instance 3<br/>(us-east-1c)"]
@@ -622,10 +622,10 @@ This section is a **step-by-step guide** for a person who has never used AWS. Fo
 
 3. **Launch an instance**:
    - Go to **EC2 → Instances → Launch Instance**
-   - **Name**: `snitchx-agent-server`
+   - **Name**: `Pian-agent-server`
    - **AMI (Operating System)**: Ubuntu Server 22.04 LTS (Free Tier eligible)
    - **Instance type**: `t3.small` (2 vCPU, 2GB RAM) — good for up to ~20 agents. Use `t3.medium` (4GB RAM) if you have 50+ agents.
-   - **Key pair**: Create a new key pair → name it `snitchx-key` → download the `.pem` file. **Save this file**, you will need it to log in.
+   - **Key pair**: Create a new key pair → name it `Pian-key` → download the `.pem` file. **Save this file**, you will need it to log in.
    - **Network settings**: 
      - Allow SSH from your IP (port 22)
      - Allow HTTPS from anywhere (port 443)
@@ -637,19 +637,19 @@ This section is a **step-by-step guide** for a person who has never used AWS. Fo
    - Go to **EC2 → Elastic IPs → Allocate Elastic IP Address**
    - Click **Allocate**
    - Select the new IP → **Actions → Associate Elastic IP Address**
-   - Choose your `snitchx-agent-server` instance → **Associate**
+   - Choose your `Pian-agent-server` instance → **Associate**
    - Note the IP address (e.g., `3.110.45.67`). This is your server's permanent public IP.
 
 5. **Point your domain** (optional but recommended):
-   - In your DNS provider, create an A record: `agents.snitchx.com` → `3.110.45.67`
-   - This lets you use `https://agents.snitchx.com` instead of a raw IP address
+   - In your DNS provider, create an A record: `agents.Pian.com` → `3.110.45.67`
+   - This lets you use `https://agents.Pian.com` instead of a raw IP address
 
 ### 8.2 Set Up the Server
 
 SSH into your new server:
 ```bash
 # From your local machine (replace with your key file path and IP)
-ssh -i "snitchx-key.pem" ubuntu@3.110.45.67
+ssh -i "Pian-key.pem" ubuntu@3.110.45.67
 ```
 
 Run these commands on the server:
@@ -693,7 +693,7 @@ pip install -r requirements.txt
 
 # Copy the Firebase service account key
 # (Upload it from your local machine first)
-# scp -i "snitchx-key.pem" serviceAccountKey.json ubuntu@3.110.45.67:~/ai-everyone/agents/todo-agent/
+# scp -i "Pian-key.pem" serviceAccountKey.json ubuntu@3.110.45.67:~/ai-everyone/agents/todo-agent/
 
 # Test that it starts
 python3 main.py &
@@ -716,13 +716,13 @@ Nginx sits in front of both agent servers and handles:
 sudo apt install -y nginx certbot python3-certbot-nginx
 
 # ── 2. Create the Nginx config ───────────────────────────────────────
-sudo tee /etc/nginx/sites-available/snitchx-agents <<'EOF'
+sudo tee /etc/nginx/sites-available/Pian-agents <<'EOF'
 # Rate limiting zone: 100 requests/second per IP, burst up to 200
 limit_req_zone $binary_remote_addr zone=agents:10m rate=100r/s;
 
 server {
     listen 80;
-    server_name agents.snitchx.com;  # Replace with your domain
+    server_name agents.Pian.com;  # Replace with your domain
 
     # Redirect HTTP → HTTPS (Certbot will add this automatically)
 
@@ -733,7 +733,7 @@ server {
 
 server {
     listen 443 ssl;
-    server_name agents.snitchx.com;
+    server_name agents.Pian.com;
 
     # SSL certs will be added by Certbot
 
@@ -782,13 +782,13 @@ server {
 EOF
 
 # ── 3. Enable the config ─────────────────────────────────────────────
-sudo ln -s /etc/nginx/sites-available/snitchx-agents /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/Pian-agents /etc/nginx/sites-enabled/
 sudo rm /etc/nginx/sites-enabled/default  # Remove default page
 sudo nginx -t           # Test config syntax
 sudo systemctl reload nginx
 
 # ── 4. Get HTTPS certificate (free, auto-renews) ─────────────────────
-sudo certbot --nginx -d agents.snitchx.com
+sudo certbot --nginx -d agents.Pian.com
 # Follow the prompts — enter your email, agree to terms.
 # Certbot will automatically configure SSL in the Nginx config.
 ```
@@ -799,9 +799,9 @@ We need both Python servers to start automatically when the EC2 instance boots, 
 
 ```bash
 # ── Teams Agent Service ───────────────────────────────────────────────
-sudo tee /etc/systemd/system/snitchx-teams-agent.service <<'EOF'
+sudo tee /etc/systemd/system/Pian-teams-agent.service <<'EOF'
 [Unit]
-Description=SnitchX Teams Agent (FastAPI)
+Description=Pian Teams Agent (FastAPI)
 After=network.target
 
 [Service]
@@ -818,9 +818,9 @@ WantedBy=multi-user.target
 EOF
 
 # ── Todo Agent Service ────────────────────────────────────────────────
-sudo tee /etc/systemd/system/snitchx-todo-agent.service <<'EOF'
+sudo tee /etc/systemd/system/Pian-todo-agent.service <<'EOF'
 [Unit]
-Description=SnitchX Todo Agent (FastAPI)
+Description=Pian Todo Agent (FastAPI)
 After=network.target
 
 [Service]
@@ -838,16 +838,16 @@ EOF
 
 # ── Enable and start both services ────────────────────────────────────
 sudo systemctl daemon-reload
-sudo systemctl enable snitchx-teams-agent snitchx-todo-agent
-sudo systemctl start snitchx-teams-agent snitchx-todo-agent
+sudo systemctl enable Pian-teams-agent Pian-todo-agent
+sudo systemctl start Pian-teams-agent Pian-todo-agent
 
 # ── Verify they are running ───────────────────────────────────────────
-sudo systemctl status snitchx-teams-agent
-sudo systemctl status snitchx-todo-agent
+sudo systemctl status Pian-teams-agent
+sudo systemctl status Pian-todo-agent
 
 # ── View logs ─────────────────────────────────────────────────────────
-journalctl -u snitchx-teams-agent -f   # follow teams agent logs
-journalctl -u snitchx-todo-agent -f    # follow todo agent logs
+journalctl -u Pian-teams-agent -f   # follow teams agent logs
+journalctl -u Pian-todo-agent -f    # follow todo agent logs
 ```
 
 ### 8.5 Verify the Setup
@@ -856,10 +856,10 @@ After completing Sections 8.1–8.4, run these tests:
 
 ```bash
 # From your local machine (or any computer with internet):
-curl https://agents.snitchx.com/health
+curl https://agents.Pian.com/health
 # Expected: {"status":"healthy","agent":"teams-agent","version":"1.0.0"}
 
-curl -X POST https://agents.snitchx.com/todo/action \
+curl -X POST https://agents.Pian.com/todo/action \
   -H "Content-Type: application/json" \
   -d '{"taskId":"test","userId":"test","agentId":"todo-agent","action":"list_tasks"}'
 # Expected: {"status":"success","type":"todo_list","tasks":[],...}
@@ -885,7 +885,7 @@ See the diffs in [Section 6.2](#62-files-that-change).
 cd functions
 
 # Set the agent server URL (this is your EC2 public URL)
-firebase functions:config:set agent.server_url="https://agents.snitchx.com"
+firebase functions:config:set agent.server_url="https://agents.Pian.com"
 
 # Deploy the function
 firebase deploy --only functions
@@ -976,7 +976,7 @@ Server 4 (port 8400): Data agents (Sheets, SQL, Analytics)
 Pro: Isolation — a crash in Server 3 doesn't affect Server 1.
 Con: More systemd services to manage, more Nginx routing rules.
 
-Nginx handles routing in both cases — the Cloud Function always hits one URL (`agents.snitchx.com/agent-name/action`), and Nginx routes to the correct port.
+Nginx handles routing in both cases — the Cloud Function always hits one URL (`agents.Pian.com/agent-name/action`), and Nginx routes to the correct port.
 
 ---
 
@@ -1020,7 +1020,7 @@ Use this as a step-by-step checklist when deploying to production:
 - [ ] Create AWS account (if you don't have one)
 - [ ] Launch EC2 instance (see Section 8.1)
 - [ ] Allocate and associate Elastic IP
-- [ ] Configure DNS (e.g., `agents.snitchx.com` → Elastic IP)
+- [ ] Configure DNS (e.g., `agents.Pian.com` → Elastic IP)
 - [ ] SSH into the instance and install dependencies (Section 8.2)
 - [ ] Clone the repo and set up both agent servers
 - [ ] Install and configure Nginx (Section 8.3)
@@ -1042,7 +1042,7 @@ Use this as a step-by-step checklist when deploying to production:
 ### Phase 5: Monitoring
 - [ ] Set up CloudWatch alarms for EC2 (CPU > 80%, disk > 90%)
 - [ ] Monitor Firebase Cloud Function error rates
-- [ ] Set up a simple uptime monitor (e.g., [UptimeRobot](https://uptimerobot.com)) for `https://agents.snitchx.com/health`
+- [ ] Set up a simple uptime monitor (e.g., [UptimeRobot](https://uptimerobot.com)) for `https://agents.Pian.com/health`
 
 ---
 
@@ -1051,7 +1051,7 @@ Use this as a step-by-step checklist when deploying to production:
 - [Architecture: Dev vs Prod](file:///e:/SaaS-ai/ai-everyone/Documentation/architecture_dev_vs_prod.md) — Why direct execution is used in dev
 - [API vs Local Execution](file:///e:/SaaS-ai/ai-everyone/Documentation/api_vs_local_execution.md) — Why agents use REST APIs, not local scripts
 - [Agentic Model Integration](file:///e:/SaaS-ai/ai-everyone/Documentation/agentic_model_integration.md) — How the LLM delegates to agents
-- [SnitchX Architecture](file:///e:/SaaS-ai/ai-everyone/Documentation/snitchx_architecture.md) — Full system architecture
+- [Pian Architecture](file:///e:/SaaS-ai/ai-everyone/Documentation/Pian_architecture.md) — Full system architecture
 - [Docker Networking Guide](file:///e:/SaaS-ai/ai-everyone/Documentation/docker_networking_guide.md) — Localhost vs host.docker.internal
 - [Todo Agent Architecture](file:///e:/SaaS-ai/ai-everyone/Documentation/todo_agent_architecture.md) — Todo agent schema and endpoints
 

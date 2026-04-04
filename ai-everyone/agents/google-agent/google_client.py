@@ -1,7 +1,7 @@
 """
 Google OAuth 2.0 helpers for the Google agent.
 
-The production SnitchX flow passes per-user access and refresh tokens down from
+The production Pian flow passes per-user access and refresh tokens down from
 Firestore. We still keep the in-memory auth store for local/manual debugging so
 engineers can authorize the standalone FastAPI server without the full app.
 """
@@ -117,8 +117,8 @@ def acquire_google_token(
     Resolve a usable Google access token.
 
     Order of preference:
-    1. Access token passed from SnitchX runtime
-    2. Refresh token passed from SnitchX runtime
+    1. Access token passed from Pian runtime
+    2. Refresh token passed from Pian runtime
     3. Local debug token store
     """
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:

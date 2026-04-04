@@ -1,7 +1,7 @@
 /**
  * POST /api/chat
  *
- * Authenticated streaming chat route for SnitchX.
+ * Authenticated streaming chat route for Pian.
  *
  * - Verifies the Firebase ID token from the Authorization header
  * - Streams normal Ollama text responses incrementally
@@ -19,11 +19,13 @@ import { rebuildPersona, formatPersonaForPrompt } from "@/lib/memory/persona-bui
 import { getPersona } from "@/lib/memory/memory-repository.server";
 import { getTopKMemories, formatMemoriesForPrompt } from "@/lib/memory/retrieval";
 import {
+    AGENT_BUNDLES,
     AGENT_CATALOG,
     getAgentCatalogEntry,
     getInstallHintForAgent,
     getInstalledAgentRegistry,
 } from "@/lib/agents/catalog";
+import { getMarketplaceAgentById } from "@/lib/agents/marketplace";
 import {
     getAccessibleAgentIds,
     getProviderConnection,
@@ -77,6 +79,19 @@ interface AgentIntent {
 interface ParsedIntentResult {
     intent: AgentIntent;
     conversationalText: string;
+}
+
+interface AgentInstallSuggestionMeta {
+    id: string;
+    name: string;
+    description: string;
+    iconUrl: string;
+    category: string;
+    installCount: number;
+    rating: number;
+    requiresConnection: boolean;
+    bundleId?: string;
+    kind: "agent" | "bundle";
 }
 
 const GEMINI_MODEL_ALIASES: Record<string, string> = {
@@ -191,6 +206,26 @@ function buildAttachmentFailureMessage(failedAttachments: ChatFailedAttachment[]
     ].join("\n");
 }
 
+async function buildUnavailableAgentSuggestionMeta(
+    agentId: string
+): Promise<AgentInstallSuggestionMeta | null> {
+    const marketplaceItem = await getMarketplaceAgentById(agentId);
+    if (!marketplaceItem) return null;
+
+    return {
+        id: marketplaceItem.id,
+        name: marketplaceItem.name,
+        description: marketplaceItem.description,
+        iconUrl: marketplaceItem.iconUrl,
+        category: marketplaceItem.category,
+        installCount: marketplaceItem.installCount,
+        rating: marketplaceItem.rating,
+        requiresConnection: marketplaceItem.requiresConnection,
+        bundleId: marketplaceItem.bundleId,
+        kind: marketplaceItem.kind,
+    };
+}
+
 function toFriendlyAttachmentReason(rawReason: string): string {
     const lower = rawReason.toLowerCase();
     if (lower.includes("document has no pages")) {
@@ -208,7 +243,7 @@ function toFriendlyAttachmentReason(rawReason: string): string {
 }
 
 function buildDirectAttachmentPrompt(personaContext: string): string {
-    const attachmentDirective = `You are SnitchX assistant.
+    const attachmentDirective = `You are Pian assistant.
 
 Current request contains user-uploaded files. You MUST answer directly from those uploaded files and MUST NOT emit <AGENT_INTENT>.
 Do not delegate to Drive/Gmail/any other agent for this turn.
@@ -279,9 +314,36 @@ function buildOrchestrationPrompt(
         })
         .join("\n");
 
-    return `You are the orchestration AI of SnitchX, an AI assistant platform.
+    const bundleDescriptions = AGENT_BUNDLES.map((bundle) => {
+        const installedChildren = bundle.childAgentIds.filter((id) => installedSet.has(id)).length;
+        const accessibleChildren = bundle.childAgentIds.filter((id) =>
+            accessibleSet.has(id)
+        ).length;
+        const isFullyConnected = accessibleChildren === bundle.childAgentIds.length;
+        const status = isFullyConnected
+            ? "Connected"
+            : installedChildren > 0
+                ? "Partially installed/connected"
+                : "Not installed";
+        return `- ${bundle.name} (${bundle.id}): ${status}. Includes: ${bundle.childAgentIds.join(
+            ", "
+        )}`;
+    }).join("\n");
+
+    const totalUnits = AGENT_CATALOG.length + AGENT_BUNDLES.length;
+    const availableUnits = installedRegistry.length + AGENT_BUNDLES.filter((bundle) =>
+        bundle.childAgentIds.every((id) => accessibleSet.has(id))
+    ).length;
+    const unavailableUnits = totalUnits - availableUnits;
+
+    return `You are the orchestration AI of Pian, an AI assistant platform.
 
 You can either answer questions directly OR delegate tasks to specialized agents.
+
+## Registry Summary
+- Total marketplace units (agents + bundles): ${totalUnits}
+- Currently available units: ${availableUnits}
+- Currently unavailable units: ${unavailableUnits}
 
 ## Currently Available Agents
 ${availableAgentDescriptions || "No agents are currently available for this user."}
@@ -289,13 +351,17 @@ ${availableAgentDescriptions || "No agents are currently available for this user
 ## Unavailable Agents
 ${unavailableDescriptions || "All registered agents are available right now."}
 
+## Marketplace Bundles (Install Packs)
+${bundleDescriptions || "No bundles are registered."}
+
 ## Core Rules
 1. If a request should be delegated to an AVAILABLE agent, respond with ONLY a valid JSON object wrapped inside <AGENT_INTENT> tags. Do not include any explanation before or after the tags.
-2. If a request needs an UNAVAILABLE agent, do NOT emit <AGENT_INTENT>. Respond normally and tell the user to install or connect the required agent first.
+2. If a request needs an UNAVAILABLE agent, still emit exactly one <AGENT_INTENT> with the best matching single agent so the app can show an install/connect card inline.
 3. NEVER execute actions yourself. Only delegate using <AGENT_INTENT> for available agents.
-4. If you are unsure which agent is needed, ask a concise clarification question instead of emitting <AGENT_INTENT>.
+4. If you are unsure which single agent is needed, ask a concise clarification question instead of emitting <AGENT_INTENT>.
 5. The JSON inside <AGENT_INTENT> must be valid and parseable: no comments, no trailing commas.
 6. For potential medical emergencies (chest pain, breathing issues, severe injury), prefer the emergency-response-agent first.
+7. Never return multiple agent IDs in one response. Choose only one agent at a time.
 
 ## Agent Formatting Rules
 For the teams-agent:
@@ -417,6 +483,8 @@ For the strata-agent:
 - ask: extract "question" and optional "symbol"
 - upload_report: extract optional "reportName" and pass through uploaded attachments only if explicitly present in this request
 - Use strata-agent for company financial analytics, stock trend/snapshot interpretation, profitability breakdowns, and decision insights.
+- If the user asks for "any company"/"any big company" and no symbol is given, you may select a default large-cap symbol yourself (AAPL, MSFT, GOOGL, AMZN, TSLA) and include it in parameters.symbol.
+- If the user explicitly asks for India/Indian companies and no tradable ticker is provided, ask a short clarification for the ticker format (for example NSE symbol style), instead of guessing unsupported symbols.
 
 If an agent is needed, output ONLY:
 <AGENT_INTENT>
@@ -690,8 +758,8 @@ async function fetchDriveAttachmentAsBase64(
     const exportMimeType = resolveDriveExportMimeType(attachment.mimeType);
     const requestUrl = exportMimeType
         ? `https://www.googleapis.com/drive/v3/files/${attachment.driveFileId}/export?mimeType=${encodeURIComponent(
-              exportMimeType
-          )}`
+            exportMimeType
+        )}`
         : `https://www.googleapis.com/drive/v3/files/${attachment.driveFileId}?alt=media`;
 
     const requestWithToken = async (token: string) =>
@@ -1250,8 +1318,8 @@ export async function POST(req: NextRequest) {
         const systemPrompt = shouldForceDirectAttachmentResponse
             ? buildDirectAttachmentPrompt(personaContext)
             : [buildOrchestrationPrompt(installedAgentIds, accessibleAgentIds), personaContext]
-                  .filter(Boolean)
-                  .join("\n\n");
+                .filter(Boolean)
+                .join("\n\n");
 
         const messagesForModel = [
             { role: "system", content: systemPrompt },
@@ -1343,41 +1411,41 @@ export async function POST(req: NextRequest) {
 
                         const assistantContent = usingGemini
                             ? await (async () => {
-                                  const result = await streamGeminiChat(
-                                      geminiApiKey,
-                                      model,
-                                      systemPrompt,
-                                      messages.map((message) => ({
-                                          role: message.role === "agent" ? "assistant" : message.role,
-                                          content: message.content,
-                                      })),
-                                      effectiveAttachments,
-                                      uid,
-                                      handleDelta,
-                                      upstreamAbortController.signal
-                                  );
-                                  if (result.failedAttachments.length > 0) {
-                                      attachmentFailuresForResponse = [
-                                          ...attachmentFailuresForResponse,
-                                          ...result.failedAttachments,
-                                      ];
-                                  }
-                                  return result.content;
-                              })()
+                                const result = await streamGeminiChat(
+                                    geminiApiKey,
+                                    model,
+                                    systemPrompt,
+                                    messages.map((message) => ({
+                                        role: message.role === "agent" ? "assistant" : message.role,
+                                        content: message.content,
+                                    })),
+                                    effectiveAttachments,
+                                    uid,
+                                    handleDelta,
+                                    upstreamAbortController.signal
+                                );
+                                if (result.failedAttachments.length > 0) {
+                                    attachmentFailuresForResponse = [
+                                        ...attachmentFailuresForResponse,
+                                        ...result.failedAttachments,
+                                    ];
+                                }
+                                return result.content;
+                            })()
                             : await streamOllamaChat(
-                                  baseUrl,
-                                  model,
-                                  messagesForModel,
-                                  handleDelta,
-                                  upstreamAbortController.signal
-                              );
+                                baseUrl,
+                                model,
+                                messagesForModel,
+                                handleDelta,
+                                upstreamAbortController.signal
+                            );
 
                         const parsedIntentOrError = tryParseAgentIntent(assistantContent);
                         const parseResult =
                             shouldForceDirectAttachmentResponse &&
-                            parsedIntentOrError &&
-                            !("error" in parsedIntentOrError) &&
-                            !isStrataUploadIntent(parsedIntentOrError.intent)
+                                parsedIntentOrError &&
+                                !("error" in parsedIntentOrError) &&
+                                !isStrataUploadIntent(parsedIntentOrError.intent)
                                 ? null
                                 : parsedIntentOrError;
                         if (parseResult && "error" in parseResult) {
@@ -1404,20 +1472,48 @@ export async function POST(req: NextRequest) {
 
                             if (!installedAgentIds.includes(intent.agent_required)) {
                                 const installMessage = getInstallHintForAgent(intent.agent_required);
+                                const suggestion = await buildUnavailableAgentSuggestionMeta(
+                                    intent.agent_required
+                                );
                                 if (!streamedText.trim()) {
                                     sendEvent("text", { content: installMessage });
                                 }
-                                sendEvent("done", { type: "chat", content: installMessage });
+                                sendEvent("done", {
+                                    type: "chat",
+                                    content: installMessage,
+                                    ...(suggestion
+                                        ? {
+                                            meta: {
+                                                kind: "agent_install_suggestion",
+                                                suggestion,
+                                            },
+                                        }
+                                        : {}),
+                                });
                                 safeClose();
                                 return;
                             }
 
                             if (!accessibleAgentIds.includes(intent.agent_required)) {
                                 const connectMessage = getInstallHintForAgent(intent.agent_required);
+                                const suggestion = await buildUnavailableAgentSuggestionMeta(
+                                    intent.agent_required
+                                );
                                 if (!streamedText.trim()) {
                                     sendEvent("text", { content: connectMessage });
                                 }
-                                sendEvent("done", { type: "chat", content: connectMessage });
+                                sendEvent("done", {
+                                    type: "chat",
+                                    content: connectMessage,
+                                    ...(suggestion
+                                        ? {
+                                            meta: {
+                                                kind: "agent_install_suggestion",
+                                                suggestion,
+                                            },
+                                        }
+                                        : {}),
+                                });
                                 safeClose();
                                 return;
                             }

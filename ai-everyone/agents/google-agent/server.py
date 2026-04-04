@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 Shutting down Google Workspace Agent...")
 
 app = FastAPI(
-    title="SnitchX Google Workspace Agent",
+    title="Pian Google Workspace Agent",
     description="Agent for Google Services (Gmail, Calendar, Meet, Tasks, Drive)",
     version="1.0.0",
     lifespan=lifespan
@@ -106,7 +106,7 @@ app.add_middleware(
 
 
 class GoogleActionRequest(BaseModel):
-    """Request body from SnitchX Orchestrator."""
+    """Request body from Pian Orchestrator."""
     agent_type: str  # "gmail", "calendar", "meet", "tasks", "drive", "web_search", "notes", "contacts"
     action: str
     parameters: str | None = None
@@ -161,7 +161,7 @@ def auth_callback(code: str = "", error: str = "", redirect_uri: str = ""):
         exchange_code_for_tokens(code, redirect_uri=redirect_uri or None)
         return HTMLResponse(
             "<h2>✅ Google account connected!</h2>"
-            "<p>You can close this tab and go back to SnitchX.</p>"
+            "<p>You can close this tab and go back to Pian.</p>"
             "<script>setTimeout(()=>window.close(),3000)</script>"
         )
     except Exception as exc:

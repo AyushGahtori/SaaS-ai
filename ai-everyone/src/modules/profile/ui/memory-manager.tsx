@@ -347,21 +347,19 @@ export function MemoryManager() {
                         <div className="grid grid-cols-2 gap-1">
                             <button
                                 onClick={() => setForm((prev) => ({ ...prev, scope: "stable" }))}
-                                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                                    form.scope === "stable"
+                                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${form.scope === "stable"
                                         ? "bg-white text-black"
                                         : "text-white/65 hover:text-white"
-                                }`}
+                                    }`}
                             >
                                 Stable
                             </button>
                             <button
                                 onClick={() => setForm((prev) => ({ ...prev, scope: "temporary" }))}
-                                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                                    form.scope === "temporary"
+                                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${form.scope === "temporary"
                                         ? "bg-[#F59E0B] text-black"
                                         : "text-white/65 hover:text-white"
-                                }`}
+                                    }`}
                             >
                                 Temporary
                             </button>
@@ -390,7 +388,7 @@ export function MemoryManager() {
                 <div className="flex h-48 flex-col items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] text-center">
                     <div className="text-4xl">🧠</div>
                     <p className="text-sm text-neutral-400">No memories stored yet.</p>
-                    <p className="text-xs text-neutral-600">As you chat, SnitchX will extract preferences and context here.</p>
+                    <p className="text-xs text-neutral-600">As you chat, Pian will extract preferences and context here.</p>
                 </div>
             ) : (
                 <div className="space-y-3">
@@ -467,8 +465,8 @@ export function MemoryManager() {
                                                 title="Edit"
                                             >
                                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                                 </svg>
                                             </button>
                                             <button
@@ -477,10 +475,10 @@ export function MemoryManager() {
                                                 title="Delete"
                                             >
                                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                    <polyline points="3 6 5 6 21 6"/>
-                                                    <path d="M19 6l-1 14H6L5 6"/>
-                                                    <path d="M10 11v6M14 11v6"/>
-                                                    <path d="M9 6V4h6v2"/>
+                                                    <polyline points="3 6 5 6 21 6" />
+                                                    <path d="M19 6l-1 14H6L5 6" />
+                                                    <path d="M10 11v6M14 11v6" />
+                                                    <path d="M9 6V4h6v2" />
                                                 </svg>
                                             </button>
                                         </div>

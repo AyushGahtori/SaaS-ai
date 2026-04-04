@@ -123,7 +123,7 @@ export function SettingsView() {
       }
 
       window.dispatchEvent(
-        new CustomEvent("snitchx-profile-updated", {
+        new CustomEvent("Pian-profile-updated", {
           detail: {
             name: profileForm.name,
             email: profileForm.email,
@@ -195,7 +195,7 @@ export function SettingsView() {
           <div>
             <h1 className="text-2xl font-bold text-white/95">Settings</h1>
             <p className="text-sm text-white/40">
-              Manage your installed agents, memory controls, and personal profile without leaving SnitchX.
+              Manage your installed agents, memory controls, and personal profile without leaving Pian.
             </p>
           </div>
         </div>
@@ -211,11 +211,10 @@ export function SettingsView() {
             <button
               key={item.id}
               onClick={() => setTab(item.id)}
-              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
-                tab === item.id
+              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${tab === item.id
                   ? "bg-white text-black"
                   : "border border-white/10 bg-white/[0.03] text-white/65 hover:text-white"
-              }`}
+                }`}
             >
               <item.icon className="h-4 w-4" />
               {item.label}

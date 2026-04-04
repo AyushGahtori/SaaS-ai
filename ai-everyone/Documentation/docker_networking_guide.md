@@ -1,6 +1,6 @@
 # Docker Networking Guide — Localhost vs Host.Docker.Internal
 
-This guide explains how the SnitchX Parent LLM (Next.js) communicates with its specialized Python Agents within a Dockerized environment.
+This guide explains how the Pian Parent LLM (Next.js) communicates with its specialized Python Agents within a Dockerized environment.
 
 ---
 
@@ -14,7 +14,7 @@ This guide explains how the SnitchX Parent LLM (Next.js) communicates with its s
 ---
 
 ## 1. Using `localhost`
-When you use `docker exec -it snitchx bash` and then run `python main.py`, the agent starts **inside the same environment** as the Next.js server. 
+When you use `docker exec -it Pian bash` and then run `python main.py`, the agent starts **inside the same environment** as the Next.js server. 
 
 In this scenario:
 - Both processes share the same local network interface.
@@ -22,7 +22,7 @@ In this scenario:
 - **Next.js URL**: `http://localhost:<PORT>`
 
 > [!NOTE]
-> This is why we updated `firestore-tasks.server.ts` to use `localhost`—it ensures high-speed, direct communication between the frontend and your agents within the `snitchx` container.
+> This is why we updated `firestore-tasks.server.ts` to use `localhost`—it ensures high-speed, direct communication between the frontend and your agents within the `Pian` container.
 
 ---
 

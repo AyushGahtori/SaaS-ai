@@ -29,6 +29,6 @@ production_plan.md: Broader production strategy.
 raw_json_vs_tag_based.md: Prompt/intent strategy notes.
 README.md: New docs hub/index.
 sidebar-colapse-button.txt: UI note.
-snitchx_architecture.md: High-level product architecture.
+Pian_architecture.md: High-level product architecture.
 todo_agent_architecture.md: Todo agent model + detached deployment.
 trpc.txt: tRPC notes.

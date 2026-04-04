@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Todo AI Agent API",
-    description="AI-powered task manager for SnitchX.",
+    description="AI-powered task manager for Pian.",
     version="3.0.0",
 )
 

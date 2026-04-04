@@ -19,7 +19,7 @@ from services.report_service import normalize_attachments
 load_dotenv()
 
 app = FastAPI(
-    title="SnitchX Strata Agent",
+    title="Pian Strata Agent",
     description="Financial dashboard and insight agent with Firestore-native persistence.",
     version="1.0.0",
 )
@@ -43,6 +43,24 @@ def _require_user(req: StrataActionRequest) -> str:
 def _resolve_symbol(req: StrataActionRequest) -> str:
     default_symbol = (os.getenv("STRATA_DEFAULT_SYMBOL") or "AAPL").strip().upper()
     return (req.symbol or default_symbol).strip().upper()
+
+
+def _build_402_needs_input_response() -> StrataActionResponse:
+    return StrataActionResponse(
+        status="needs_input",
+        type="strata_access",
+        message="Financial data provider blocked this request due to API plan limits.",
+        summary=(
+            "I can continue as soon as you provide a ticker supported by your current API plan "
+            "(for example: AAPL, MSFT, GOOGL, AMZN, TSLA)."
+        ),
+        result={
+            "reason": "api_plan_limit",
+            "suggestedSymbols": ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"],
+            "hint": "If you want Indian equities, provide an exchange-qualified ticker supported by your plan.",
+        },
+        displayName="Stara Input Needed",
+    )
 
 
 @app.get("/health")
@@ -211,6 +229,8 @@ async def strata_action(req: StrataActionRequest) -> StrataActionResponse:
 
         return StrataActionResponse(status="failed", error=f"Unknown action: {req.action}")
     except ValueError as exc:
+        if "HTTP 402" in str(exc):
+            return _build_402_needs_input_response()
         return StrataActionResponse(status="failed", error=str(exc))
     except Exception as exc:
         return StrataActionResponse(

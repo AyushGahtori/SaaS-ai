@@ -1,6 +1,6 @@
 # Why App Executions Must Be API-Based (Not Local)
 
-When integrating AI agents into a modern web application (like SnitchX), a common mistake is attempting to use local desktop automation tools (like PowerShell, AppleScript, or UI pathing) inside backend servers. 
+When integrating AI agents into a modern web application (like Pian), a common mistake is attempting to use local desktop automation tools (like PowerShell, AppleScript, or UI pathing) inside backend servers. 
 
 This document explains why **all agent executions must rely on cloud APIs (like Microsoft Graph)** rather than local machine executions (like Outlook COM + PowerShell).
 
@@ -16,7 +16,7 @@ This works because:
 4. It has access to your microphone and speakers (for speech-to-text / text-to-speech).
 
 ### 2. The Production Environment ("The Cloud")
-SnitchX runs inside a **Docker container** locally, and will eventually be deployed to a cloud server like **Vercel**, **Google Cloud Run**, or **AWS ECS**.
+Pian runs inside a **Docker container** locally, and will eventually be deployed to a cloud server like **Vercel**, **Google Cloud Run**, or **AWS ECS**.
 
 These environments have none of the local dependencies:
 1. **OS Mismatch**: Docker containers and cloud servers almost exclusively run **Linux (Ubuntu/Alpine)**, not Windows.
@@ -48,7 +48,7 @@ Instead of telling the server to *"open the local Outlook app and search for Aar
 
 ## Example: The Teams Meeting Scheduler
 
-During the development of SnitchX, we ported an experimental agent (`assistant.py`) into the robust backend agent `teams-agent.py`.
+During the development of Pian, we ported an experimental agent (`assistant.py`) into the robust backend agent `teams-agent.py`.
 
 ### ❌ The Old Approach (Local)
 The original script used PowerShell to query the local Outlook database for email addresses, and used the Windows `System.Speech` DLL for voice outputs.
@@ -60,7 +60,7 @@ The ported `teams-agent.py`:
 3. Leaves **Speech and Audio** entirely to the frontend browser (`window.speechSynthesis`), since the browser is what the user is actually interacting with. 
 
 ## Best Practices for Future Agents
-If you are adding a new agent to SnitchX, follow this rule:
+If you are adding a new agent to Pian, follow this rule:
 > **If it requires you to open an app on your computer, use your mouse, or type in a terminal, it cannot be run by the backend server.** 
 
 Always look for the **Developer REST API** for the service you want to integrate (e.g., Slack API, Google Calendar API, Microsoft Graph API).
