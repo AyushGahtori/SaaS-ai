@@ -3,7 +3,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Archive, Plus, Search, Trash2, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { noteMatchesSearch } from "@/modules/bloom-ai/lib/shared";
 import type { BloomNote, BloomSection } from "@/modules/bloom-ai/types";
 
@@ -85,8 +84,8 @@ export function BloomNotesView({
     const deleteLabel = section === "deleted" ? "Delete Permanently" : "Delete";
 
     return (
-        <div className="grid min-h-[680px] gap-5 lg:grid-cols-[320px_1fr]">
-            <div className="rounded-[30px] border border-white/10 bg-[#1d1a19] p-5 shadow-[0_20px_55px_rgba(0,0,0,0.28)]">
+        <div className="grid h-full min-h-0 gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+            <div className="flex min-h-0 flex-col rounded-[30px] border border-white/10 bg-[#1d1a19] p-5 shadow-[0_20px_55px_rgba(0,0,0,0.28)]">
                 <div className="flex items-center justify-between gap-3">
                     <Button
                         onClick={() => void addNote()}
@@ -106,7 +105,7 @@ export function BloomNotesView({
                     </div>
                 </div>
 
-                <ScrollArea className="mt-5 h-[560px] pr-2">
+                <div className="custom-scrollbar mt-5 min-h-0 flex-1 overflow-y-auto pr-2">
                     <div className="grid gap-3">
                         {filteredNotes.length === 0 ? (
                             <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-5 text-sm text-white/42">
@@ -142,10 +141,10 @@ export function BloomNotesView({
                             );
                         })}
                     </div>
-                </ScrollArea>
+                </div>
             </div>
 
-            <div className="rounded-[30px] border border-white/10 bg-[#171514] p-5 shadow-[0_20px_55px_rgba(0,0,0,0.28)]">
+            <div className="flex min-h-0 flex-col rounded-[30px] border border-white/10 bg-[#171514] p-5 shadow-[0_20px_55px_rgba(0,0,0,0.28)]">
                 {selectedNote ? (
                     <>
                         <div className="flex items-start justify-between gap-4">
@@ -187,7 +186,7 @@ export function BloomNotesView({
                                 setDraft((current) => ({ ...current, content: event.target.value }))
                             }
                             placeholder="Here is a new note to capture your best thoughts and ideas."
-                            className="mt-6 h-[420px] w-full resize-none rounded-[28px] border border-white/8 bg-black/25 p-5 text-base text-white outline-none"
+                            className="custom-scrollbar mt-6 min-h-0 flex-1 resize-none overflow-y-auto rounded-[28px] border border-white/8 bg-black/25 p-5 text-base text-white outline-none"
                         />
 
                         <div className="mt-5 flex flex-wrap gap-2">
@@ -240,7 +239,7 @@ export function BloomNotesView({
                         </div>
                     </>
                 ) : (
-                    <div className="flex h-full min-h-[580px] flex-col items-center justify-center rounded-[28px] border border-dashed border-white/10 text-center text-white/45">
+                    <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-[28px] border border-dashed border-white/10 text-center text-white/45">
                         <p className="text-lg font-medium text-white">Select a note to start editing</p>
                         <p className="mt-2 max-w-md text-sm">
                             Keep ideas, references, and Bloom prompts in one place. Archived and deleted notes
