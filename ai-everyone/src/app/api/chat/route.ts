@@ -486,6 +486,16 @@ For the strata-agent:
 - If the user asks for "any company"/"any big company" and no symbol is given, you may select a default large-cap symbol yourself (AAPL, MSFT, GOOGL, AMZN, TSLA) and include it in parameters.symbol.
 - If the user explicitly asks for India/Indian companies and no tradable ticker is provided, ask a short clarification for the ticker format (for example NSE symbol style), instead of guessing unsupported symbols.
 
+For the dia-helper-agent:
+- generate_diagram: extract "prompt" (the natural-language description of the flow), optional "projectContext" (longer brief), optional "diagramType" (flowchart | sequenceDiagram | stateDiagram-v2 | gantt), optional "fileKey" (external reference such as a Figma file key).
+- update_diagram: extract "editInstruction" (what to change, e.g. "add a database layer"), optional "projectContext" and "diagramType", and include "currentMermaid" when the user explicitly refers to updating the existing diagram inside the Dia Helper card.
+- Prefer dia-helper-agent when the user asks for a Mermaid diagram, system/data flow, architecture map, or a "prompt to paste into Figma AI" instead of using generic chat.
+
+For the shopgenie-agent:
+- recommend_product (or shop_search/run_shopgenie): extract "query" (shopping intent), optional "budget", optional "recipientEmail", and optional "sendEmail" (true when user asks to email recommendation).
+- Use shopgenie-agent for product comparison, buying recommendations, best-product selection, and shopping decision help.
+- If user explicitly asks to email the recommendation, set "sendEmail": true and pass recipientEmail if provided.
+
 If an agent is needed, output ONLY:
 <AGENT_INTENT>
 {

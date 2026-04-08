@@ -51,6 +51,10 @@ export const DashboardSidebar = () => {
   const router = useRouter();
   const { createNewChat } = useChatContext();
 
+  if (pathname?.startsWith("/bloom")) {
+    return null;
+  }
+
   return (
     <Sidebar className="border-r-[2px] border-r-white/10">
       <SidebarHeader className="text-sidebar-accent-foreground">

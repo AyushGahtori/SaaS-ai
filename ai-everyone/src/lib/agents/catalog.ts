@@ -172,6 +172,38 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         requiresConnection: false,
     },
     {
+        id: "dia-helper-agent",
+        name: "Dia Helper",
+        description:
+            "Turn product ideas and project briefs into Mermaid data-flow diagrams, plus a ready-to-paste Figma AI prompt.",
+        actions: ["generate_diagram", "update_diagram"],
+        examplePrompts: [
+            "Design a signup and onboarding flow for a SaaS app",
+            "Create a data flow from web form to database and analytics pipeline",
+            "Update the diagram to add a caching layer between API and database",
+        ],
+        provider: "internal",
+        category: "design",
+        tags: ["diagrams", "mermaid", "figma", "architecture"],
+        requiresConnection: false,
+    },
+    {
+        id: "shopgenie-agent",
+        name: "ShopGenie Agent",
+        description:
+            "Research products, compare top options, fetch a YouTube review link, and optionally send recommendation email via connected Google account.",
+        actions: ["recommend_product", "shop_search", "run_shopgenie"],
+        examplePrompts: [
+            "Find the best wireless headphones under 150 dollars",
+            "Compare top laptops for coding and pick one winner",
+            "Recommend a phone under 30000 and email me the result",
+        ],
+        provider: "internal",
+        category: "shopping",
+        tags: ["shopping", "comparison", "recommendations", "youtube"],
+        requiresConnection: false,
+    },
+    {
         id: "notion-agent",
         name: "Notion Agent",
         description:
@@ -382,6 +414,22 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         tags: ["zoom", "meetings", "video"],
         requiresConnection: true,
         oauthScopes: [],
+    },
+    {
+        id: "career-switch-agent",
+        name: "Career Switch Agent",
+        description:
+            "Navigate your career transition with AI-powered skill gap analysis, personalized roadmaps, and job market insights powered by O*NET and live job data.",
+        actions: ["generate_plan"],
+        examplePrompts: [
+            "Create a career plan from Data Analyst to Machine Learning Engineer",
+            "Show me the skill gaps and roadmap for becoming a Product Manager",
+            "Generate a career transition plan with my current skills and target role",
+        ],
+        provider: "internal",
+        category: "career",
+        tags: ["career", "planning", "skills", "roadmap", "transition"],
+        requiresConnection: false,
     },
 ];
 

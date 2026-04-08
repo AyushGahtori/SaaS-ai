@@ -159,7 +159,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
 
                                 <textarea
                                     ref={textareaRef}
-                                    className="min-h-[32px] flex-1 resize-none overflow-hidden border-none bg-transparent px-2 py-1 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+                                    className="custom-scrollbar min-h-[32px] max-h-[160px] flex-1 resize-none overflow-y-auto border-none bg-transparent px-2 py-1 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground"
                                     rows={1}
                                     placeholder="Ask anything..."
                                     value={value}

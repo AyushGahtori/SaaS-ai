@@ -36,6 +36,8 @@ This runtime is detached from the main web app.
 | `jira-agent` | 8009 | `/jira/action` | `/jira/health` |
 | `linkedin-agent` | 8010 | `/linkedin/action` | `/linkedin/health` |
 | `zoom-agent` | 8011 | `/zoom/action` | `/zoom/health` |
+| `dia-helper-agent` | 8020 | `/diahelper/action` | `/diahelper/health` |
+| `shopgenie-agent` | 8021 | `/shopgenie/action` | `/shopgenie/health` |
 
 ## Base URL Policy
 

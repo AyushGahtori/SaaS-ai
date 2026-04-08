@@ -1,0 +1,100 @@
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "uvloop/loop.pyx", line 1518, in uvloop.loop.Loop.run_until_complete
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/server.py", line 69, in serve
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:     await self._serve(sockets)
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/server.py", line 76, in _serve
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:     config.load()
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/config.py", line 433, in load
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:     self.loaded_app = import_from_string(self.app)
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/importer.py", line 19, in import_from_string
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:     module = importlib.import_module(module_str)
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:     return _bootstrap._gcd_import(name[level:], package, level)
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "/home/ubuntu/app/agents/dia-helper-agent/server.py", line 14, in <module>
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:     from api.server import app  # noqa: F401
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "/home/ubuntu/app/agents/dia-helper-agent/api/server.py", line 9, in <module>
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:     from services.diagram_service import generate_project_diagram
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:   File "/home/ubuntu/app/agents/dia-helper-agent/services/diagram_service.py", line 54
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:     return "\n.join(
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]:            ^
+Apr 07 07:22:38 ip-172-31-42-204 uvicorn[65845]: SyntaxError: unterminated string literal (detected at line 54)
+Apr 07 07:22:38 ip-172-31-42-204 systemd[1]: dia-helper-agent.service: Main process exited, code=exited, status=1/FAILURE
+Apr 07 07:22:38 ip-172-31-42-204 systemd[1]: dia-helper-agent.service: Failed with result 'exit-code'.
+Apr 07 07:22:43 ip-172-31-42-204 systemd[1]: dia-helper-agent.service: Scheduled restart job, restart counter is at 29.
+Apr 07 07:22:43 ip-172-31-42-204 systemd[1]: Started dia-helper-agent.service - Dia Helper Agent FastAPI Server.
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]: Traceback (most recent call last):
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/bin/uvicorn", line 8, in <module>
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     sys.exit(main())
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:              ^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/click/core.py", line 1485, in __call__
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     return self.main(*args, **kwargs)
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/click/core.py", line 1406, in main
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     rv = self.invoke(ctx)
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:          ^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/click/core.py", line 1269, in invoke
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     return ctx.invoke(self.callback, **ctx.params)
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/click/core.py", line 824, in invoke
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     return callback(*args, **kwargs)
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:            ^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/main.py", line 409, in main
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     run(
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/main.py", line 575, in run
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     server.run()
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/server.py", line 65, in run
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     return asyncio.run(self.serve(sockets=sockets))
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     return runner.run(main)
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:            ^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     return self._loop.run_until_complete(task)
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "uvloop/loop.pyx", line 1518, in uvloop.loop.Loop.run_until_complete
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/server.py", line 69, in serve
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     await self._serve(sockets)
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/server.py", line 76, in _serve
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     config.load()
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/config.py", line 433, in load
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     self.loaded_app = import_from_string(self.app)
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/venv/lib/python3.12/site-packages/uvicorn/importer.py", line 19, in import_from_string
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     module = importlib.import_module(module_str)
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     return _bootstrap._gcd_import(name[level:], package, level)
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/server.py", line 14, in <module>
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     from api.server import app  # noqa: F401
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/api/server.py", line 9, in <module>
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     from services.diagram_service import generate_project_diagram
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:   File "/home/ubuntu/app/agents/dia-helper-agent/services/diagram_service.py", line 54
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:     return "\n.join(
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]:            ^
+Apr 07 07:22:44 ip-172-31-42-204 uvicorn[65848]: SyntaxError: unterminated string literal (detected at line 54)
+Apr 07 07:22:44 ip-172-31-42-204 systemd[1]: dia-helper-agent.service: Main process exited, code=exited, status=1/FAILURE
+Apr 07 07:22:44 ip-172-31-42-204 systemd[1]: dia-helper-agent.service: Failed with result 'exit-code'.
+Apr 07 07:22:49 ip-172-31-42-204 systemd[1]: Stopped dia-helper-agent.service - Dia Helper Agent FastAPI Server.
+Apr 07 07:22:49 ip-172-31-42-204 systemd[1]: Started dia-helper-agent.service - Dia Helper Agent FastAPI Server.
+Apr 07 07:22:49 ip-172-31-42-204 uvicorn[65929]: INFO:     Started server process [65929]
+Apr 07 07:22:49 ip-172-31-42-204 uvicorn[65929]: INFO:     Waiting for application startup.
+Apr 07 07:22:49 ip-172-31-42-204 uvicorn[65929]: INFO:     Application startup complete.
+Apr 07 07:22:49 ip-172-31-42-204 uvicorn[65929]: INFO:     Uvicorn running on http://0.0.0.0:8020 (Press CTRL+C to quit)
+Apr 07 07:23:39 ip-172-31-42-204 uvicorn[65929]: INFO:     127.0.0.1:50960 - "GET /health HTTP/1.1" 200 OK

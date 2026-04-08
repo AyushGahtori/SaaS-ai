@@ -92,6 +92,21 @@ const AVAILABLE_MODELS = CHAT_MODELS.map((model) => ({
     label: model.label,
 }));
 
+function parseHighDemandMessage(error: unknown): string | null {
+    const raw = error instanceof Error ? error.message : String(error || "");
+    const normalized = raw.toLowerCase();
+    const isHighDemand =
+        normalized.includes("503") ||
+        normalized.includes("unavailable") ||
+        normalized.includes("service unavailable") ||
+        normalized.includes("high demand") ||
+        normalized.includes("spikes in demand");
+
+    if (!isHighDemand) return null;
+
+    return "I am currently seeing unusually high demand on the model right now. Please bear with me for a moment and try again shortly.";
+}
+
 export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [uid, setUid] = useState<string | null>(null);
     const [chats, setChats] = useState<Chat[]>([]);
@@ -225,6 +240,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
             let currentChatId = activeChatId;
             let tempAssistantId = "";
+            let resolvedChatId: string | null = null;
 
             try {
                 if (!currentChatId) {
@@ -239,11 +255,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 if (!currentChatId) {
                     throw new Error("Failed to create or resolve a chat session.");
                 }
-                const resolvedChatId = currentChatId;
+                resolvedChatId = currentChatId;
+                const resolvedChatIdValue = resolvedChatId;
 
                 const userMsg = await createMessage(
                     uid,
-                    resolvedChatId,
+                    resolvedChatIdValue,
                     "user",
                     content,
                     undefined,
@@ -267,7 +284,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     ...prev,
                     {
                         id: tempAssistantId,
-                        chatId: resolvedChatId,
+                        chatId: resolvedChatIdValue,
                         role: "assistant",
                         content: "",
                         createdAt: new Date().toISOString(),
@@ -290,7 +307,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     },
                     body: JSON.stringify({
                         messages: historyForApi,
-                        chatId: resolvedChatId,
+                        chatId: resolvedChatIdValue,
                         model: selectedModel,
                         attachments,
                         failedAttachments,
@@ -392,7 +409,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 ) {
                     const agentMsg = await createMessage(
                         uid,
-                        resolvedChatId,
+                        resolvedChatIdValue,
                         "agent",
                         resolvedPayload.content || "Processing agent task...",
                         resolvedPayload.taskId,
@@ -418,7 +435,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
                     const assistantMsg = await createMessage(
                         uid,
-                        resolvedChatId,
+                        resolvedChatIdValue,
                         "assistant",
                         assistantContent,
                         undefined,
@@ -436,7 +453,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     );
                 }
 
-                await updateChat(uid, resolvedChatId, {});
+                await updateChat(uid, resolvedChatIdValue, {});
 
                 return resolvedPayload;
             } catch (err: unknown) {
@@ -457,6 +474,25 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 }
 
                 if (tempAssistantId) {
+                    const highDemandMessage = parseHighDemandMessage(err);
+                    if (highDemandMessage && resolvedChatId) {
+                        const assistantMsg = await createMessage(
+                            uid,
+                            resolvedChatId,
+                            "assistant",
+                            highDemandMessage,
+                            undefined,
+                            undefined,
+                            isVoice
+                        );
+                        setMessages((prev) =>
+                            prev.map((message) =>
+                                message.id === tempAssistantId ? assistantMsg : message
+                            )
+                        );
+                        return { type: "chat", content: highDemandMessage };
+                    }
+
                     setMessages((prev) =>
                         prev.filter((message) => message.id !== tempAssistantId)
                     );
