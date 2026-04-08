@@ -4,8 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
-  ChevronLeft,
-  ChevronRight,
   PanelLeftCloseIcon,
   PanelLeftIcon,
   SearchIcon,
@@ -15,12 +13,12 @@ import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import { DashboardCommand } from "./dashboard-command";
 import { ReminderDrawer } from "./reminder-drawer";
+import { BloomQuickAccessRail } from "@/modules/bloom-ai/ui/components/bloom-quick-access-rail";
 
 export const DashboardNavbar = () => {
   const { state, toggleSidebar, isMobile } = useSidebar();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const [railOpen, setRailOpen] = useState(false);
   const [remindersOpen, setRemindersOpen] = useState(false);
 
   const isBloomRoute = pathname?.startsWith("/bloom");
@@ -36,26 +34,28 @@ export const DashboardNavbar = () => {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  if (isBloomRoute) {
+    return null;
+  }
+
   return (
     <>
       <DashboardCommand open={open} setOpen={setOpen} />
       <ReminderDrawer open={remindersOpen} onOpenChange={setRemindersOpen} />
 
       <div className="flex items-center gap-x-2 px-4 py-3">
-        {!isBloomRoute ? (
-          <Button
-            className="size-9 border-white/5 p-0 hover:bg-white/5"
-            style={{ backgroundColor: "#0C0D0D", borderColor: "rgba(255,255,255,0.05)" }}
-            variant="outline"
-            onClick={toggleSidebar}
-          >
-            {state === "collapsed" || isMobile ? (
-              <PanelLeftIcon className="size-5" stroke="white" strokeWidth={2} />
-            ) : (
-              <PanelLeftCloseIcon className="size-5" stroke="white" strokeWidth={2} />
-            )}
-          </Button>
-        ) : null}
+        <Button
+          className="size-9 border-white/5 p-0 hover:bg-white/5"
+          style={{ backgroundColor: "#0C0D0D", borderColor: "rgba(255,255,255,0.05)" }}
+          variant="outline"
+          onClick={toggleSidebar}
+        >
+          {state === "collapsed" || isMobile ? (
+            <PanelLeftIcon className="size-5" stroke="white" strokeWidth={2} />
+          ) : (
+            <PanelLeftCloseIcon className="size-5" stroke="white" strokeWidth={2} />
+          )}
+        </Button>
 
         <Button
           className="h-9 w-60 justify-start border-white/5 font-normal text-muted-foreground hover:bg-white/5 hover:text-white"
@@ -80,39 +80,7 @@ export const DashboardNavbar = () => {
         </div>
       </div>
 
-      {!isBloomRoute ? (
-        <div className="pointer-events-none fixed right-4 top-1/2 z-40 -translate-y-1/2">
-          <div className="pointer-events-auto flex flex-col items-end gap-3">
-            <Button
-              onClick={() => setRailOpen((prev) => !prev)}
-              className="size-10 rounded-full border border-white/10 bg-[#0C0D0D] text-white hover:bg-white/10"
-              aria-label="Open quick switch"
-            >
-              {railOpen ? <ChevronLeft className="size-5" /> : <ChevronRight className="size-5" />}
-            </Button>
-
-            <div
-              className={`flex flex-col items-end gap-2 transition-all duration-300 ${
-                railOpen ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0 pointer-events-none"
-              }`}
-            >
-              <Link
-                href="/bloom"
-                className="rounded-2xl border border-white/10 bg-[#0C0D0D] px-5 py-3 text-base font-medium text-white shadow-[0_8px_20px_rgba(0,0,0,0.35)] transition hover:border-white/20 hover:bg-[#111]"
-              >
-                Bloom AI
-              </Link>
-
-              <button
-                onClick={() => setRemindersOpen(true)}
-                className="rounded-2xl border border-white/10 bg-[#0C0D0D] px-5 py-3 text-base font-medium text-white shadow-[0_8px_20px_rgba(0,0,0,0.35)] transition hover:border-white/20 hover:bg-[#111]"
-              >
-                Reminders
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <BloomQuickAccessRail onOpenReminders={() => setRemindersOpen(true)} />
     </>
   );
 };

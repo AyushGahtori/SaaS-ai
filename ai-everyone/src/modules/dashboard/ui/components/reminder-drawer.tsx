@@ -13,7 +13,8 @@ import {
 interface ReminderItem {
   id: string;
   title: string;
-  datetime: string;
+  details: string;
+  scheduledFor: string;
   status: string;
   priority: string;
 }
@@ -36,17 +37,14 @@ function toInputDateTime(value: string) {
   return value ? value.replace(" ", "T").slice(0, 16) : "";
 }
 
-function fromInputDateTime(value: string) {
-  return value ? value.replace("T", " ") : "";
-}
-
 export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reminders, setReminders] = useState<ReminderItem[]>([]);
   const [title, setTitle] = useState("");
-  const [datetime, setDatetime] = useState("");
+  const [details, setDetails] = useState("");
+  const [scheduledFor, setScheduledFor] = useState("");
   const [priority, setPriority] = useState("normal");
 
   const loadReminders = useCallback(async () => {
@@ -55,7 +53,7 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
     setError(null);
     try {
       const headers = await getHeaders();
-      const response = await fetch("/api/reminders", { headers });
+      const response = await fetch("/api/bloom-ai/reminders", { headers });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Failed to load reminders.");
       setReminders(Array.isArray(data.reminders) ? data.reminders : []);
@@ -83,19 +81,21 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
     setError(null);
     try {
       const headers = await getHeaders();
-      const response = await fetch("/api/reminders", {
+      const response = await fetch("/api/bloom-ai/reminders", {
         method: "POST",
         headers,
         body: JSON.stringify({
           title: title.trim(),
-          datetime: fromInputDateTime(datetime),
+          details: details.trim(),
+          scheduledFor,
           priority,
         }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Failed to create reminder.");
       setTitle("");
-      setDatetime("");
+      setDetails("");
+      setScheduledFor("");
       setPriority("normal");
       await loadReminders();
     } catch (err) {
@@ -103,12 +103,12 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
     } finally {
       setSaving(false);
     }
-  }, [datetime, loadReminders, priority, title]);
+  }, [details, loadReminders, priority, scheduledFor, title]);
 
   const setStatus = useCallback(async (reminderId: string, status: string) => {
     try {
       const headers = await getHeaders();
-      const response = await fetch("/api/reminders", {
+      const response = await fetch("/api/bloom-ai/reminders", {
         method: "PATCH",
         headers,
         body: JSON.stringify({ reminderId, status }),
@@ -118,6 +118,22 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
       await loadReminders();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update reminder.");
+    }
+  }, [loadReminders]);
+
+  const deleteReminder = useCallback(async (reminderId: string) => {
+    try {
+      const headers = await getHeaders();
+      const response = await fetch("/api/bloom-ai/reminders", {
+        method: "DELETE",
+        headers,
+        body: JSON.stringify({ reminderId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to delete reminder.");
+      await loadReminders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete reminder.");
     }
   }, [loadReminders]);
 
@@ -145,10 +161,16 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
                 placeholder="What should I remind you about?"
                 className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
               />
+              <textarea
+                value={details}
+                onChange={(event) => setDetails(event.target.value)}
+                placeholder="Add a short detail"
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+              />
               <input
                 type="datetime-local"
-                value={toInputDateTime(datetime)}
-                onChange={(event) => setDatetime(event.target.value)}
+                value={toInputDateTime(scheduledFor)}
+                onChange={(event) => setScheduledFor(event.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
               />
               <div className="flex gap-2">
@@ -180,9 +202,11 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
             {upcoming.map((item) => (
               <div key={item.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
                 <p className="text-sm font-medium text-white">{item.title}</p>
-                <p className="mt-1 text-xs text-white/45">{item.datetime || "No date set"}</p>
+                <p className="mt-1 text-xs text-white/45">{item.details || "No extra details"}</p>
+                <p className="mt-1 text-xs text-white/45">{item.scheduledFor || "No date set"}</p>
                 <div className="mt-2 flex gap-2">
                   <button onClick={() => setStatus(item.id, "done")} className="rounded-md border border-white/10 px-2 py-1 text-xs text-white/70 hover:text-white">Done</button>
+                  <button onClick={() => deleteReminder(item.id)} className="rounded-md border border-rose-400/20 px-2 py-1 text-xs text-rose-200 hover:text-rose-100">Delete</button>
                 </div>
               </div>
             ))}
@@ -196,9 +220,11 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
             {completed.map((item) => (
               <div key={item.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
                 <p className="text-sm font-medium text-white/80">{item.title}</p>
-                <p className="mt-1 text-xs text-white/45">{item.datetime || "No date set"}</p>
+                <p className="mt-1 text-xs text-white/45">{item.details || "No extra details"}</p>
+                <p className="mt-1 text-xs text-white/45">{item.scheduledFor || "No date set"}</p>
                 <div className="mt-2 flex gap-2">
                   <button onClick={() => setStatus(item.id, "pending")} className="rounded-md border border-white/10 px-2 py-1 text-xs text-white/70 hover:text-white">Restore</button>
+                  <button onClick={() => deleteReminder(item.id)} className="rounded-md border border-rose-400/20 px-2 py-1 text-xs text-rose-200 hover:text-rose-100">Delete</button>
                 </div>
               </div>
             ))}

@@ -315,7 +315,7 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
     }, [taskId]);
 
     const globalTaskStatus = taskId ? taskStatuses[taskId] : undefined;
-    
+
     // priority local firestore task over global contextual fallback 
     const rawStatus = localTask?.status || globalTaskStatus?.status || "queued";
     const result = (localTask?.agentOutput || globalTaskStatus?.result) as Record<string, unknown> | undefined;
@@ -335,8 +335,8 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
 
     const isInterpretedGuidance = Boolean(
         result &&
-            result.interpreted === true &&
-            (rawStatus === "failed" || rawStatus === "needs_input")
+        result.interpreted === true &&
+        (rawStatus === "failed" || rawStatus === "needs_input")
     );
 
     if (isInterpretedGuidance) {
