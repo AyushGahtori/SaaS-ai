@@ -34,6 +34,8 @@ Detached runtime contract for all EC2 agents.
 - `GET /jira/health`
 - `GET /linkedin/health`
 - `GET /zoom/health`
+- `GET /diahelper/health`
+- `GET /shopgenie/health`
 
 ## Action Routes
 
@@ -57,6 +59,8 @@ Detached runtime contract for all EC2 agents.
 - `POST /jira/action`
 - `POST /linkedin/action`
 - `POST /zoom/action`
+- `POST /diahelper/action`
+- `POST /shopgenie/action`
 
 ## OAuth Ownership (Detached)
 
@@ -121,6 +125,7 @@ Stored fields:
 - OAuth: `teams-agent`, `google-agent`, `notion-agent`, `canva-agent`, `discord-agent`, `dropbox-agent`, `github-agent`, `gitlab-agent`, `jira-agent`, `linkedin-agent`, `zoom-agent`
 - API key: `freshdesk-agent`, `greenhouse-agent`
 - Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`
+  , `dia-helper-agent`, `shopgenie-agent`
 
 ## JS-Parity Notes
 

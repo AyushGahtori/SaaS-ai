@@ -39,6 +39,7 @@ Current checklist for adding a new agent to Pian / AI Everyone end to end.
 6. Add the nginx proxy route in `EC2/nginx/sites-available/agents`.
 7. Make sure `EC2/deploy.sh` installs, enables, and health-checks the new service.
 8. Confirm no imports from outside `EC2/` runtime.
+9. For visualization-only agents like `dia-helper-agent`, prefer image/diagram URLs that the frontend can download (for example via `mermaid.ink`) instead of embedding large binary blobs directly in Firestore.
 
 ## Verification
 

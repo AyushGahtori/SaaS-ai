@@ -232,6 +232,30 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 770,
     },
+    "dia-helper-agent": {
+        iconUrl: makeMonogramIcon("Dia", "#22c55e", "#16a34a"),
+        installCount: 4200,
+        rating: 4.7,
+        createdAt: "2026-04-07T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 730,
+    },
+    "shopgenie-agent": {
+        iconUrl: makeMonogramIcon("Shop", "#f59e0b", "#ea580c"),
+        installCount: 3900,
+        rating: 4.6,
+        createdAt: "2026-04-07T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 725,
+    },
+    "career-switch-agent": {
+        iconUrl: makeMonogramIcon("CS", "#06b6d4", "#0891b2"),
+        installCount: 2800,
+        rating: 4.8,
+        createdAt: "2026-04-08T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 715,
+    },
 };
 
 function makeDefaultAgentMeta(agent: AgentCatalogEntry) {

@@ -50,6 +50,9 @@ const AGENT_ROUTES: Record<string, string> = {
     "jira-agent":        "/jira/action",
     "linkedin-agent":    "/linkedin/action",
     "zoom-agent":        "/zoom/action",
+    "dia-helper-agent":  "/diahelper/action",
+    "shopgenie-agent":   "/shopgenie/action",
+    "career-switch-agent": "/career-switch/action",
 };
 
 async function persistInterpretedFailure(params: {
@@ -249,6 +252,9 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "jira-agent":        process.env.JIRA_AGENT_URL,
         "linkedin-agent":    process.env.LINKEDIN_AGENT_URL,
         "zoom-agent":        process.env.ZOOM_AGENT_URL,
+        "dia-helper-agent":  process.env.DIA_HELPER_AGENT_URL,
+        "shopgenie-agent":   process.env.SHOPGENIE_AGENT_URL,
+        "career-switch-agent": process.env.CAREER_SWITCH_AGENT_URL,
     };
     const agentServerUrl =
         ENV_AGENT_URL_MAP[task.agentId] ||

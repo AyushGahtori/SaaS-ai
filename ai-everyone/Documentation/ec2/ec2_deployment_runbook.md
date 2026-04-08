@@ -60,7 +60,7 @@ sudo ./deploy.sh
 
 ```bash
 # Service state
-for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent strata-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent; do
+for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent strata-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent dia-helper-agent shopgenie-agent; do
   systemctl is-active "$s"
 done
 
@@ -68,6 +68,7 @@ done
 curl "${AGENT_PUBLIC_BASE_URL}/teams/health"
 curl "${AGENT_PUBLIC_BASE_URL}/linkedin/health"
 curl "${AGENT_PUBLIC_BASE_URL}/emergency/health"
+curl "${AGENT_PUBLIC_BASE_URL}/shopgenie/health"
 
 # OAuth route readiness (400 without handoff is expected)
 curl -i "${AGENT_PUBLIC_BASE_URL}/linkedin/auth/login"

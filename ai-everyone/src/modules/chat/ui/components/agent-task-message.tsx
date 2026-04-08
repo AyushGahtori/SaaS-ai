@@ -19,6 +19,9 @@ import { subscribeToTask, type AgentTask } from "@/lib/firestore-tasks";
 import { GeneratedAvatar } from "@/components/ui/generated-avatar";
 import { auth } from "@/lib/firebase";
 import { StrataResultCard } from "./agent-renderers/strata-result-card";
+import { DiaHelperDiagramCard } from "./agent-renderers/dia-helper-diagram-card";
+import { ShopGenieResultCard } from "./agent-renderers/shopgenie-result-card";
+import { CareerPlanResultCard } from "./agent-renderers/career-plan-result-card";
 import { InterpretedAgentGuidance } from "./agent-renderers/interpreted-agent-guidance";
 import { GenericAgentResultCard } from "./agent-renderers/generic-agent-result-card";
 
@@ -36,6 +39,8 @@ const AGENT_NAMES: Record<string, string> = {
     "todo-agent": "To-do Agent",
     "emergency-response-agent": "Emergency Response Agent",
     "strata-agent": "Stara Agent",
+    "dia-helper-agent": "Dia Helper",
+    "shopgenie-agent": "ShopGenie Agent",
 };
 
 interface GmailRow {
@@ -802,6 +807,18 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
 
         if (typeof resultType === "string" && resultType.startsWith("strata_")) {
             return <StrataResultCard result={result} />;
+        }
+
+        if (resultType === "dia_diagram") {
+            return <DiaHelperDiagramCard result={result} />;
+        }
+
+        if (resultType === "shopgenie_result") {
+            return <ShopGenieResultCard result={result} />;
+        }
+
+        if (resultType === "career_plan") {
+            return <CareerPlanResultCard result={result} />;
         }
 
         // Generic result
