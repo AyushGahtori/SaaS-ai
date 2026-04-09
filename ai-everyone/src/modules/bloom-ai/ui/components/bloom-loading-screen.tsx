@@ -2,7 +2,7 @@
 
 export function BloomLoadingScreen() {
     return (
-        <div className="flex h-full min-h-[calc(100vh-3rem)] items-center justify-center bg-[#181716] px-6 py-8 text-white">
+        <div className="flex h-full items-center justify-center bg-[#181716] px-6 py-8 text-white">
             <div className="w-full max-w-3xl rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(126,211,171,0.18),transparent_35%),linear-gradient(180deg,#1f1d1c,#111111)] p-8 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
                 <div className="h-4 w-40 animate-pulse rounded-full bg-white/10" />
                 <div className="mt-6 grid gap-4 lg:grid-cols-[260px_1fr]">

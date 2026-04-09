@@ -17,12 +17,12 @@ import type {
 const USER_COLLECTION = "users";
 const CHAT_COLLECTION = "bloomAIChats";
 const MESSAGE_COLLECTION = "messages";
-const REMINDER_COLLECTION = "bloomAIReminders";
 const NOTE_COLLECTION = "bloomAINotes";
 const HABIT_COLLECTION = "bloomAIHabits";
 const JOURNAL_COLLECTION = "bloomAIJournalEntries";
 const SETTINGS_COLLECTION = "bloomAISettings";
 const SETTINGS_DOC = "default";
+const TODO_COLLECTION = "todos";
 
 function userRef(uid: string) {
     return adminDb.collection(USER_COLLECTION).doc(uid);
@@ -87,16 +87,32 @@ function serializeReminder(
     snapshot: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot
 ): BloomReminder {
     const data = snapshot.data() || {};
+    const rawDate =
+        typeof data.scheduledFor === "string" && data.scheduledFor.trim()
+            ? String(data.scheduledFor)
+            : typeof data.datetime === "string" && data.datetime.trim()
+              ? String(data.datetime).replace(" ", "T")
+              : "";
+
     return {
         id: snapshot.id,
         title: String(data.title || ""),
         details: String(data.details || ""),
-        scheduledFor: String(data.scheduledFor || ""),
+        scheduledFor: rawDate,
         priority: data.priority === "high" ? "high" : "normal",
         status: data.status === "done" ? "done" : "pending",
         createdAt: serializeTimestamp(data.createdAt),
         completedAt: data.completedAt ? serializeTimestamp(data.completedAt) : null,
     };
+}
+
+function reminderDocRef(reminderId: string) {
+    return adminDb.collection(TODO_COLLECTION).doc(reminderId);
+}
+
+function toTodoReminderDatetime(value: string | null | undefined) {
+    const normalized = String(value || "").trim();
+    return normalized ? normalized.replace("T", " ") : "";
 }
 
 function serializeNote(
@@ -201,11 +217,10 @@ export async function listBloomConversations(uid: string): Promise<BloomConversa
 }
 
 export async function listBloomReminders(uid: string): Promise<BloomReminder[]> {
-    const snapshot = await userRef(uid)
-        .collection(REMINDER_COLLECTION)
-        .orderBy("scheduledFor", "asc")
-        .get();
-    return snapshot.docs.map(serializeReminder);
+    const snapshot = await adminDb.collection(TODO_COLLECTION).where("userId", "==", uid).get();
+    return snapshot.docs
+        .map(serializeReminder)
+        .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor));
 }
 
 export async function listBloomNotes(uid: string): Promise<BloomNote[]> {
@@ -357,9 +372,14 @@ export async function createReminder(
     uid: string,
     input: Pick<BloomReminder, "title" | "details" | "scheduledFor" | "priority">
 ) {
-    const docRef = userRef(uid).collection(REMINDER_COLLECTION).doc();
+    const docRef = adminDb.collection(TODO_COLLECTION).doc();
     await docRef.set({
-        ...input,
+        userId: uid,
+        title: input.title,
+        details: input.details,
+        scheduledFor: input.scheduledFor,
+        datetime: toTodoReminderDatetime(input.scheduledFor),
+        priority: input.priority,
         status: "pending",
         completedAt: null,
         createdAt: FieldValue.serverTimestamp(),
@@ -375,13 +395,16 @@ export async function updateReminder(
         Pick<BloomReminder, "title" | "details" | "scheduledFor" | "priority" | "status">
     >
 ) {
-    const docRef = userRef(uid).collection(REMINDER_COLLECTION).doc(reminderId);
+    const docRef = reminderDocRef(reminderId);
     const snapshot = await docRef.get();
-    if (!snapshot.exists) throw new Error("Reminder not found.");
+    if (!snapshot.exists || snapshot.data()?.userId !== uid) throw new Error("Reminder not found.");
 
     await docRef.set(
         {
             ...updates,
+            ...(typeof updates.scheduledFor === "string"
+                ? { datetime: toTodoReminderDatetime(updates.scheduledFor) }
+                : {}),
             completedAt:
                 updates.status === "done"
                     ? FieldValue.serverTimestamp()
@@ -397,7 +420,12 @@ export async function updateReminder(
 }
 
 export async function deleteReminder(uid: string, reminderId: string) {
-    await userRef(uid).collection(REMINDER_COLLECTION).doc(reminderId).delete();
+    const docRef = reminderDocRef(reminderId);
+    const snapshot = await docRef.get();
+    if (!snapshot.exists || snapshot.data()?.userId !== uid) {
+        throw new Error("Reminder not found.");
+    }
+    await docRef.delete();
 }
 
 export async function createNote(

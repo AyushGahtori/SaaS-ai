@@ -55,13 +55,13 @@ export function BloomSidebar({
                     <button
                         type="button"
                         onClick={() => setMenuOpen((current) => !current)}
-                        className="flex size-14 items-center justify-center rounded-2xl border border-white/10 bg-black/55 text-white hover:border-white/20"
+                        className="flex size-12 items-center justify-center rounded-2xl border border-white/10 bg-black/55 text-white hover:border-white/20"
                         aria-label="Toggle Bloom workspace switcher"
                     >
                         <ChevronLeft
                             className={cn(
                                 bloomSlideTransition,
-                                "size-7",
+                                "size-5",
                                 menuOpen ? "rotate-90" : "rotate-0"
                             )}
                         />
@@ -70,7 +70,7 @@ export function BloomSidebar({
                     <div
                         className={cn(
                             bloomSlideTransition,
-                            "absolute right-0 top-[68px] z-20 w-48 rounded-2xl border border-white/10 bg-[#151515]/95 p-2 shadow-2xl backdrop-blur",
+                            "absolute right-0 top-[60px] z-20 w-48 rounded-2xl border border-white/10 bg-[#151515]/95 p-2 shadow-2xl backdrop-blur",
                             menuOpen
                                 ? "translate-y-0 opacity-100"
                                 : "pointer-events-none -translate-y-2 opacity-0"

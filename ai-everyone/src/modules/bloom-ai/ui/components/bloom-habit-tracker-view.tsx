@@ -70,27 +70,32 @@ export function BloomHabitTrackerView({
     };
 
     return (
-        <div className="space-y-5">
-            <div className="flex gap-3 overflow-x-auto pb-2">
-                {recentDays.map((date) => {
-                    const key = toDateKey(date);
-                    return (
-                        <button
-                            key={key}
-                            type="button"
-                            onClick={() => setSelectedDate(key)}
-                            className={`min-w-[150px] rounded-[24px] border px-5 py-6 text-left ${
-                                selectedDate === key
-                                    ? "border-[#8FE7B5]/35 bg-black text-white"
-                                    : "border-white/10 bg-[#171514] text-white/75"
-                            }`}
-                        >
-                            <p className="text-2xl font-semibold">{date.toLocaleDateString(undefined, { weekday: "long" })}</p>
-                            <p className="mt-1 text-xl text-white/72">{formatBloomShortDate(date.toISOString())}</p>
-                        </button>
-                    );
-                })}
-            </div>
+        <div className="custom-scrollbar h-full min-h-0 overflow-y-auto pr-1">
+            <div className="space-y-5">
+                <div className="custom-scrollbar flex gap-3 overflow-x-auto pb-2">
+                    {recentDays.map((date) => {
+                        const key = toDateKey(date);
+                        return (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setSelectedDate(key)}
+                                className={`min-w-[150px] rounded-[24px] border px-5 py-6 text-left ${
+                                    selectedDate === key
+                                        ? "border-[#8FE7B5]/35 bg-black text-white"
+                                        : "border-white/10 bg-[#171514] text-white/75"
+                                }`}
+                            >
+                                <p className="text-2xl font-semibold">
+                                    {date.toLocaleDateString(undefined, { weekday: "long" })}
+                                </p>
+                                <p className="mt-1 text-xl text-white/72">
+                                    {formatBloomShortDate(date.toISOString())}
+                                </p>
+                            </button>
+                        );
+                    })}
+                </div>
 
             <div className="grid gap-5 xl:grid-cols-[1.8fr_1fr]">
                 <div className="rounded-[30px] border border-white/10 bg-black p-5">
@@ -260,6 +265,7 @@ export function BloomHabitTrackerView({
                         </button>
                     ))}
                 </div>
+            </div>
             </div>
         </div>
     );

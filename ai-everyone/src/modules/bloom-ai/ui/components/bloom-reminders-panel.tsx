@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { CheckCircle2, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { REMINDER_PRIORITY_STYLES } from "@/modules/bloom-ai/constants/defaults";
 import { bloomSlideTransition } from "@/modules/bloom-ai/animations/transitions";
 import { cn } from "@/lib/utils";
@@ -180,7 +179,7 @@ function RemindersContent({
                 </p>
             </div>
 
-            <ScrollArea className="flex-1 px-6 py-6">
+            <div className="custom-scrollbar flex-1 overflow-y-auto px-6 py-6">
                 <div className="space-y-6">
                     <div className="rounded-[28px] border border-white/10 bg-black/25 p-4">
                         <p className="text-xs uppercase tracking-[0.16em] text-white/40">Add Reminder</p>
@@ -256,7 +255,7 @@ function RemindersContent({
                         onDeleteReminder={onDeleteReminder}
                     />
                 </div>
-            </ScrollArea>
+            </div>
         </div>
     );
 }

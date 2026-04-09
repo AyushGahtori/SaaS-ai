@@ -40,71 +40,73 @@ export function BloomSettingsSheet({
                     </div>
                 </SheetHeader>
 
-                <div className="space-y-6 p-6">
-                    <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-                        <div className="flex items-center gap-2 text-white">
-                            <Bot className="size-4 text-[#8FE7B5]" />
-                            <h3 className="font-medium">Model Selection</h3>
-                        </div>
-                        <p className="mt-2 text-sm text-white/45">
-                            Choose which Gemini model powers your Bloom workspace.
-                        </p>
-                        <div className="mt-4 space-y-2">
-                            {BLOOM_MODELS.map((model) => {
-                                const active = settings.modelId === model.id;
-                                return (
-                                    <button
-                                        key={model.id}
-                                        type="button"
-                                        onClick={() => void onUpdateSettings({ modelId: model.id })}
-                                        className={`w-full rounded-2xl border p-3 text-left transition ${
-                                            active
-                                                ? "border-[#8FE7B5]/40 bg-[#212b24]"
-                                                : "border-white/8 bg-black/30 hover:border-white/15"
-                                        }`}
-                                    >
-                                        <p className="text-sm font-medium text-white">{model.label}</p>
-                                        <p className="mt-1 text-xs text-white/45">{model.helper}</p>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </section>
+                <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-6">
+                    <div className="space-y-6">
+                        <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                            <div className="flex items-center gap-2 text-white">
+                                <Bot className="size-4 text-[#8FE7B5]" />
+                                <h3 className="font-medium">Model Selection</h3>
+                            </div>
+                            <p className="mt-2 text-sm text-white/45">
+                                Choose which Gemini model powers your Bloom workspace.
+                            </p>
+                            <div className="mt-4 space-y-2">
+                                {BLOOM_MODELS.map((model) => {
+                                    const active = settings.modelId === model.id;
+                                    return (
+                                        <button
+                                            key={model.id}
+                                            type="button"
+                                            onClick={() => void onUpdateSettings({ modelId: model.id })}
+                                            className={`w-full rounded-2xl border p-3 text-left transition ${
+                                                active
+                                                    ? "border-[#8FE7B5]/40 bg-[#212b24]"
+                                                    : "border-white/8 bg-black/30 hover:border-white/15"
+                                            }`}
+                                        >
+                                            <p className="text-sm font-medium text-white">{model.label}</p>
+                                            <p className="mt-1 text-xs text-white/45">{model.helper}</p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </section>
 
-                    <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-                        <div className="flex items-center gap-2 text-white">
-                            <DatabaseZap className="size-4 text-[#8FE7B5]" />
-                            <h3 className="font-medium">Data Access Permissions</h3>
-                        </div>
-                        <p className="mt-2 text-sm text-white/45">
-                            Control which personal workspace sources can enrich Bloom AI responses.
-                        </p>
-                        <div className="mt-4 space-y-3">
-                            {Object.entries(BLOOM_PERMISSION_LABELS).map(([key, label]) => (
-                                <div
-                                    key={key}
-                                    className="flex items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3"
-                                >
-                                    <div>
-                                        <p className="text-sm font-medium text-white">{label}</p>
-                                        <p className="text-xs text-white/45">
-                                            Bloom AI can use this data for richer answers.
-                                        </p>
+                        <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                            <div className="flex items-center gap-2 text-white">
+                                <DatabaseZap className="size-4 text-[#8FE7B5]" />
+                                <h3 className="font-medium">Data Access Permissions</h3>
+                            </div>
+                            <p className="mt-2 text-sm text-white/45">
+                                Control which personal workspace sources can enrich Bloom AI responses.
+                            </p>
+                            <div className="mt-4 space-y-3">
+                                {Object.entries(BLOOM_PERMISSION_LABELS).map(([key, label]) => (
+                                    <div
+                                        key={key}
+                                        className="flex items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3"
+                                    >
+                                        <div>
+                                            <p className="text-sm font-medium text-white">{label}</p>
+                                            <p className="text-xs text-white/45">
+                                                Bloom AI can use this data for richer answers.
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={settings.dataAccess[key as keyof BloomSettings["dataAccess"]]}
+                                            onCheckedChange={(checked) =>
+                                                void onUpdateSettings({
+                                                    dataAccess: {
+                                                        [key]: checked,
+                                                    },
+                                                })
+                                            }
+                                        />
                                     </div>
-                                    <Switch
-                                        checked={settings.dataAccess[key as keyof BloomSettings["dataAccess"]]}
-                                        onCheckedChange={(checked) =>
-                                            void onUpdateSettings({
-                                                dataAccess: {
-                                                    [key]: checked,
-                                                },
-                                            })
-                                        }
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    </section>
+                                ))}
+                            </div>
+                        </section>
+                    </div>
                 </div>
             </SheetContent>
         </Sheet>
