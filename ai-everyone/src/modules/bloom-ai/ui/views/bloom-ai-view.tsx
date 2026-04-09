@@ -7,7 +7,7 @@ import { BloomTopNav } from "@/modules/bloom-ai/ui/components/bloom-top-nav";
 import { BloomSidebar } from "@/modules/bloom-ai/ui/components/bloom-sidebar";
 import { BloomChatPanel } from "@/modules/bloom-ai/ui/components/bloom-chat-panel";
 import { BloomSettingsSheet } from "@/modules/bloom-ai/ui/components/bloom-settings-sheet";
-import { BloomRemindersPanel } from "@/modules/bloom-ai/ui/components/bloom-reminders-panel";
+import { BloomRemindersSheet } from "@/modules/bloom-ai/ui/components/bloom-reminders-panel";
 import { BloomNotesView } from "@/modules/bloom-ai/ui/components/bloom-notes-view";
 import { BloomHabitTrackerView } from "@/modules/bloom-ai/ui/components/bloom-habit-tracker-view";
 import { BloomJournalView } from "@/modules/bloom-ai/ui/components/bloom-journal-view";
@@ -23,7 +23,7 @@ export function BloomAiView() {
 
     if (!workspace.snapshot) {
         return (
-            <div className="flex h-full min-h-[calc(100vh-2rem)] items-center justify-center bg-[#181716] px-6 py-10 text-white">
+            <div className="flex h-full items-center justify-center bg-[#181716] px-6 py-10 text-white">
                 <div className="max-w-lg rounded-[32px] border border-white/10 bg-[#141414] p-8 text-center shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
                     <p className="text-2xl font-semibold">Bloom AI could not load.</p>
                     <p className="mt-3 text-sm text-white/55">
@@ -42,7 +42,7 @@ export function BloomAiView() {
     }
 
     return (
-        <div className="h-[calc(100vh-3.75rem)] overflow-hidden bg-[#181716] px-4 py-4 text-white lg:px-5 lg:py-5">
+        <div className="h-full overflow-hidden bg-[#181716] px-4 py-4 text-white lg:px-5 lg:py-5">
             <BloomSettingsSheet
                 open={workspace.isSettingsOpen}
                 onOpenChange={workspace.setIsSettingsOpen}
@@ -76,11 +76,7 @@ export function BloomAiView() {
                             onOpenReminders={() => workspace.setIsRemindersOpen(true)}
                         />
 
-                        <div
-                            className={`relative min-h-0 min-w-0 overflow-hidden ${
-                                workspace.isRemindersOpen ? "xl:pr-[390px]" : ""
-                            }`}
-                        >
+                        <div className="relative min-h-0 min-w-0 overflow-hidden">
                             {workspace.activeSection === "agent" ? (
                                 <BloomChatPanel
                                     conversation={workspace.activeConversation}
@@ -133,7 +129,7 @@ export function BloomAiView() {
                                 </div>
                             ) : null}
 
-                            <BloomRemindersPanel
+                            <BloomRemindersSheet
                                 open={workspace.isRemindersOpen}
                                 reminders={workspace.snapshot.reminders}
                                 onOpenChange={workspace.setIsRemindersOpen}

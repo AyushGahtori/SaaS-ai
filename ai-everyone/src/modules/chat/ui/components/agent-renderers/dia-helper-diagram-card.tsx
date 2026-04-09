@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { ArrowDownToLine, Image as ImageIcon, Loader2, Upload } from "lucide-react";
 import { auth } from "@/lib/firebase";
 
@@ -183,12 +183,7 @@ export const DiaHelperDiagramCard: React.FC<DiaHelperDiagramCardProps> = ({ resu
                         <ImageIcon className="h-3.5 w-3.5" />
                         Choose file from computer
                     </button>
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        className="hidden"
-                        onChange={handleFileChange}
-                    />
+                    <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
                     {fileSnippet ? (
                         <div className="custom-scrollbar max-h-24 overflow-y-auto rounded-md border border-white/10 bg-black/60 p-2 text-[11px] text-white/70 whitespace-pre-wrap">
                             {fileSnippet}
@@ -316,4 +311,3 @@ export const DiaHelperDiagramCard: React.FC<DiaHelperDiagramCardProps> = ({ resu
         </div>
     );
 };
-

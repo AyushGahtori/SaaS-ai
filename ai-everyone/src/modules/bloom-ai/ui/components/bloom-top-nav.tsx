@@ -31,7 +31,7 @@ interface BloomTopNavProps {
 
 export function BloomTopNav({ activeSection, onChange }: BloomTopNavProps) {
     return (
-        <div className="flex gap-3 overflow-x-auto pb-1">
+        <div className="custom-scrollbar flex gap-3 overflow-x-auto overflow-y-visible pb-2 pt-1">
             {BLOOM_SECTIONS.map((section) => {
                 const Icon = sectionIcons[section.id];
                 const active = section.id === activeSection;
