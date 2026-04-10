@@ -256,6 +256,46 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 715,
     },
+    "startup-fundraising-agent": {
+        iconUrl: makeMonogramIcon("Fund", "#4b635a", "#7c8f86"),
+        installCount: 2600,
+        rating: 4.7,
+        createdAt: "2026-04-09T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 714,
+    },
+    "smart-gtm-agent": {
+        iconUrl: makeMonogramIcon("GTM", "#3a5a67", "#557d86"),
+        installCount: 2500,
+        rating: 4.7,
+        createdAt: "2026-04-09T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 713,
+    },
+    "seo-agent": {
+        iconUrl: makeMonogramIcon("SEO", "#4f6b58", "#718574"),
+        installCount: 2450,
+        rating: 4.6,
+        createdAt: "2026-04-09T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 712,
+    },
+    "dashboard-designer-agent": {
+        iconUrl: makeMonogramIcon("Dash", "#446174", "#658296"),
+        installCount: 2700,
+        rating: 4.8,
+        createdAt: "2026-04-09T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 716,
+    },
+    "ats-agent": {
+        iconUrl: makeMonogramIcon("ATS", "#4b5a74", "#6a7891"),
+        installCount: 2100,
+        rating: 4.7,
+        createdAt: "2026-04-10T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 717,
+    },
 };
 
 function makeDefaultAgentMeta(agent: AgentCatalogEntry) {

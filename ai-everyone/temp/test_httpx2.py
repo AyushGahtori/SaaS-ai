@@ -1,8 +1,11 @@
 import asyncio
 import httpx
 import json
+import os
 
-api_key = "AIzaSyBw2BA69lb6CXcaicXRZu4vboBkbOMCOAI"
+api_key = os.getenv("GEMINI_API_KEY", "").strip()
+if not api_key:
+    raise SystemExit("Set GEMINI_API_KEY before running this script.")
 
 async def test_model(model):
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"

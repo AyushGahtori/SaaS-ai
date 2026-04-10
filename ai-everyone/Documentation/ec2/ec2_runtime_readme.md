@@ -38,6 +38,12 @@ This runtime is detached from the main web app.
 | `zoom-agent` | 8011 | `/zoom/action` | `/zoom/health` |
 | `dia-helper-agent` | 8020 | `/diahelper/action` | `/diahelper/health` |
 | `shopgenie-agent` | 8021 | `/shopgenie/action` | `/shopgenie/health` |
+| `career-switch-agent` | 8022 | `/career-switch/action` | `/career-switch/health` |
+| `dashboard-designer-agent` | 8024 | `/dashboarddesigner/action` | `/dashboarddesigner/health` |
+| `smart-gtm-agent` | 8033 | `/smartgtm/action` | `/smartgtm/health` |
+| `seo-agent` | 8034 | `/seo/action` | `/seo/health` |
+| `startup-fundraising-agent` | 8035 | `/fundraising/action` | `/fundraising/health` |
+| `ats-agent` | 8036 | `/ats/action` | `/ats/health` |
 
 ## Base URL Policy
 

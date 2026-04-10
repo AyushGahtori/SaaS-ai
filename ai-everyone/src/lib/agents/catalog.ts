@@ -431,6 +431,98 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         tags: ["career", "planning", "skills", "roadmap", "transition"],
         requiresConnection: false,
     },
+    {
+        id: "startup-fundraising-agent",
+        name: "Fund Agent",
+        description:
+            "Help founders prepare fundraising materials, research investors, plan outreach, and keep investor follow-ups organized.",
+        actions: [
+            "search_investors",
+            "plan_outreach",
+            "track_conversation",
+            "term_sheet_guidance",
+            "generate_fundraising_plan",
+        ],
+        examplePrompts: [
+            "Find seed investors for my AI developer tools startup",
+            "Draft investor outreach for our B2B SaaS fundraising round",
+            "Help me respond to a term sheet question from an investor",
+        ],
+        provider: "internal",
+        category: "finance",
+        tags: ["fundraising", "investors", "pitch deck", "outreach", "startup"],
+        requiresConnection: false,
+    },
+    {
+        id: "smart-gtm-agent",
+        name: "Smart GTM Agent",
+        description:
+            "Research a company, generate a go-to-market plan, and recommend channel strategy from a company URL or business context.",
+        actions: ["research_company", "go_to_market", "channel"],
+        examplePrompts: [
+            "Analyze Stripe and give me a GTM breakdown",
+            "Build a go-to-market strategy for this company URL",
+            "Suggest channel strategy for a B2B AI startup",
+        ],
+        provider: "internal",
+        category: "marketing",
+        tags: ["gtm", "research", "channels", "positioning", "growth"],
+        requiresConnection: false,
+    },
+    {
+        id: "seo-agent",
+        name: "SEO Agent",
+        description:
+            "Create SEO briefs, audit existing articles, and produce optimization guidance based on keywords, SERP patterns, and content structure.",
+        actions: ["generate_brief", "audit", "optimize_article"],
+        examplePrompts: [
+            "Create an SEO brief for AI sales automation",
+            "Audit this blog post URL for SEO",
+            "Optimize my article draft for the keyword cloud cost optimization",
+        ],
+        provider: "internal",
+        category: "marketing",
+        tags: ["seo", "content", "keywords", "audit", "optimization"],
+        requiresConnection: false,
+    },
+    {
+        id: "dashboard-designer-agent",
+        name: "Dashboard Designer",
+        description:
+            "Turn analytics questions or pasted datasets into dashboard-ready KPI cards, charts, tables, summaries, and threshold ideas.",
+        actions: ["design_dashboard", "refine_dashboard", "update_dashboard"],
+        examplePrompts: [
+            "Design a regional sales performance dashboard",
+            "Create an operations dashboard from this KPI table",
+            "Suggest alert thresholds for my revenue dashboard",
+        ],
+        provider: "internal",
+        category: "analytics",
+        tags: ["dashboard", "analytics", "kpi", "charts", "thresholds"],
+        requiresConnection: false,
+    },
+    {
+        id: "ats-agent",
+        name: "ATS Agent",
+        description:
+            "Analyze candidate fit, generate interview questions, capture interview transcript feedback, and compare shortlisted candidates.",
+        actions: [
+            "analyze_candidate",
+            "generate_interview_questions",
+            "save_interview_transcript",
+            "compare_candidates",
+            "list_candidates",
+        ],
+        examplePrompts: [
+            "Analyze this resume for a backend engineer role",
+            "Generate first-round interview questions for this candidate",
+            "Save this interview transcript and generate feedback",
+        ],
+        provider: "internal",
+        category: "recruiting",
+        tags: ["ats", "hiring", "interview", "candidate", "recruiting"],
+        requiresConnection: false,
+    },
 ];
 
 export const AGENT_BUNDLES: AgentBundle[] = [
