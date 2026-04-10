@@ -43,12 +43,16 @@ function makeMonogramIcon(label: string, from: string, to: string): string {
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+function localIcon(fileName: string): string {
+    return `/marketplace/icons/${fileName}`;
+}
+
 const bundleUiMeta: Record<
     string,
     Omit<MarketplaceAgent, "id" | "name" | "description" | "category" | "tags" | "provider" | "kind" | "requiresConnection" | "childAgentIds">
 > = {
     "google-bundle": {
-        iconUrl: makeMonogramIcon("Google", "#0F9D58", "#4285F4"),
+        iconUrl: localIcon("google.png"),
         installCount: 28400,
         rating: 4.9,
         createdAt: "2026-03-01T00:00:00.000Z",
@@ -57,7 +61,7 @@ const bundleUiMeta: Record<
         featuredRank: 0,
     },
     "microsoft-bundle": {
-        iconUrl: makeMonogramIcon("M365", "#0ea5e9", "#1d4ed8"),
+        iconUrl: localIcon("microsoft.png"),
         installCount: 23100,
         rating: 4.8,
         createdAt: "2026-03-01T00:00:00.000Z",
@@ -72,7 +76,7 @@ const agentUiMeta: Record<
     Omit<MarketplaceAgent, "id" | "name" | "description" | "category" | "tags" | "provider" | "kind" | "requiresConnection" | "bundleId">
 > = {
     "todo-agent": {
-        iconUrl: makeMonogramIcon("Todo", "#f59e0b", "#ea580c"),
+        iconUrl: localIcon("todo.png"),
         installCount: 19400,
         rating: 4.9,
         createdAt: "2026-03-03T00:00:00.000Z",
@@ -81,7 +85,7 @@ const agentUiMeta: Record<
         featuredRank: 2,
     },
     "google-agent": {
-        iconUrl: makeMonogramIcon("Gmail", "#16a34a", "#0f766e"),
+        iconUrl: localIcon("google.png"),
         installCount: 17600,
         rating: 4.8,
         createdAt: "2026-03-05T00:00:00.000Z",
@@ -89,7 +93,7 @@ const agentUiMeta: Record<
         trendingScore: 870,
     },
     "maps-agent": {
-        iconUrl: makeMonogramIcon("Maps", "#f97316", "#ea580c"),
+        iconUrl: localIcon("maps.png"),
         installCount: 16500,
         rating: 4.8,
         createdAt: "2026-03-06T00:00:00.000Z",
@@ -97,7 +101,7 @@ const agentUiMeta: Record<
         trendingScore: 860,
     },
     "emergency-response-agent": {
-        iconUrl: makeMonogramIcon("SOS", "#ef4444", "#b91c1c"),
+        iconUrl: localIcon("emergency.png"),
         installCount: 9600,
         rating: 4.7,
         createdAt: "2026-04-02T00:00:00.000Z",
@@ -105,7 +109,7 @@ const agentUiMeta: Record<
         trendingScore: 845,
     },
     "strata-agent": {
-        iconUrl: makeMonogramIcon("Stara", "#0f172a", "#1e3a8a"),
+        iconUrl: localIcon("stara.png"),
         installCount: 10200,
         rating: 4.7,
         createdAt: "2026-04-03T00:00:00.000Z",
@@ -113,7 +117,7 @@ const agentUiMeta: Record<
         trendingScore: 835,
     },
     "notion-agent": {
-        iconUrl: makeMonogramIcon("Notion", "#111827", "#374151"),
+        iconUrl: localIcon("notion.png"),
         installCount: 15400,
         rating: 4.7,
         createdAt: "2026-03-07T00:00:00.000Z",
@@ -121,7 +125,7 @@ const agentUiMeta: Record<
         trendingScore: 850,
     },
     "email-agent": {
-        iconUrl: makeMonogramIcon("Mail", "#2563eb", "#1e3a8a"),
+        iconUrl: localIcon("outlook.png"),
         installCount: 15800,
         rating: 4.7,
         createdAt: "2026-03-08T00:00:00.000Z",
@@ -129,7 +133,7 @@ const agentUiMeta: Record<
         trendingScore: 840,
     },
     "calendar-agent": {
-        iconUrl: makeMonogramIcon("Cal", "#14b8a6", "#0f766e"),
+        iconUrl: localIcon("calendar.png"),
         installCount: 14900,
         rating: 4.7,
         createdAt: "2026-03-09T00:00:00.000Z",
@@ -137,7 +141,7 @@ const agentUiMeta: Record<
         trendingScore: 810,
     },
     "teams-agent": {
-        iconUrl: makeMonogramIcon("Teams", "#7c3aed", "#4f46e5"),
+        iconUrl: localIcon("teams.png"),
         installCount: 14300,
         rating: 4.6,
         createdAt: "2026-03-10T00:00:00.000Z",
@@ -145,7 +149,7 @@ const agentUiMeta: Record<
         trendingScore: 790,
     },
     "canva-agent": {
-        iconUrl: makeMonogramIcon("Canva", "#06b6d4", "#2563eb"),
+        iconUrl: localIcon("canva.png"),
         installCount: 11800,
         rating: 4.5,
         createdAt: "2026-03-11T00:00:00.000Z",
@@ -161,7 +165,7 @@ const agentUiMeta: Record<
         trendingScore: 750,
     },
     "discord-agent": {
-        iconUrl: makeMonogramIcon("Chat", "#5865f2", "#4338ca"),
+        iconUrl: localIcon("discord.png"),
         installCount: 10800,
         rating: 4.5,
         createdAt: "2026-03-13T00:00:00.000Z",
@@ -169,7 +173,7 @@ const agentUiMeta: Record<
         trendingScore: 740,
     },
     "dropbox-agent": {
-        iconUrl: makeMonogramIcon("Box", "#2563eb", "#1d4ed8"),
+        iconUrl: localIcon("dropbox.png"),
         installCount: 10300,
         rating: 4.5,
         createdAt: "2026-03-14T00:00:00.000Z",
@@ -185,7 +189,7 @@ const agentUiMeta: Record<
         trendingScore: 720,
     },
     "github-agent": {
-        iconUrl: makeMonogramIcon("GitHub", "#111827", "#374151"),
+        iconUrl: localIcon("github.png"),
         installCount: 12700,
         rating: 4.7,
         createdAt: "2026-03-16T00:00:00.000Z",
@@ -193,7 +197,7 @@ const agentUiMeta: Record<
         trendingScore: 800,
     },
     "gitlab-agent": {
-        iconUrl: makeMonogramIcon("GitLab", "#f97316", "#dc2626"),
+        iconUrl: localIcon("gitlab.png"),
         installCount: 9700,
         rating: 4.5,
         createdAt: "2026-03-17T00:00:00.000Z",
@@ -209,7 +213,7 @@ const agentUiMeta: Record<
         trendingScore: 700,
     },
     "jira-agent": {
-        iconUrl: makeMonogramIcon("Jira", "#2563eb", "#0f172a"),
+        iconUrl: localIcon("jira.png"),
         installCount: 11900,
         rating: 4.6,
         createdAt: "2026-03-19T00:00:00.000Z",
@@ -217,7 +221,7 @@ const agentUiMeta: Record<
         trendingScore: 780,
     },
     "linkedin-agent": {
-        iconUrl: makeMonogramIcon("Link", "#0a66c2", "#1d4ed8"),
+        iconUrl: localIcon("linkedin.png"),
         installCount: 8600,
         rating: 4.3,
         createdAt: "2026-03-20T00:00:00.000Z",
@@ -225,7 +229,7 @@ const agentUiMeta: Record<
         trendingScore: 690,
     },
     "zoom-agent": {
-        iconUrl: makeMonogramIcon("Zoom", "#2563eb", "#0891b2"),
+        iconUrl: localIcon("zoom.png"),
         installCount: 12100,
         rating: 4.6,
         createdAt: "2026-03-21T00:00:00.000Z",
