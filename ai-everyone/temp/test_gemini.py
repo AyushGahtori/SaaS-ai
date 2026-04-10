@@ -1,7 +1,10 @@
 import urllib.request
 import json
+import os
 
-api_key = "AIzaSyBw2BA69lb6CXcaicXRZu4vboBkbOMCOAI"
+api_key = os.getenv("GEMINI_API_KEY", "").strip()
+if not api_key:
+    raise SystemExit("Set GEMINI_API_KEY before running this script.")
 
 # Test with gemini-2.5-pro (the default in diagram_service.py)
 for model in ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"]:

@@ -136,6 +136,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         return () => {
+            abortRef.current = true;
             requestAbortControllerRef.current?.abort();
             Object.values(taskListenersRef.current).forEach((unsub) => unsub());
         };

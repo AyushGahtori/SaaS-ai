@@ -22,6 +22,11 @@ import { StrataResultCard } from "./agent-renderers/strata-result-card";
 import { DiaHelperDiagramCard } from "./agent-renderers/dia-helper-diagram-card";
 import { ShopGenieResultCard } from "./agent-renderers/shopgenie-result-card";
 import { CareerPlanResultCard } from "./agent-renderers/career-plan-result-card";
+import { FundAgentResultCard } from "./agent-renderers/fund-agent-result-card";
+import { SmartGTMResultCard } from "./agent-renderers/smart-gtm-result-card";
+import { SeoResultCard } from "./agent-renderers/seo-result-card";
+import { DashboardDesignerResultCard } from "./agent-renderers/dashboard-designer-result-card";
+import { ATSResultCard } from "./agent-renderers/ats-result-card";
 import { InterpretedAgentGuidance } from "./agent-renderers/interpreted-agent-guidance";
 import { GenericAgentResultCard } from "./agent-renderers/generic-agent-result-card";
 
@@ -41,6 +46,12 @@ const AGENT_NAMES: Record<string, string> = {
     "strata-agent": "Stara Agent",
     "dia-helper-agent": "Dia Helper",
     "shopgenie-agent": "ShopGenie Agent",
+    "career-switch-agent": "Career Switch Agent",
+    "startup-fundraising-agent": "Fund Agent",
+    "smart-gtm-agent": "Smart GTM Agent",
+    "seo-agent": "SEO Agent",
+    "dashboard-designer-agent": "Dashboard Designer",
+    "ats-agent": "ATS Agent",
 };
 
 interface GmailRow {
@@ -819,6 +830,30 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
 
         if (resultType === "career_plan") {
             return <CareerPlanResultCard result={result} />;
+        }
+
+        if (
+            resultType === "fundraising_plan" ||
+            resultType === "linkedin_dependency" ||
+            (typeof resultType === "string" && resultType.startsWith("fund_"))
+        ) {
+            return <FundAgentResultCard result={result} />;
+        }
+
+        if (resultType === "smart_gtm_result") {
+            return <SmartGTMResultCard result={result} />;
+        }
+
+        if (resultType === "seo_result") {
+            return <SeoResultCard result={result} />;
+        }
+
+        if (resultType === "dashboard_designer_result") {
+            return <DashboardDesignerResultCard result={result} />;
+        }
+
+        if (typeof resultType === "string" && resultType.startsWith("ats_")) {
+            return <ATSResultCard result={result} />;
         }
 
         // Generic result

@@ -496,6 +496,44 @@ For the shopgenie-agent:
 - Use shopgenie-agent for product comparison, buying recommendations, best-product selection, and shopping decision help.
 - If user explicitly asks to email the recommendation, set "sendEmail": true and pass recipientEmail if provided.
 
+For the startup-fundraising-agent:
+- search_investors: extract "startup_name", optional "company_url", optional "industry", optional "stage", optional "geography", and optional "raise_amount".
+- plan_outreach: extract "startup_name", optional "company_url", optional "preferred_channel", optional "investor_name", optional "stage", and optional "notes".
+- track_conversation: extract "startup_name", "investor_name", "update", and optional "next_step" plus optional "status".
+- term_sheet_guidance: extract "startup_name", optional "offer_terms", and optional "question".
+- generate_fundraising_plan: extract "startup_name", optional "company_url", optional "industry", optional "stage", optional "geography", and optional "raise_amount".
+- Use startup-fundraising-agent for investor discovery, fundraising planning, outreach drafting, and investor follow-up workflows.
+- If the user specifically wants LinkedIn-based outreach, still use startup-fundraising-agent first; it may return an action-required step that depends on linkedin-agent.
+
+For the smart-gtm-agent:
+- research_company: extract "company_url", optional "company_name", and optional "focus".
+- go_to_market: extract "company_url", optional "company_name", optional "goal", and optional "market_context".
+- channel: extract "company_url", optional "company_name", optional "region", and optional "segment".
+- Use smart-gtm-agent for company research, GTM playbooks, channel recommendations, and market-intelligence requests grounded in a company URL.
+- If no company URL or company name is provided for research/GTM work, ask a short clarification instead of guessing.
+
+For the seo-agent:
+- generate_brief: extract "topic" and optional "target_keyword".
+- audit: extract "url" when available, otherwise extract "title" and "content".
+- optimize_article: extract optional "url", optional "title", optional "content", and optional "topic".
+- Use seo-agent for keyword research, SEO content briefs, article audits, content optimization, and SERP-driven writing guidance.
+- If the user asks for SEO help but provides neither a topic, a URL, nor article content, ask a concise clarification.
+
+For the dashboard-designer-agent:
+- design_dashboard: extract "prompt", optional "dashboard_title", optional "manual_data", and optional "context".
+- refine_dashboard: extract "prompt", optional "existingDashboard", optional "manual_data", and optional "context".
+- update_dashboard: extract "prompt", optional "existingDashboard", optional "manual_data", and optional "context".
+- Use dashboard-designer-agent for KPI board design, analytics layouts, dashboard summaries, and threshold/alert suggestions.
+
+For the ats-agent:
+- analyze_candidate: extract "candidateName", optional "candidateEmail", "resumeText", optional "jobTitle", optional "jobDescription".
+- generate_interview_questions: extract optional "candidateId", optional "candidateName", optional "resumeText", optional "jobTitle", optional "jobDescription", optional "interviewStage".
+- save_interview_transcript: extract optional "candidateId", "transcript", optional "interviewStage", optional "jobTitle", optional "jobDescription".
+- compare_candidates: extract "candidates" (array; each item may contain candidateId, name, summary, skills, experienceYears).
+- list_candidates: no parameters needed.
+- Use ats-agent for recruiting workflows like ATS fit scoring, interview preparation, transcript feedback, and candidate ranking.
+- If the user asks ATS analysis without resume text or candidate context, ask a concise clarification.
+
 If an agent is needed, output ONLY:
 <AGENT_INTENT>
 {
@@ -1606,7 +1644,7 @@ export async function POST(req: NextRequest) {
                         });
                         safeClose();
                     } catch (error) {
-                        if (isAbortLikeError(error) || upstreamAbortController.signal.aborted) {
+                        if (streamClosed || isAbortLikeError(error) || upstreamAbortController.signal.aborted) {
                             safeClose();
                             return;
                         }

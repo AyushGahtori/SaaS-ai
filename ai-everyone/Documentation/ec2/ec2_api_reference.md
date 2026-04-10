@@ -36,6 +36,12 @@ Detached runtime contract for all EC2 agents.
 - `GET /zoom/health`
 - `GET /diahelper/health`
 - `GET /shopgenie/health`
+- `GET /career-switch/health`
+- `GET /dashboarddesigner/health`
+- `GET /smartgtm/health`
+- `GET /seo/health`
+- `GET /fundraising/health`
+- `GET /ats/health`
 
 ## Action Routes
 
@@ -61,6 +67,12 @@ Detached runtime contract for all EC2 agents.
 - `POST /zoom/action`
 - `POST /diahelper/action`
 - `POST /shopgenie/action`
+- `POST /career-switch/action`
+- `POST /dashboarddesigner/action`
+- `POST /smartgtm/action`
+- `POST /seo/action`
+- `POST /fundraising/action`
+- `POST /ats/action`
 
 ## OAuth Ownership (Detached)
 
@@ -124,8 +136,7 @@ Stored fields:
 
 - OAuth: `teams-agent`, `google-agent`, `notion-agent`, `canva-agent`, `discord-agent`, `dropbox-agent`, `github-agent`, `gitlab-agent`, `jira-agent`, `linkedin-agent`, `zoom-agent`
 - API key: `freshdesk-agent`, `greenhouse-agent`
-- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`
-  , `dia-helper-agent`, `shopgenie-agent`
+- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`
 
 ## JS-Parity Notes
 

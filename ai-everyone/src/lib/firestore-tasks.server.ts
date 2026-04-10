@@ -53,6 +53,11 @@ const AGENT_ROUTES: Record<string, string> = {
     "dia-helper-agent": "/diahelper/action",
     "shopgenie-agent": "/shopgenie/action",
     "career-switch-agent": "/career-switch/action",
+    "startup-fundraising-agent": "/fundraising/action",
+    "smart-gtm-agent": "/smartgtm/action",
+    "seo-agent": "/seo/action",
+    "dashboard-designer-agent": "/dashboarddesigner/action",
+    "ats-agent": "/ats/action",
 };
 
 async function persistInterpretedFailure(params: {
@@ -255,6 +260,11 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "dia-helper-agent": process.env.DIA_HELPER_AGENT_URL,
         "shopgenie-agent": process.env.SHOPGENIE_AGENT_URL,
         "career-switch-agent": process.env.CAREER_SWITCH_AGENT_URL,
+        "startup-fundraising-agent": process.env.STARTUP_FUNDRAISING_AGENT_URL,
+        "smart-gtm-agent": process.env.SMART_GTM_AGENT_URL,
+        "seo-agent": process.env.SEO_AGENT_URL,
+        "dashboard-designer-agent": process.env.DASHBOARD_DESIGNER_AGENT_URL,
+        "ats-agent": process.env.ATS_AGENT_URL,
     };
     const agentServerUrl =
         ENV_AGENT_URL_MAP[task.agentId] ||
