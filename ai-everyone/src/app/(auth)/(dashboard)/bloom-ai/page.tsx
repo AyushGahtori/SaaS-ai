@@ -1,20 +1,15 @@
-"use client";
+import dynamic from "next/dynamic";
+import { DashboardRouteSkeleton } from "@/components/performance/dashboard-route-skeleton";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useSession } from "@/lib/auth-client";
-import { BloomAiView } from "@/modules/bloom-ai";
+const BloomAiPageClient = dynamic(() => import("./page.client"), {
+  loading: () => (
+    <DashboardRouteSkeleton
+      title="Loading Bloom AI"
+      subtitle="Preparing your planner workspace..."
+    />
+  ),
+});
 
-const Page = () => {
-  const { data: session, isPending } = useSession();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!isPending && !session) router.push("/sign-in");
-  }, [isPending, router, session]);
-
-  if (isPending || !session) return null;
-  return <BloomAiView />;
-};
-
-export default Page;
+export default function Page() {
+  return <BloomAiPageClient />;
+}

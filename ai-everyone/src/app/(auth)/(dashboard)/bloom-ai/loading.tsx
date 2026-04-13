@@ -1,5 +1,10 @@
-import { BloomLoadingScreen } from "@/modules/bloom-ai/ui/components/bloom-loading-screen";
+import { DashboardRouteSkeleton } from "@/components/performance/dashboard-route-skeleton";
 
-const Loading = () => <BloomLoadingScreen />;
+const Loading = () => (
+  <DashboardRouteSkeleton
+    title="Loading Bloom AI"
+    subtitle="Preparing your planner workspace..."
+  />
+);
 
 export default Loading;

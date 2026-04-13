@@ -1,6 +1,6 @@
 "use client";
 
-import { auth } from "@/lib/firebase";
+import { getFirebaseIdToken } from "@/lib/firebase-client-lazy";
 
 export class BloomApiError extends Error {
     status: number;
@@ -18,8 +18,10 @@ export async function bloomFetch<T>(
         body?: unknown;
     }
 ): Promise<T> {
-    const token = await auth.currentUser?.getIdToken();
-    if (!token) {
+    let token = "";
+    try {
+        token = await getFirebaseIdToken();
+    } catch {
         throw new BloomApiError("Authentication expired. Please sign in again.", 401);
     }
 

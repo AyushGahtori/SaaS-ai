@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 
 import {
   Sidebar,
@@ -19,9 +20,35 @@ import { Separator } from "@/components/ui/separator";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { MessageSquare, Bot, Settings } from "lucide-react";
-import { DashboardUserButton } from "./dashboard-user-button";
-import { ChatSidebarList } from "@/modules/chat/ui/components/chat-sidebar-list";
-import { useChatContext } from "@/modules/chat/context/chat-context";
+import { useOptionalChatContext } from "@/modules/chat/context/chat-context";
+import { PENDING_NEW_CHAT_STORAGE_KEY } from "@/modules/chat/constants";
+
+const ChatSidebarList = dynamic(
+  () =>
+    import("@/modules/chat/ui/components/chat-sidebar-list").then(
+      (module) => module.ChatSidebarList
+    ),
+  {
+    ssr: false,
+    loading: () => <div className="px-3 py-2 text-xs text-white/40">Loading chats...</div>,
+  }
+);
+
+const ChatSidebarPreviewList = dynamic(
+  () =>
+    import("@/modules/chat/ui/components/chat-sidebar-preview-list").then(
+      (module) => module.ChatSidebarPreviewList
+    ),
+  {
+    ssr: false,
+    loading: () => <div className="px-3 py-2 text-xs text-white/40">Loading chats...</div>,
+  }
+);
+
+const DashboardUserButton = dynamic(
+  () => import("./dashboard-user-button").then((module) => module.DashboardUserButton),
+  { ssr: false }
+);
 
 // --------------------
 // Sidebar data
@@ -49,7 +76,8 @@ export const DashboardSidebar = () => {
 
   const pathname = usePathname();
   const router = useRouter();
-  const { createNewChat } = useChatContext();
+  const chat = useOptionalChatContext();
+  const hasChatRuntime = Boolean(chat);
 
   if (pathname?.startsWith("/bloom")) {
     return null;
@@ -85,7 +113,11 @@ export const DashboardSidebar = () => {
                 <SidebarMenuButton asChild>
                   <button
                     onClick={() => {
-                      createNewChat();
+                      if (chat) {
+                        chat.createNewChat();
+                      } else if (typeof window !== "undefined") {
+                        window.sessionStorage.setItem(PENDING_NEW_CHAT_STORAGE_KEY, "1");
+                      }
                       router.push("/");
                     }}
                     className="h-10 flex items-center gap-2 px-3 rounded-md text-sm font-bold tracking-tight text-[#E5E5E5] hover:bg-sidebar-accent/5 hover:text-white w-full"
@@ -141,7 +173,11 @@ export const DashboardSidebar = () => {
             </div>
             <div className="flex flex-col h-full bg-[#0C0D0D]">
               <div className="custom-scrollbar flex-1 min-h-0 overflow-y-auto w-full relative">
-                <ChatSidebarList />
+                {hasChatRuntime ? (
+                  <ChatSidebarList />
+                ) : (
+                  <ChatSidebarPreviewList />
+                )}
               </div>
             </div>
           </SidebarGroupContent>

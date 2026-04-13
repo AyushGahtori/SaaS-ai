@@ -1,16 +1,52 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { ChevronDown, ChevronUp, Cloud, Cpu, Sparkles } from "lucide-react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
-import { AttachFile } from "@/modules/home/ui/components/attach-file";
-import { TextToSpeech } from "@/modules/home/ui/components/text-to-speech";
 import { useChatAttachments } from "@/modules/chat/upload/use-chat-attachments";
-import { AttachmentStrip } from "@/modules/chat/upload/components/attachment-strip";
-import { DrivePickerDialog } from "@/modules/chat/upload/components/drive-picker-dialog";
-import { DriveUploadSigninOverlay } from "@/modules/chat/upload/components/drive-upload-signin-overlay";
 import { SendStopButton } from "@/modules/chat/ui/components/send-stop-button";
-import VoiceBar from "@/modules/chat/ui/components/VoiceBar";
+
+const AttachFile = dynamic(
+    () => import("@/modules/home/ui/components/attach-file").then((module) => module.AttachFile),
+    { ssr: false }
+);
+
+const TextToSpeech = dynamic(
+    () => import("@/modules/home/ui/components/text-to-speech").then((module) => module.TextToSpeech),
+    { ssr: false }
+);
+
+const AttachmentStrip = dynamic(
+    () =>
+        import("@/modules/chat/upload/components/attachment-strip").then(
+            (module) => module.AttachmentStrip
+        ),
+    { ssr: false }
+);
+
+const DrivePickerDialog = dynamic(
+    () =>
+        import("@/modules/chat/upload/components/drive-picker-dialog").then(
+            (module) => module.DrivePickerDialog
+        ),
+    { ssr: false }
+);
+
+const DriveUploadSigninOverlay = dynamic(
+    () =>
+        import("@/modules/chat/upload/components/drive-upload-signin-overlay").then(
+            (module) => module.DriveUploadSigninOverlay
+        ),
+    { ssr: false }
+);
+
+const VoiceBar = dynamic(() => import("@/modules/chat/ui/components/VoiceBar"), {
+    ssr: false,
+    loading: () => (
+        <div className="mx-auto h-12 w-full max-w-[420px] animate-pulse rounded-2xl border border-white/10 bg-white/[0.03]" />
+    ),
+});
 
 interface ChatInputProps {
     onFirstMessage?: () => void;

@@ -15,12 +15,17 @@ import { useRouter } from "next/navigation";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import { Trash2, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toChatPreviews, writeSidebarChatCache } from "@/modules/chat/sidebar-cache";
 
 export const ChatSidebarList: React.FC = () => {
     const router = useRouter();
     const { chats, activeChatId, selectChat, removeChatById, isLoadingChats } =
         useChatContext();
     const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+    React.useEffect(() => {
+        writeSidebarChatCache(toChatPreviews(chats));
+    }, [chats]);
 
     if (isLoadingChats) {
         return (

@@ -44,6 +44,8 @@ This runtime is detached from the main web app.
 | `seo-agent` | 8034 | `/seo/action` | `/seo/health` |
 | `startup-fundraising-agent` | 8035 | `/fundraising/action` | `/fundraising/health` |
 | `ats-agent` | 8036 | `/ats/action` | `/ats/health` |
+| `building-construction-agent` | 8037 | `/building/action` | `/building/health` |
+| `lms-agent` | 8039 | `/lms/action` | `/lms/health` |
 
 ## Base URL Policy
 

@@ -1,24 +1,15 @@
-"use client";
-// Agents marketplace page — auth-guarded, renders the AgentsView.
-import { AgentsView } from "@/modules/agents/ui/views/agents-view";
-import { useSession } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import dynamic from "next/dynamic";
+import { DashboardRouteSkeleton } from "@/components/performance/dashboard-route-skeleton";
 
-const Page = () => {
-  const { data: session, isPending } = useSession();
-  const router = useRouter();
+const AgentsPageClient = dynamic(() => import("./page.client"), {
+  loading: () => (
+    <DashboardRouteSkeleton
+      title="Loading agent marketplace"
+      subtitle="Fetching bundles, installs, and recommendations..."
+    />
+  ),
+});
 
-  useEffect(() => {
-    if (!isPending && !session) {
-      router.push("/sign-in");
-    }
-  }, [session, isPending, router]);
-
-  if (isPending) return null;
-  if (!session) return null;
-
-  return <AgentsView />;
-};
-
-export default Page;
+export default function Page() {
+  return <AgentsPageClient />;
+}

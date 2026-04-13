@@ -14,9 +14,12 @@ import React, {
     useEffect,
     useRef,
 } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 import { CHAT_MODELS } from "@/lib/model-capabilities";
+import { getFirebaseIdToken, waitForFirebaseUser } from "@/lib/firebase-client-lazy";
+import {
+    PENDING_CHAT_ID_STORAGE_KEY,
+    PENDING_NEW_CHAT_STORAGE_KEY,
+} from "@/modules/chat/constants";
 
 import type {
     Chat,
@@ -24,18 +27,6 @@ import type {
     ChatAttachment,
     ChatFailedAttachment,
 } from "@/modules/chat/types";
-import {
-    createChat,
-    getChats,
-    updateChat,
-    deleteChat as deleteChatDoc,
-} from "@/modules/chat/db/chats";
-import {
-    createMessage,
-    getMessages,
-    deleteMessages,
-} from "@/modules/chat/db/messages";
-import { subscribeToTask } from "@/lib/firestore-tasks";
 
 interface StreamPayload {
     type: string;
@@ -87,6 +78,10 @@ export function useChatContext(): ChatContextValue {
     return ctx;
 }
 
+export function useOptionalChatContext(): ChatContextValue | null {
+    return useContext(ChatContext);
+}
+
 const AVAILABLE_MODELS = CHAT_MODELS.map((model) => ({
     id: model.id,
     label: model.label,
@@ -128,10 +123,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const taskListenersRef = useRef<Record<string, () => void>>({});
 
     useEffect(() => {
-        const unsub = onAuthStateChanged(auth, (user: User | null) => {
+        let isMounted = true;
+
+        const resolveUser = async () => {
+            const user = await waitForFirebaseUser();
+            if (!isMounted) return;
             setUid(user?.uid ?? null);
-        });
-        return () => unsub();
+        };
+
+        void resolveUser();
+
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     useEffect(() => {
@@ -146,6 +150,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         if (!uid) return;
         setIsLoadingChats(true);
         try {
+            const { getChats } = await import("@/modules/chat/db/chats");
             const fetched = await getChats(uid);
             setChats(fetched);
         } catch (err) {
@@ -179,6 +184,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setError(null);
 
             try {
+                const { getMessages } = await import("@/modules/chat/db/messages");
                 const fetched = await getMessages(uid, chatId);
                 setMessages(fetched);
             } catch (err) {
@@ -189,8 +195,29 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         [uid]
     );
 
-    const watchTask = useCallback((taskId: string) => {
+    useEffect(() => {
+        if (!uid || typeof window === "undefined") return;
+
+        const openNewChat = window.sessionStorage.getItem(PENDING_NEW_CHAT_STORAGE_KEY);
+        if (openNewChat === "1") {
+            window.sessionStorage.removeItem(PENDING_NEW_CHAT_STORAGE_KEY);
+            createNewChat();
+            return;
+        }
+
+        const pendingChatId = window.sessionStorage.getItem(PENDING_CHAT_ID_STORAGE_KEY);
+        if (!pendingChatId) return;
+
+        const exists = chats.some((chat) => chat.id === pendingChatId);
+        if (!exists) return;
+
+        window.sessionStorage.removeItem(PENDING_CHAT_ID_STORAGE_KEY);
+        void selectChat(pendingChatId);
+    }, [uid, chats, selectChat, createNewChat]);
+
+    const watchTask = useCallback(async (taskId: string) => {
         if (taskListenersRef.current[taskId]) return;
+        const { subscribeToTask } = await import("@/lib/firestore-tasks");
 
         const unsub = subscribeToTask(taskId, (task) => {
             if (!task) return;
@@ -244,6 +271,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             let resolvedChatId: string | null = null;
 
             try {
+                const [{ createChat, updateChat }, { createMessage }] = await Promise.all([
+                    import("@/modules/chat/db/chats"),
+                    import("@/modules/chat/db/messages"),
+                ]);
                 if (!currentChatId) {
                     const title =
                         content.length > 40 ? content.slice(0, 40) + "…" : content;
@@ -292,10 +323,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     },
                 ]);
 
-                const token = await auth.currentUser?.getIdToken();
-                if (!token) {
-                    throw new Error("Authentication expired. Please sign in again.");
-                }
+                const token = await getFirebaseIdToken();
                 const controller = new AbortController();
                 requestAbortControllerRef.current = controller;
 
@@ -429,7 +457,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         },
                     }));
 
-                    watchTask(resolvedPayload.taskId);
+                    void watchTask(resolvedPayload.taskId);
                 } else {
                     const assistantContent =
                         resolvedPayload.content || streamedAssistantContent || "No response received.";
@@ -477,6 +505,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 if (tempAssistantId) {
                     const highDemandMessage = parseHighDemandMessage(err);
                     if (highDemandMessage && resolvedChatId) {
+                        const { createMessage } = await import("@/modules/chat/db/messages");
                         const assistantMsg = await createMessage(
                             uid,
                             resolvedChatId,
@@ -516,6 +545,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         async (chatId: string) => {
             if (!uid) return;
             try {
+                const [{ deleteMessages }, { deleteChat: deleteChatDoc }] = await Promise.all([
+                    import("@/modules/chat/db/messages"),
+                    import("@/modules/chat/db/chats"),
+                ]);
                 await deleteMessages(uid, chatId);
                 await deleteChatDoc(uid, chatId);
                 setChats((prev) => prev.filter((chat) => chat.id !== chatId));
@@ -535,6 +568,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         async (chatId: string, newTitle: string) => {
             if (!uid) return;
             try {
+                const { updateChat } = await import("@/modules/chat/db/chats");
                 await updateChat(uid, chatId, { title: newTitle });
                 setChats((prev) =>
                     prev.map((chat) => (chat.id === chatId ? { ...chat, title: newTitle } : chat))
@@ -576,3 +610,4 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
+

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { Check, Download, Link2, Loader2, Star } from "lucide-react";
 import type { Agent } from "@/lib/firestore-agents";
 
@@ -63,10 +64,11 @@ export const AgentCardFeatured = ({
           className="absolute inset-0 bg-cover bg-center bg-no-repeat blur-[60px]"
           style={{ backgroundImage: `url(${agent.iconUrl})` }}
         />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           src={agent.iconUrl}
           alt=""
+          width={640}
+          height={360}
           className="h-full w-full object-cover mix-blend-overlay"
         />
       </div>
@@ -79,8 +81,13 @@ export const AgentCardFeatured = ({
         </span>
         {!large ? (
           <div className="h-10 w-10 overflow-hidden rounded-[10px] bg-white/5 p-1 ring-1 ring-white/10 backdrop-blur-md">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={agent.iconUrl} alt={agent.name} className="h-full w-full object-contain" />
+            <Image
+              src={agent.iconUrl}
+              alt={agent.name}
+              width={40}
+              height={40}
+              className="h-full w-full object-contain"
+            />
           </div>
         ) : null}
       </div>

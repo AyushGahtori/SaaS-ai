@@ -1,18 +1,67 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BloomLoadingScreen } from "@/modules/bloom-ai/ui/components/bloom-loading-screen";
 import { BloomTopNav } from "@/modules/bloom-ai/ui/components/bloom-top-nav";
-import { BloomSidebar } from "@/modules/bloom-ai/ui/components/bloom-sidebar";
-import { BloomChatPanel } from "@/modules/bloom-ai/ui/components/bloom-chat-panel";
-import { BloomSettingsSheet } from "@/modules/bloom-ai/ui/components/bloom-settings-sheet";
-import { BloomRemindersSheet } from "@/modules/bloom-ai/ui/components/bloom-reminders-panel";
-import { BloomNotesView } from "@/modules/bloom-ai/ui/components/bloom-notes-view";
-import { BloomHabitTrackerView } from "@/modules/bloom-ai/ui/components/bloom-habit-tracker-view";
-import { BloomJournalView } from "@/modules/bloom-ai/ui/components/bloom-journal-view";
-import { BloomLabelsView } from "@/modules/bloom-ai/ui/components/bloom-labels-view";
 import { useBloomWorkspace } from "@/modules/bloom-ai/hooks/use-bloom-workspace";
+
+function PanelSkeleton() {
+    return <div className="h-full w-full animate-pulse rounded-3xl border border-white/10 bg-white/[0.03]" />;
+}
+
+const BloomSidebar = dynamic(
+    () => import("@/modules/bloom-ai/ui/components/bloom-sidebar").then((module) => module.BloomSidebar),
+    { ssr: false, loading: () => <PanelSkeleton /> }
+);
+
+const BloomChatPanel = dynamic(
+    () => import("@/modules/bloom-ai/ui/components/bloom-chat-panel").then((module) => module.BloomChatPanel),
+    { ssr: false, loading: () => <PanelSkeleton /> }
+);
+
+const BloomSettingsSheet = dynamic(
+    () =>
+        import("@/modules/bloom-ai/ui/components/bloom-settings-sheet").then(
+            (module) => module.BloomSettingsSheet
+        ),
+    { ssr: false }
+);
+
+const BloomRemindersSheet = dynamic(
+    () =>
+        import("@/modules/bloom-ai/ui/components/bloom-reminders-panel").then(
+            (module) => module.BloomRemindersSheet
+        ),
+    { ssr: false }
+);
+
+const BloomNotesView = dynamic(
+    () => import("@/modules/bloom-ai/ui/components/bloom-notes-view").then((module) => module.BloomNotesView),
+    { ssr: false, loading: () => <PanelSkeleton /> }
+);
+
+const BloomHabitTrackerView = dynamic(
+    () =>
+        import("@/modules/bloom-ai/ui/components/bloom-habit-tracker-view").then(
+            (module) => module.BloomHabitTrackerView
+        ),
+    { ssr: false, loading: () => <PanelSkeleton /> }
+);
+
+const BloomJournalView = dynamic(
+    () =>
+        import("@/modules/bloom-ai/ui/components/bloom-journal-view").then(
+            (module) => module.BloomJournalView
+        ),
+    { ssr: false, loading: () => <PanelSkeleton /> }
+);
+
+const BloomLabelsView = dynamic(
+    () => import("@/modules/bloom-ai/ui/components/bloom-labels-view").then((module) => module.BloomLabelsView),
+    { ssr: false, loading: () => <PanelSkeleton /> }
+);
 
 export function BloomAiView() {
     const workspace = useBloomWorkspace();

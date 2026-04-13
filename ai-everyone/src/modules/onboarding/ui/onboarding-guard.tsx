@@ -11,10 +11,12 @@
  */
 
 import { useState, useEffect } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
-import { OnboardingSurvey } from "@/modules/onboarding/ui/onboarding-survey";
+import dynamic from "next/dynamic";
+
+const OnboardingSurvey = dynamic(
+    () => import("@/modules/onboarding/ui/onboarding-survey").then((module) => module.OnboardingSurvey),
+    { ssr: false }
+);
 
 interface OnboardingGuardProps {
     children: React.ReactNode;
@@ -26,30 +28,51 @@ export function OnboardingGuard({ children }: OnboardingGuardProps) {
     const [checking, setChecking] = useState(true);
 
     useEffect(() => {
-        const unsub = onAuthStateChanged(auth, async (user) => {
-            if (!user) {
-                setUid(null);
-                setOnboardingComplete(null);
-                setChecking(false);
-                return;
-            }
+        let isMounted = true;
+        let unsubscribe: (() => void) | undefined;
 
-            setUid(user.uid);
+        const boot = async () => {
+            const [{ auth, db }, firebaseAuth, firestore] = await Promise.all([
+                import("@/lib/firebase"),
+                import("firebase/auth"),
+                import("firebase/firestore"),
+            ]);
 
-            try {
-                const snap = await getDoc(doc(db, "users", user.uid));
-                const complete = snap.exists() ? snap.data()?.onboardingComplete === true : false;
-                setOnboardingComplete(complete);
-            } catch (err) {
-                console.error("[OnboardingGuard] error checking onboarding status:", err);
-                // If we can't check, assume complete so we don't block indefinitely
-                setOnboardingComplete(true);
-            } finally {
-                setChecking(false);
-            }
-        });
+            if (!isMounted) return;
 
-        return () => unsub();
+            unsubscribe = firebaseAuth.onAuthStateChanged(auth, async (user) => {
+                if (!isMounted) return;
+
+                if (!user) {
+                    setUid(null);
+                    setOnboardingComplete(null);
+                    setChecking(false);
+                    return;
+                }
+
+                setUid(user.uid);
+
+                try {
+                    const snap = await firestore.getDoc(firestore.doc(db, "users", user.uid));
+                    const complete = snap.exists() ? snap.data()?.onboardingComplete === true : false;
+                    if (!isMounted) return;
+                    setOnboardingComplete(complete);
+                } catch (err) {
+                    console.error("[OnboardingGuard] error checking onboarding status:", err);
+                    // If we can't check, assume complete so we don't block indefinitely
+                    if (isMounted) setOnboardingComplete(true);
+                } finally {
+                    if (isMounted) setChecking(false);
+                }
+            });
+        };
+
+        void boot();
+
+        return () => {
+            isMounted = false;
+            unsubscribe?.();
+        };
     }, []);
 
     const handleSurveyComplete = () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { Check, Link2, Loader2, Star } from "lucide-react";
 import type { Agent } from "@/lib/firestore-agents";
 
@@ -76,10 +77,11 @@ export const AgentCard = ({
     >
       <div className="flex gap-4">
         <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-2xl bg-[#2b2b2b] p-2 ring-1 ring-white/10 transition-shadow group-hover:shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             src={agent.iconUrl}
             alt={agent.name}
+            width={88}
+            height={88}
             className="h-full w-full object-contain drop-shadow-md"
           />
         </div>

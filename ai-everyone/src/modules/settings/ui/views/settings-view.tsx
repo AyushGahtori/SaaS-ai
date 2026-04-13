@@ -1,32 +1,23 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged, updateProfile } from "firebase/auth";
 import { Bell, Bot, BrainCircuit, Link2, Settings2, User } from "lucide-react";
-import { auth } from "@/lib/firebase";
-import { getUserProfile, updateUserProfile } from "@/lib/firestore";
 import { getAllAgents, type Agent } from "@/lib/firestore-agents";
 import { MemoryManager } from "@/modules/profile/ui/memory-manager";
 import { ReminderManager } from "@/modules/settings/ui/components/reminder-manager";
+import {
+  getFirebaseAuthHeaders,
+  updateFirebaseProfile,
+  waitForFirebaseUser,
+} from "@/lib/firebase-client-lazy";
 
 type SettingsTab = "profile" | "agents" | "memory" | "reminders";
 
 interface AgentStateResponse {
   installedAgentIds: string[];
   connectedBundleIds: string[];
-}
-
-async function getAuthHeaders() {
-  const token = await auth.currentUser?.getIdToken();
-  if (!token) {
-    throw new Error("Authentication expired. Please sign in again.");
-  }
-
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
 }
 
 export function SettingsView() {
@@ -46,7 +37,7 @@ export function SettingsView() {
   });
 
   const loadAgentState = useCallback(async () => {
-    const headers = await getAuthHeaders();
+    const headers = await getFirebaseAuthHeaders();
     const response = await fetch("/api/agents", {
       method: "GET",
       headers,
@@ -62,21 +53,26 @@ export function SettingsView() {
   }, []);
 
   const loadSettings = useCallback(async () => {
-    if (!uid) return;
-
     setLoading(true);
     setError(null);
 
     try {
+      const user = await waitForFirebaseUser();
+      if (!user) {
+        throw new Error("Authentication expired. Please sign in again.");
+      }
+
+      const { getUserProfile } = await import("@/lib/firestore");
+      setUid(user.uid);
       const [profile, items] = await Promise.all([
-        getUserProfile(uid),
+        getUserProfile(user.uid),
         getAllAgents(),
       ]);
 
       setMarketplaceItems(items);
       setProfileForm({
-        name: profile?.name?.toString() || auth.currentUser?.displayName || "User",
-        email: profile?.email?.toString() || auth.currentUser?.email || "",
+        name: profile?.name?.toString() || user.displayName || "User",
+        email: profile?.email?.toString() || user.email || "",
         role: profile?.role?.toString() || "",
         communicationStyle: profile?.communicationStyle?.toString() || "",
       });
@@ -88,20 +84,11 @@ export function SettingsView() {
     } finally {
       setLoading(false);
     }
-  }, [loadAgentState, uid]);
+  }, [loadAgentState]);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setUid(user?.uid ?? null);
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    if (uid) {
-      loadSettings();
-    }
-  }, [loadSettings, uid]);
+    void loadSettings();
+  }, [loadSettings]);
 
   const handleProfileSave = async () => {
     if (!uid) return;
@@ -109,6 +96,7 @@ export function SettingsView() {
     setSaving(true);
     setError(null);
     try {
+      const { updateUserProfile } = await import("@/lib/firestore");
       await updateUserProfile(uid, {
         name: profileForm.name,
         email: profileForm.email,
@@ -116,8 +104,8 @@ export function SettingsView() {
         communicationStyle: profileForm.communicationStyle,
       });
 
-      if (auth.currentUser && profileForm.name.trim()) {
-        await updateProfile(auth.currentUser, {
+      if (profileForm.name.trim()) {
+        await updateFirebaseProfile({
           displayName: profileForm.name.trim(),
         });
       }
@@ -140,7 +128,7 @@ export function SettingsView() {
 
   const handleUninstall = async (item: Agent) => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getFirebaseAuthHeaders();
       const response = await fetch("/api/agents", {
         method: "POST",
         headers,
@@ -312,8 +300,13 @@ export function SettingsView() {
                 {connectedBundles.length ? connectedBundles.map((item) => (
                   <div key={item.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3">
                     <div className="flex items-center gap-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={item.iconUrl} alt={item.name} className="h-10 w-10 rounded-xl object-contain" />
+                      <Image
+                        src={item.iconUrl}
+                        alt={item.name}
+                        width={40}
+                        height={40}
+                        className="h-10 w-10 rounded-xl object-contain"
+                      />
                       <div>
                         <p className="font-medium text-white">{item.name}</p>
                         <p className="text-xs text-white/45">{item.description}</p>
@@ -342,8 +335,13 @@ export function SettingsView() {
                 {installedItems.length ? installedItems.map((item) => (
                   <div key={item.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3">
                     <div className="flex items-center gap-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={item.iconUrl} alt={item.name} className="h-10 w-10 rounded-xl object-contain" />
+                      <Image
+                        src={item.iconUrl}
+                        alt={item.name}
+                        width={40}
+                        height={40}
+                        className="h-10 w-10 rounded-xl object-contain"
+                      />
                       <div>
                         <p className="font-medium text-white">{item.name}</p>
                         <p className="text-xs text-white/45">{item.category}</p>

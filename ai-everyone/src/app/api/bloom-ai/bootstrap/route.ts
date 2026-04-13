@@ -10,7 +10,11 @@ export async function GET(req: NextRequest) {
 
     try {
         const snapshot = await getBloomWorkspaceSnapshot(verifiedUser.uid);
-        return NextResponse.json(snapshot);
+        return NextResponse.json(snapshot, {
+            headers: {
+                "Cache-Control": "private, max-age=20, stale-while-revalidate=120",
+            },
+        });
     } catch (error) {
         console.error("[Bloom Bootstrap]", error);
         return NextResponse.json(
