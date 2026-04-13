@@ -18,7 +18,7 @@ For OAuth-capable agents:
 - `AGENT_OAUTH_SHARED_SECRET` (same as web app secret)
 - `FIREBASE_SERVICE_ACCOUNT_KEY=/home/ubuntu/app/.secrets/serviceAccountKey.json`
 
-For AI-native agents (`career-switch`, `startup-fundraising`, `smart-gtm`, `seo`, `dashboard-designer`, `ats`):
+For AI-native agents (`career-switch`, `startup-fundraising`, `smart-gtm`, `seo`, `dashboard-designer`, `ats`, `building-construction`, `lms`):
 
 - `GEMINI_API_KEY`
 - Optional model overrides: `GEMINI_MODEL`, `GEMINI_MODEL_PRO`, `GEMINI_MODEL_FLASH`
@@ -30,6 +30,8 @@ Main web app routing env (in `ai-everyone/.env`):
 - `SEO_AGENT_URL`
 - `DASHBOARD_DESIGNER_AGENT_URL`
 - `ATS_AGENT_URL`
+- `BUILDING_CONSTRUCTION_AGENT_URL`
+- `LMS_AGENT_URL`
 
 ## Provider Env (as needed)
 
@@ -73,7 +75,7 @@ sudo ./deploy.sh
 
 ```bash
 # Service state
-for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent strata-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent dia-helper-agent shopgenie-agent career-switch-agent dashboard-designer-agent smart-gtm-agent seo-agent startup-fundraising-agent ats-agent; do
+for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent strata-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent dia-helper-agent shopgenie-agent career-switch-agent dashboard-designer-agent smart-gtm-agent seo-agent startup-fundraising-agent ats-agent building-construction-agent lms-agent; do
   systemctl is-active "$s"
 done
 
@@ -88,6 +90,8 @@ curl "${AGENT_PUBLIC_BASE_URL}/smartgtm/health"
 curl "${AGENT_PUBLIC_BASE_URL}/seo/health"
 curl "${AGENT_PUBLIC_BASE_URL}/fundraising/health"
 curl "${AGENT_PUBLIC_BASE_URL}/ats/health"
+curl "${AGENT_PUBLIC_BASE_URL}/building/health"
+curl "${AGENT_PUBLIC_BASE_URL}/lms/health"
 
 # OAuth route readiness (400 without handoff is expected)
 curl -i "${AGENT_PUBLIC_BASE_URL}/linkedin/auth/login"

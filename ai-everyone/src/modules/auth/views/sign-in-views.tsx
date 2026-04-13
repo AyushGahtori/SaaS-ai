@@ -9,6 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { OctagonAlert } from "lucide-react";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FaGoogle } from "react-icons/fa";
@@ -155,7 +156,7 @@ export const SignInView = () => {
             </form>
           </Form>
           <div className="bg-[#000000] relative hidden md:flex flex-col gap-y-4 items-center justify-center">
-            <img src="/logo.png" alt="Logo" className="h-[92px], w-[92]" />
+            <Image src="/logo.png" alt="Logo" width={92} height={92} priority />
             <p className="text-2xl font-semibold text-white">AI-Everyone</p>
           </div>
         </CardContent>

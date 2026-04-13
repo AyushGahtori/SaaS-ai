@@ -25,6 +25,17 @@ yarn-debug.log*
 yarn-error.log*
 **/__pycache__/
 *.pyc
+*.pyo
+*.pyd
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+**/site-packages/
+**/*.egg-info/
 
 # local env files
 .env*.local

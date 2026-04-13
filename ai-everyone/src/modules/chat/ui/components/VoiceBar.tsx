@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { subscribeToTask } from '@/lib/firestore-tasks'
 import { useChatContext } from '@/modules/chat/context/chat-context'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -230,7 +229,7 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
 
       onFirstMessageRef.current?.()
 
-      onSendMessageRef.current(said, true).then((responseData) => {
+      onSendMessageRef.current(said, true).then(async (responseData) => {
         // If this VoiceBar instance was unmounted (e.g. HomeView→ChatView
         // transition during first message), save response to context so
         // the NEW VoiceBar instance can pick it up and speak it.
@@ -257,6 +256,7 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
           setStatusText('Agent working…')
           setDebugText('Agent task: ' + taskId)
 
+          const { subscribeToTask } = await import('@/lib/firestore-tasks')
           const unsub = subscribeToTask(taskId, (task) => {
             if (!task) return
             if (task.status === 'success') {
@@ -403,3 +403,4 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     </div>
   )
 }
+

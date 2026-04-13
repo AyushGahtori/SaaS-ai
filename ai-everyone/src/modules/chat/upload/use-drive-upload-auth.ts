@@ -2,14 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DRIVE_AUTH_REQUIRED_CODE, DRIVE_UPLOAD_SCOPE } from "@/modules/chat/upload/api";
-import { getApp, getApps, initializeApp } from "firebase/app";
-import {
-    GoogleAuthProvider,
-    getAuth,
-    signInWithPopup,
-    signOut,
-} from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { getFirebaseCurrentUser } from "@/lib/firebase-client-lazy";
 
 type CodedError = Error & { code?: string };
 
@@ -28,31 +21,42 @@ async function requestDriveTokenViaFirebasePopup(): Promise<{
     token: string;
     expiresAtMs: number;
 }> {
-    const currentUser = auth.currentUser;
+    const currentUser = await getFirebaseCurrentUser();
     if (!currentUser) {
         throw new Error("Please sign in to Pian first, then retry Drive upload sign-in.");
     }
 
-    const provider = new GoogleAuthProvider();
+    const [firebaseApp, firebaseAuth] = await Promise.all([
+        import("firebase/app"),
+        import("firebase/auth"),
+    ]);
+    const primaryAuth = firebaseAuth.getAuth();
+
+    const provider = new firebaseAuth.GoogleAuthProvider();
     provider.addScope(DRIVE_UPLOAD_SCOPE);
     provider.setCustomParameters({ prompt: "consent" });
 
     // Keep Drive upload auth isolated from the primary auth session.
-    const driveAuthApp = getApps().some((app) => app.name === DRIVE_UPLOAD_AUTH_APP_NAME)
-        ? getApp(DRIVE_UPLOAD_AUTH_APP_NAME)
-        : initializeApp(auth.app.options, DRIVE_UPLOAD_AUTH_APP_NAME);
+    const driveAuthApp = firebaseApp
+        .getApps()
+        .some((app) => app.name === DRIVE_UPLOAD_AUTH_APP_NAME)
+        ? firebaseApp.getApp(DRIVE_UPLOAD_AUTH_APP_NAME)
+        : firebaseApp.initializeApp(primaryAuth.app.options, DRIVE_UPLOAD_AUTH_APP_NAME);
 
-    const driveAuth = auth.app.name === DRIVE_UPLOAD_AUTH_APP_NAME ? auth : getAuth(driveAuthApp);
+    const driveAuth =
+        primaryAuth.app.name === DRIVE_UPLOAD_AUTH_APP_NAME
+            ? primaryAuth
+            : firebaseAuth.getAuth(driveAuthApp);
 
     let credentialResult;
     try {
-        credentialResult = await signInWithPopup(driveAuth, provider);
+        credentialResult = await firebaseAuth.signInWithPopup(driveAuth, provider);
     } finally {
         // Best effort cleanup so we don't retain an extra auth session.
-        await signOut(driveAuth).catch(() => undefined);
+        await firebaseAuth.signOut(driveAuth).catch(() => undefined);
     }
 
-    const credential = GoogleAuthProvider.credentialFromResult(credentialResult);
+    const credential = firebaseAuth.GoogleAuthProvider.credentialFromResult(credentialResult);
     const token = credential?.accessToken || "";
     if (!token) {
         throw new Error("Google sign-in succeeded, but no Drive access token was returned.");

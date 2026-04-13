@@ -39,19 +39,26 @@ export async function GET(req: NextRequest) {
         getConnectedBundleIds(verifiedUser.uid),
     ]);
 
-    return NextResponse.json({
-        agents: AGENT_CATALOG,
-        bundles: AGENT_BUNDLES,
-        installedAgentIds,
-        accessibleAgentIds,
-        connectedBundleIds,
-        connections: Object.fromEntries(
-            providerConnections.map(([provider, connection]) => [
-                provider,
-                Boolean(connection?.accessToken),
-            ])
-        ),
-    });
+    return NextResponse.json(
+        {
+            agents: AGENT_CATALOG,
+            bundles: AGENT_BUNDLES,
+            installedAgentIds,
+            accessibleAgentIds,
+            connectedBundleIds,
+            connections: Object.fromEntries(
+                providerConnections.map(([provider, connection]) => [
+                    provider,
+                    Boolean(connection?.accessToken),
+                ])
+            ),
+        },
+        {
+            headers: {
+                "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+            },
+        }
+    );
 }
 
 export async function POST(req: NextRequest) {

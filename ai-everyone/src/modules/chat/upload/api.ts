@@ -1,4 +1,4 @@
-import { auth } from "@/lib/firebase";
+import { getFirebaseIdToken } from "@/lib/firebase-client-lazy";
 import {
     MAX_SINGLE_ATTACHMENT_BYTES,
 } from "@/lib/uploads/attachment-policy";
@@ -76,9 +76,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 async function getBearerToken(): Promise<string> {
-    const token = await auth.currentUser?.getIdToken();
-    if (!token) throw new Error("Authentication expired. Please sign in again.");
-    return token;
+    return getFirebaseIdToken();
 }
 
 export function isDriveAuthRequiredError(error: unknown): boolean {

@@ -4,9 +4,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { getUserProfile } from "@/lib/firestore";
+import type { User } from "firebase/auth";
 
 interface SessionUser {
   name: string;
@@ -35,6 +33,7 @@ export function useSession(): { data: SessionData | null; isPending: boolean } {
   useEffect(() => {
     let isMounted = true;
     let requestVersion = 0;
+    let unsubscribe: (() => void) | undefined;
 
     const hydrateSession = async (firebaseUser: User | null) => {
       const currentVersion = ++requestVersion;
@@ -44,6 +43,7 @@ export function useSession(): { data: SessionData | null; isPending: boolean } {
         let profileEmail = firebaseUser.email || "";
 
         try {
+          const { getUserProfile } = await import("@/lib/firestore");
           const profile = await getUserProfile(firebaseUser.uid);
           if (!isMounted || currentVersion !== requestVersion) return;
 
@@ -73,8 +73,25 @@ export function useSession(): { data: SessionData | null; isPending: boolean } {
       setIsPending(false);
     };
 
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: User | null) => {
-      void hydrateSession(firebaseUser);
+    const setupSession = async () => {
+      const [{ auth }, firebaseAuth] = await Promise.all([
+        import("@/lib/firebase"),
+        import("firebase/auth"),
+      ]);
+
+      if (!isMounted) return;
+
+      unsubscribe = firebaseAuth.onAuthStateChanged(auth, (firebaseUser: User | null) => {
+        void hydrateSession(firebaseUser);
+      });
+    };
+
+    void setupSession().catch((error) => {
+      console.error("[useSession] Failed to initialize auth:", error);
+      if (isMounted) {
+        setData(null);
+        setIsPending(false);
+      }
     });
 
     const handleProfileUpdate = (event: Event) => {
@@ -98,7 +115,7 @@ export function useSession(): { data: SessionData | null; isPending: boolean } {
 
     return () => {
       isMounted = false;
-      unsubscribe();
+      unsubscribe?.();
       window.removeEventListener("Pian-profile-updated", handleProfileUpdate as EventListener);
     };
   }, []);

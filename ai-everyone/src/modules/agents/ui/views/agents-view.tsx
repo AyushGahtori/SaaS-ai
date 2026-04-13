@@ -1,19 +1,41 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import dynamic from "next/dynamic";
 import {
   getAllAgents,
   getFeaturedAgents,
   getTrendingAgents,
   type Agent,
 } from "@/lib/firestore-agents";
-import { AgentsSearchBar } from "../components/agents-search-bar";
-import { AgentsFeaturedSection } from "../components/agents-featured-section";
-import { AgentsTrendingSection } from "../components/agents-trending-section";
-import { AgentsGrid } from "../components/agents-grid";
+import { getFirebaseAuthHeaders, waitForFirebaseUser } from "@/lib/firebase-client-lazy";
 import { Bot, Loader2 } from "lucide-react";
+
+const AgentsSearchBar = dynamic(
+  () => import("../components/agents-search-bar").then((module) => module.AgentsSearchBar),
+  { ssr: false }
+);
+
+const AgentsFeaturedSection = dynamic(
+  () =>
+    import("../components/agents-featured-section").then(
+      (module) => module.AgentsFeaturedSection
+    ),
+  { ssr: false }
+);
+
+const AgentsTrendingSection = dynamic(
+  () =>
+    import("../components/agents-trending-section").then(
+      (module) => module.AgentsTrendingSection
+    ),
+  { ssr: false }
+);
+
+const AgentsGrid = dynamic(
+  () => import("../components/agents-grid").then((module) => module.AgentsGrid),
+  { ssr: false }
+);
 
 interface AgentStateResponse {
   installedAgentIds: string[];
@@ -56,18 +78,6 @@ const CHIP_LABELS: Record<AgentFilterChip, string> = {
   reminders: "Reminders",
 };
 
-async function getAuthHeaders() {
-  const token = await auth.currentUser?.getIdToken();
-  if (!token) {
-    throw new Error("Authentication expired. Please sign in again.");
-  }
-
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-}
-
 export const AgentsView = () => {
   const [allAgents, setAllAgents] = useState<Agent[]>([]);
   const [featuredAgents, setFeaturedAgents] = useState<Agent[]>([]);
@@ -78,11 +88,10 @@ export const AgentsView = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeChip, setActiveChip] = useState<AgentFilterChip>("all");
   const [loading, setLoading] = useState(true);
-  const [uid, setUid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadMarketplaceState = useCallback(async () => {
-    const headers = await getAuthHeaders();
+    const headers = await getFirebaseAuthHeaders();
     const response = await fetch("/api/agents", {
       method: "GET",
       headers,
@@ -100,12 +109,15 @@ export const AgentsView = () => {
   }, []);
 
   const loadMarketplace = useCallback(async () => {
-    if (!uid) return;
-
     setLoading(true);
     setError(null);
 
     try {
+      const user = await waitForFirebaseUser();
+      if (!user) {
+        throw new Error("Authentication expired. Please sign in again.");
+      }
+
       const [all, featured, trending] = await Promise.all([
         getAllAgents(),
         getFeaturedAgents(),
@@ -122,20 +134,11 @@ export const AgentsView = () => {
     } finally {
       setLoading(false);
     }
-  }, [loadMarketplaceState, uid]);
+  }, [loadMarketplaceState]);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setUid(user?.uid ?? null);
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    if (uid) {
-      loadMarketplace();
-    }
-  }, [uid, loadMarketplace]);
+    void loadMarketplace();
+  }, [loadMarketplace]);
 
   const searchedAgents = useMemo(() => {
     if (!searchQuery.trim()) return allAgents;
@@ -210,7 +213,7 @@ export const AgentsView = () => {
   }, [activeChip, chipMatchedAgents, searchedAgents]);
 
   const openConnectionPopup = useCallback(async (target: { bundleId?: string; agentId?: string }) => {
-    const headers = await getAuthHeaders();
+    const headers = await getFirebaseAuthHeaders();
     const response = await fetch("/api/agents/oauth/start", {
       method: "POST",
       headers,
@@ -285,7 +288,7 @@ export const AgentsView = () => {
 
   const runAgentMutation = useCallback(
     async (payload: { action: "install" | "uninstall"; targetId: string; targetType: "agent" | "bundle" }) => {
-      const headers = await getAuthHeaders();
+      const headers = await getFirebaseAuthHeaders();
       const response = await fetch("/api/agents", {
         method: "POST",
         headers,
