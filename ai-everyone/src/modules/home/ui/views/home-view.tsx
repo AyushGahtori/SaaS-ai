@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
-import { ChatInputLite } from "@/modules/chat/ui/components/chat-input-lite";
+import { ChatInput } from "@/modules/chat/ui/components/chat-input";
 
 const QUICK_ACTIONS = [
   { label: "Schedule Meeting", emoji: "\u{1F4C5}", prompt: "I want to schedule a meeting" },
@@ -35,7 +35,7 @@ export const HomeView: React.FC = () => {
       )}
 
       <div className="w-full max-w-3xl">
-        <ChatInputLite />
+        <ChatInput />
       </div>
 
       <div className="flex flex-col items-center gap-2.5 mt-4">

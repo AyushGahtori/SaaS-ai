@@ -1,8 +1,17 @@
 /** @type {import('next').NextConfig} */
+if (!process.env.NEXT_PUBLIC_DEBUG_BUILD_ID) {
+  const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+  const random = Math.random().toString(36).slice(2, 8);
+  process.env.NEXT_PUBLIC_DEBUG_BUILD_ID = `dev-${stamp}-${random}`;
+}
+
 const nextConfig = {
   compress: true,
   turbopack: {
     root: __dirname,
+  },
+  env: {
+    NEXT_PUBLIC_DEBUG_BUILD_ID: process.env.NEXT_PUBLIC_DEBUG_BUILD_ID,
   },
   experimental: {
     optimizePackageImports: [
@@ -20,6 +29,14 @@ const nextConfig = {
     formats: ["image/avif", "image/webp"],
   },
   async headers() {
+    const isProduction = process.env.NODE_ENV === "production";
+    if (!isProduction) {
+      // Prevent stale dev bundles across browser profiles/tabs.
+      // Next.js dev chunk paths are not content-hashed, so immutable caching
+      // can cause different tabs to run different UI code versions.
+      return [];
+    }
+
     return [
       {
         source: "/_next/static/:path*",
