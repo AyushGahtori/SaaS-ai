@@ -105,7 +105,7 @@ exports.runAgentTask = onDocumentCreated(
       });
 
       // ── 3. Call the agent's FastAPI server ───────────────────────────
-      const defaultHost = "http://13.206.83.175";
+      const defaultHost = "http://15.206.162.82";
       const ENV_AGENT_URL_MAP = {
         "teams-agent": process.env.TEAMS_AGENT_URL,
         "email-agent": process.env.TEAMS_AGENT_URL,

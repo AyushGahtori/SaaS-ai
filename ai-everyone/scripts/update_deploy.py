@@ -55,7 +55,7 @@ def update_env():
     for a in AGENTS:
         NAME = a.replace("-", "_").upper()
         if f"{NAME}_AGENT_URL" not in content:
-            new_env += f"{NAME}_AGENT_URL=http://13.206.83.175\\n"
+            new_env += f"{NAME}_AGENT_URL=http://15.206.162.82\\n"
             
     if "# ── New Integration Agents ────────────────────────────────" not in content:
          content += new_env

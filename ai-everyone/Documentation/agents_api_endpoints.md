@@ -51,3 +51,48 @@ Canonical endpoint contract for `teams-agent`.
 - Teams action responses return deep links and resolved attendee metadata.
 - If attendee resolution fails, unresolved attendees are returned in payload.
 - OAuth ownership is detached and handled on EC2 through `/teams/auth/*`.
+
+---
+
+# LMS Agent API Endpoints
+
+Canonical endpoint contract for `lms-agent`.
+
+## Public Routes (via Nginx)
+
+- `POST /lms/action`
+- `GET /lms/health`
+
+## Supported Actions
+
+- `run_lms_agent`
+- `learner_progress_dashboard`
+- `courses_catalog`
+- `learners_directory`
+- `learner_detail`
+- `assignments_integrations`
+- `list_snapshots`
+
+## Sample: Dashboard
+
+```json
+{
+  "taskId": "lms-1",
+  "userId": "<uid>",
+  "agentId": "lms-agent",
+  "action": "learner_progress_dashboard",
+  "dateRange": "Last 90 days",
+  "department": "All"
+}
+```
+
+## Sample: Snapshot List
+
+```json
+{
+  "taskId": "lms-2",
+  "userId": "<uid>",
+  "agentId": "lms-agent",
+  "action": "list_snapshots"
+}
+```

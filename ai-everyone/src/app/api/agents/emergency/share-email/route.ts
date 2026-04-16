@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
         const googleBaseUrl =
             process.env.GOOGLE_AGENT_URL ||
             process.env.AGENT_SERVER_URL ||
-            "http://13.126.69.108";
+            "http://15.206.162.82";
 
         const gmailInstruction = `Send email to ${to}\nSubject: ${subject}\nBody: ${emailBody}`;
 

@@ -300,6 +300,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 717,
     },
+    "lms-agent": {
+        iconUrl: makeMonogramIcon("LMS", "#475569", "#0f172a"),
+        installCount: 1900,
+        rating: 4.6,
+        createdAt: "2026-04-15T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 708,
+    },
 };
 
 function makeDefaultAgentMeta(agent: AgentCatalogEntry) {

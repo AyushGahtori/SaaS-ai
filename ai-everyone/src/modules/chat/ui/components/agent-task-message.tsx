@@ -27,6 +27,7 @@ import { SmartGTMResultCard } from "./agent-renderers/smart-gtm-result-card";
 import { SeoResultCard } from "./agent-renderers/seo-result-card";
 import { DashboardDesignerResultCard } from "./agent-renderers/dashboard-designer-result-card";
 import { ATSResultCard } from "./agent-renderers/ats-result-card";
+import { LMSResultCard } from "./agent-renderers/lms-result-card";
 import { InterpretedAgentGuidance } from "./agent-renderers/interpreted-agent-guidance";
 import { GenericAgentResultCard } from "./agent-renderers/generic-agent-result-card";
 
@@ -52,6 +53,7 @@ const AGENT_NAMES: Record<string, string> = {
     "seo-agent": "SEO Agent",
     "dashboard-designer-agent": "Dashboard Designer",
     "ats-agent": "ATS Agent",
+    "lms-agent": "LMS Agent",
 };
 
 interface GmailRow {
@@ -854,6 +856,10 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
 
         if (typeof resultType === "string" && resultType.startsWith("ats_")) {
             return <ATSResultCard result={result} />;
+        }
+
+        if (typeof resultType === "string" && resultType.startsWith("lms_")) {
+            return <LMSResultCard result={result} />;
         }
 
         // Generic result

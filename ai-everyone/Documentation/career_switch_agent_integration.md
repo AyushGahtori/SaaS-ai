@@ -77,7 +77,7 @@ curl http://localhost:8022/health
 
 ### Deployment Steps
 ```bash
-ssh -i "C:\Users\Ayush\Downloads\agent-key.pem" ubuntu@13.206.83.175
+ssh -i "C:\Users\Ayush\Downloads\agent-key.pem" ubuntu@15.206.162.82
 cd /home/ubuntu/app
 git pull
 sudo ./deploy.sh
@@ -92,10 +92,10 @@ systemctl is-active career-switch-agent
 curl http://localhost:8022/health
 
 # Public health check
-curl "http://13.206.83.175/career-switch/health"
+curl "http://15.206.162.82/career-switch/health"
 
 # Action endpoint smoke test
-curl -X POST "http://13.206.83.175/career-switch/action" \
+curl -X POST "http://15.206.162.82/career-switch/action" \
   -H "Content-Type: application/json" \
   -d '{
     "action": "generate_plan",

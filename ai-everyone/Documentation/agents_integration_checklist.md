@@ -15,6 +15,7 @@ Current checklist for adding a new agent to Pian / AI Everyone end to end.
    `src/lib/agents/user-access.server.ts`
    `src/app/api/agents/route.ts`
 7. If the agent is seeded into Firestore for admin visibility, run `npx tsx scripts/seed-agents.ts`.
+8. Add a dedicated result card renderer in `src/modules/chat/ui/components/agent-renderers/` and register it in `agent-task-message.tsx` so user flow does not fall back to raw JSON.
 
 ## Python Agent
 

@@ -58,6 +58,7 @@ const AGENT_ROUTES: Record<string, string> = {
     "seo-agent": "/seo/action",
     "dashboard-designer-agent": "/dashboarddesigner/action",
     "ats-agent": "/ats/action",
+    "lms-agent": "/lms/action",
 };
 
 async function persistInterpretedFailure(params: {
@@ -265,11 +266,12 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "seo-agent": process.env.SEO_AGENT_URL,
         "dashboard-designer-agent": process.env.DASHBOARD_DESIGNER_AGENT_URL,
         "ats-agent": process.env.ATS_AGENT_URL,
+        "lms-agent": process.env.LMS_AGENT_URL,
     };
     const agentServerUrl =
         ENV_AGENT_URL_MAP[task.agentId] ||
         process.env.AGENT_SERVER_URL ||
-        "http://13.126.69.108";
+        "http://15.206.162.82";
     const agentUrl = `${agentServerUrl}${agentRoute}`;
     const executionAuth = await getAgentExecutionAuth(task.userId, task.agentId);
 

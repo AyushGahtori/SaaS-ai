@@ -523,6 +523,30 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         tags: ["ats", "hiring", "interview", "candidate", "recruiting"],
         requiresConnection: false,
     },
+    {
+        id: "lms-agent",
+        name: "LMS Agent",
+        description:
+            "Build learner progress dashboards, course catalogs, learner directories, compliance assignment timelines, and Moodle sync summaries.",
+        actions: [
+            "run_lms_agent",
+            "learner_progress_dashboard",
+            "courses_catalog",
+            "learners_directory",
+            "learner_detail",
+            "assignments_integrations",
+            "list_snapshots",
+        ],
+        examplePrompts: [
+            "Show learner progress dashboard for the last 90 days",
+            "Open LMS courses catalog for e-learning courses",
+            "Generate learner detail report for Sarah Chen",
+        ],
+        provider: "internal",
+        category: "learning",
+        tags: ["lms", "training", "compliance", "courses", "learners"],
+        requiresConnection: false,
+    },
 ];
 
 export const AGENT_BUNDLES: AgentBundle[] = [

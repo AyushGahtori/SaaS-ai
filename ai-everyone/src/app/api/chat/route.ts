@@ -534,6 +534,17 @@ For the ats-agent:
 - Use ats-agent for recruiting workflows like ATS fit scoring, interview preparation, transcript feedback, and candidate ranking.
 - If the user asks ATS analysis without resume text or candidate context, ask a concise clarification.
 
+For the lms-agent:
+- run_lms_agent: extract "prompt" and optional filters like "dateRange", "department", "courseType", "enrollmentType", "learnerId", "learnerName".
+- learner_progress_dashboard: extract optional "dateRange", optional "department", optional "courseType", optional "enrollmentType".
+- courses_catalog: extract optional "department", optional "courseType", optional "dateRange".
+- learners_directory: extract optional "department".
+- learner_detail: extract optional "learnerId" and optional "learnerName".
+- assignments_integrations: extract optional "dateRange".
+- list_snapshots: no parameters needed.
+- Use lms-agent for LMS analytics requests such as learner progress dashboards, course catalog summaries, learners directory views, learner detail reports, compliance assignment timelines, and Moodle sync status.
+- If the user asks for a specific learner detail and no learner name or learner id is provided, ask a concise clarification.
+
 If an agent is needed, output ONLY:
 <AGENT_INTENT>
 {
