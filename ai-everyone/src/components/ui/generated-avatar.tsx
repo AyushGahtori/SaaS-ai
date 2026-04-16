@@ -26,6 +26,7 @@ export function GeneratedAvatar({
             seed,
             fontWeight: 500,
             fontSize: 42,
+            backgroundColor: ["0ea5e9", "8b5cf6", "ec4899", "f97316", "10b981", "6366f1", "14b8a6"],
         })
     }
 

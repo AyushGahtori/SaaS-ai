@@ -16,8 +16,8 @@ export function BloomQuickAccessRail({ onOpenReminders }: BloomQuickAccessRailPr
     const [open, setOpen] = useState(false);
 
     return (
-        <div className="pointer-events-none fixed right-4 top-1/2 z-40 -translate-y-1/2">
-            <div className="pointer-events-auto flex flex-col items-end gap-3">
+        <div className="pointer-events-none fixed right-4 bottom-8 z-40">
+            <div className="pointer-events-auto flex flex-col items-end gap-2">
                 <Button
                     onClick={() => setOpen((current) => !current)}
                     className="size-10 rounded-full border border-white/10 bg-[#0C0D0D] text-white hover:bg-white/10"
