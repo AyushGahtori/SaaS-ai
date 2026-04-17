@@ -55,7 +55,7 @@ export const HomeView: React.FC = () => {
     const rawGreeting = data?.greeting ?? `hello ${session.user?.name || "User"}`;
     const capitalisedGreeting =
         rawGreeting.charAt(0).toUpperCase() + rawGreeting.slice(1);
-    const displayGreeting = `${capitalisedGreeting}, Whats your agenda today ?`;
+    const displayGreeting = `${capitalisedGreeting}, What's your agenda today?`;
 
     // Handle quick-action button click
     const handleQuickAction = async (prompt: string) => {

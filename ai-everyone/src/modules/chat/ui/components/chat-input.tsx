@@ -182,7 +182,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
                                         ) : (
                                             <Cpu className="h-3.5 w-3.5" />
                                         )}
-                                        <span className="hidden max-w-[120px] truncate sm:inline">
+                                        <span className="hidden max-w-[250px] truncate sm:inline">
                                             {currentModelLabel}
                                         </span>
                                         {isModelMenuOpen ? (
@@ -194,7 +194,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
 
                                     {isModelMenuOpen && (
                                         <div
-                                            className="absolute bottom-full right-0 z-50 mb-2 w-56 overflow-hidden rounded-xl border border-white/10 shadow-xl"
+                                            className="absolute bottom-full right-0 z-50 mb-2 w-72 overflow-hidden rounded-xl border border-white/10 shadow-xl"
                                             style={{ backgroundColor: "#1A1B1E" }}
                                         >
                                             <div className="border-b border-white/5 px-3 py-2">
@@ -216,11 +216,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
                                                             setSelectedModel(model.id);
                                                             setIsModelMenuOpen(false);
                                                         }}
-                                                        className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
-                                                            isActive
-                                                                ? "bg-white/10 text-white"
-                                                                : "text-white/60 hover:bg-white/5 hover:text-white/90"
-                                                        }`}
+                                                        className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${isActive
+                                                            ? "bg-white/10 text-white"
+                                                            : "text-white/60 hover:bg-white/5 hover:text-white/90"
+                                                            }`}
                                                     >
                                                         {isCloudModel ? (
                                                             <Cloud className="h-4 w-4 shrink-0" />
@@ -230,10 +229,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
                                                             <Cpu className="h-4 w-4 shrink-0" />
                                                         )}
                                                         <div className="min-w-0">
-                                                            <span className="block truncate text-sm font-medium">
+                                                            <span className="block text-sm font-medium">
                                                                 {model.label}
                                                             </span>
-                                                            <span className="block truncate text-[10px] text-white/30">
+                                                            <span className="block text-[10px] text-white/30">
                                                                 {model.id}
                                                             </span>
                                                         </div>

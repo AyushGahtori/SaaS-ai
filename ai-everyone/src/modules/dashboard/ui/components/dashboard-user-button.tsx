@@ -61,7 +61,7 @@ export const DashboardUserButton = () => {
                 <span className="text-sm font-medium truncate text-white">
                   {data.user.name}
                 </span>
-                <span className="text-xs truncate text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {data.user.email}
                 </span>
               </div>
@@ -115,7 +115,7 @@ export const DashboardUserButton = () => {
             <span className="text-sm font-medium truncate text-white">
               {data.user.name}
             </span>
-            <span className="text-xs truncate text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {data.user.email}
             </span>
           </div>
