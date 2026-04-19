@@ -136,7 +136,7 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply text-foreground font-sans;
     background-color: var(--surface-0);
     background-image:
       radial-gradient(1300px 700px at 100% -10%, rgb(136 99 255 / 14%), transparent 64%),
@@ -151,7 +151,7 @@
   h4,
   h5,
   h6 {
-    font-family: var(--font-space-grotesk), var(--font-manrope), sans-serif;
+    font-family: var(--font-display), var(--font-manrope), sans-serif;
     letter-spacing: -0.02em;
   }
 

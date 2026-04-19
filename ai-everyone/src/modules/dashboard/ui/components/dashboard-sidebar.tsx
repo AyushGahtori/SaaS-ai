@@ -41,6 +41,13 @@ const settingsSection = [
   },
 ];
 
+const navItemClasses = (active: boolean) =>
+  cn(
+    "h-10 rounded-lg border border-transparent px-3 text-sm font-semibold tracking-tight text-white/84 transition-[background-color,border-color,box-shadow,color]",
+    "hover:border-primary/25 hover:bg-sidebar-accent/60 hover:text-white hover:shadow-[0_10px_20px_rgb(92_53_229/18%)]",
+    active && "border-primary/35 bg-sidebar-accent/75 text-white shadow-[0_0_0_1px_rgb(130_89_255/24%),0_12px_24px_rgb(93_58_216/22%)]"
+  );
+
 // --------------------
 // Component
 // --------------------
@@ -56,7 +63,7 @@ export const DashboardSidebar = () => {
   }
 
   return (
-    <Sidebar className="border-r border-r-sidebar-border/80 bg-[rgb(10_12_22/72%)] backdrop-blur-xl">
+    <Sidebar className="border-r border-r-sidebar-border/80 bg-[var(--surface-0)]/72 backdrop-blur-xl">
       <SidebarHeader className="text-sidebar-accent-foreground">
         <Link href="/" className="group flex items-center gap-2 rounded-lg px-2 pt-2 transition-colors hover:text-white">
           {/* logo can get mutated by browser extensions (e.g. Dark Reader) which inject inline styles
@@ -88,12 +95,7 @@ export const DashboardSidebar = () => {
                       createNewChat();
                       router.push("/");
                     }}
-                    className={cn(
-                      "h-10 w-full rounded-lg border border-transparent px-3 text-left text-sm font-semibold tracking-tight text-white/88 transition-[background-color,border-color,box-shadow,color]",
-                      "hover:border-primary/25 hover:bg-sidebar-accent/60 hover:text-white hover:shadow-[0_10px_20px_rgb(92_53_229/18%)]",
-                      isNewChatActive &&
-                        "border-primary/35 bg-sidebar-accent/75 text-white shadow-[0_0_0_1px_rgb(130_89_255/24%),0_12px_24px_rgb(93_58_216/22%)]"
-                    )}
+                    className={cn("w-full text-left", navItemClasses(isNewChatActive))}
                   >
                     <MessageSquare className="w-5 h-5" stroke="white" strokeWidth={2} aria-hidden="true" />
                     <span>New Chat</span>
@@ -106,12 +108,7 @@ export const DashboardSidebar = () => {
                   <SidebarMenuButton asChild>
                     <Link
                       href={item.href}
-                      className={cn(
-                        "h-10 rounded-lg border border-transparent px-3 text-sm font-semibold tracking-tight text-white/84 transition-[background-color,border-color,box-shadow,color]",
-                        "hover:border-primary/25 hover:bg-sidebar-accent/60 hover:text-white hover:shadow-[0_10px_20px_rgb(92_53_229/18%)]",
-                        pathname === item.href &&
-                          "border-primary/35 bg-sidebar-accent/75 text-white shadow-[0_0_0_1px_rgb(130_89_255/24%),0_12px_24px_rgb(93_58_216/22%)]"
-                      )}
+                      className={navItemClasses(pathname === item.href)}
                     >
                       {/** render icon if present */}
                       {item.icon && (
@@ -165,12 +162,7 @@ export const DashboardSidebar = () => {
                   <SidebarMenuButton asChild>
                     <Link
                       href={item.href}
-                      className={cn(
-                        "h-10 rounded-lg border border-transparent px-3 text-sm font-semibold tracking-tight text-white/84 transition-[background-color,border-color,box-shadow,color]",
-                        "hover:border-primary/25 hover:bg-sidebar-accent/60 hover:text-white hover:shadow-[0_10px_20px_rgb(92_53_229/18%)]",
-                        pathname === item.href &&
-                          "border-primary/35 bg-sidebar-accent/75 text-white shadow-[0_0_0_1px_rgb(130_89_255/24%),0_12px_24px_rgb(93_58_216/22%)]"
-                      )}
+                      className={navItemClasses(pathname === item.href)}
                     >
                       {/** render icon if present */}
                       {item.icon && (

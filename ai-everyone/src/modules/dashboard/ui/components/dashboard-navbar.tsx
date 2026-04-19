@@ -15,11 +15,7 @@ import { DashboardCommand } from "./dashboard-command";
 import { ReminderDrawer } from "./reminder-drawer";
 import { BloomQuickAccessRail } from "@/modules/bloom-ai/ui/components/bloom-quick-access-rail";
 
-interface DashboardNavbarProps {
-  enableChatRuntime?: boolean;
-}
-
-export const DashboardNavbar = ({ enableChatRuntime: _enableChatRuntime }: DashboardNavbarProps) => {
+export const DashboardNavbar = () => {
   const { state, toggleSidebar, isMobile } = useSidebar();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -54,9 +50,9 @@ export const DashboardNavbar = ({ enableChatRuntime: _enableChatRuntime }: Dashb
           onClick={toggleSidebar}
         >
           {state === "collapsed" || isMobile ? (
-            <PanelLeftIcon className="size-5" stroke="white" strokeWidth={2} />
+            <PanelLeftIcon className="size-5" strokeWidth={2} />
           ) : (
-            <PanelLeftCloseIcon className="size-5" stroke="white" strokeWidth={2} />
+            <PanelLeftCloseIcon className="size-5" strokeWidth={2} />
           )}
         </Button>
 
@@ -66,7 +62,7 @@ export const DashboardNavbar = ({ enableChatRuntime: _enableChatRuntime }: Dashb
           size="sm"
           onClick={() => setOpen((prev) => !prev)}
         >
-          <SearchIcon className="size-4" stroke="white" strokeWidth={2} />
+          <SearchIcon className="size-4" strokeWidth={2} />
           <span className="ml-2">Search...</span>
           <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded-md border border-white/10 bg-white/8 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
             <span className="text-[10px]">Ctrl</span>K

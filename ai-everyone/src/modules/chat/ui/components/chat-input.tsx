@@ -85,7 +85,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
   }, []);
 
   const handleSend = async () => {
-    const trimmed = value.trim();
+    const previousDraft = value;
+    const trimmed = previousDraft.trim();
     if ((!trimmed && attachments.length === 0) || isGenerating) return;
     if (pendingUploads > 0) return;
 
@@ -99,20 +100,30 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
       return;
     }
 
+    const snapshot = [...attachments];
     setValue("");
     onFirstMessage?.();
-
-    const snapshot = [...attachments];
     clearAttachments();
 
     const content = trimmed || "Please analyze the attached file.";
-    const result = await sendMessage(content, false, readyAttachments, failedAttachments);
-    if (!result) {
+    try {
+      const result = await sendMessage(content, false, readyAttachments, failedAttachments);
+      if (!result) {
+        restoreAttachments(snapshot);
+        setValue(previousDraft);
+        return false;
+      }
+      return true;
+    } catch {
       restoreAttachments(snapshot);
+      setValue(previousDraft);
+      return false;
     }
   };
 
   const onTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return;
+
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void handleSend();

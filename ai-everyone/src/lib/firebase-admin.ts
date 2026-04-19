@@ -10,8 +10,8 @@
 import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStorage, type Storage } from "firebase-admin/storage";
-import path from "path";
 import fs from "fs";
+import { resolveServiceAccountPath } from "@/lib/firebase-admin-path";
 
 let adminApp: App;
 
@@ -26,31 +26,7 @@ function normalizeBucketName(value: string | undefined): string | undefined {
     return bucketOnly || undefined;
 }
 
-function resolveServiceAccountPath(): string {
-    const fallbackPath = path.join(process.cwd(), "serviceAccountKey.json");
-    const configuredPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
-
-    // Keep the default path static so Turbopack can resolve it without broad dynamic globs.
-    if (!configuredPath) {
-        return fallbackPath;
-    }
-
-    if (
-        configuredPath === "serviceAccountKey.json" ||
-        configuredPath === "./serviceAccountKey.json"
-    ) {
-        return fallbackPath;
-    }
-
-    if (path.isAbsolute(configuredPath)) {
-        return configuredPath;
-    }
-
-    throw new Error(
-        `Firebase Admin: FIREBASE_SERVICE_ACCOUNT_KEY must be an absolute path or ` +
-        `"serviceAccountKey.json". Received "${configuredPath}".`
-    );
-}
+export { resolveServiceAccountPath } from "@/lib/firebase-admin-path";
 
 if (!getApps().length) {
     const resolvedPath = resolveServiceAccountPath();

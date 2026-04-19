@@ -62,13 +62,13 @@ export const DashboardCommand = ({ open, setOpen }: Props) => {
             onOpenChange={setOpen}
             overlayClassName="bg-black/42 backdrop-blur-[7px]"
             className={cn(
-                "overflow-hidden rounded-2xl border border-white/14 !bg-[rgb(7_9_16/90%)] p-0 text-white shadow-[0_20px_60px_rgb(0_0_0/58%)] backdrop-blur-3xl backdrop-saturate-150",
+                "overflow-hidden rounded-2xl border border-white/14 bg-[rgb(7_9_16/90%)]! p-0 text-white shadow-[0_20px_60px_rgb(0_0_0/58%)] backdrop-blur-3xl backdrop-saturate-150",
                 "w-[min(42rem,calc(100vw-2rem))] sm:max-w-[42rem]",
                 dialogLeftClass,
-                "[&_[data-slot=command]]:relative [&_[data-slot=command]]:z-[1] [&_[data-slot=command]]:!bg-transparent [&_[data-slot=command]]:text-white",
-                "[&_[data-slot=command-input-wrapper]]:h-14 [&_[data-slot=command-input-wrapper]]:border-b-white/10 [&_[data-slot=command-input-wrapper]]:!bg-[rgb(7_9_16/74%)] [&_[data-slot=command-input-wrapper]]:backdrop-blur-xl [&_[data-slot=command-input-wrapper]]:px-4",
+                "[&_[data-slot=command]]:relative [&_[data-slot=command]]:z-[1] [&_[data-slot=command]]:bg-transparent! [&_[data-slot=command]]:text-white",
+                "[&_[data-slot=command-input-wrapper]]:h-14 [&_[data-slot=command-input-wrapper]]:border-b-white/10 [&_[data-slot=command-input-wrapper]]:bg-[rgb(7_9_16/74%)]! [&_[data-slot=command-input-wrapper]]:backdrop-blur-xl [&_[data-slot=command-input-wrapper]]:px-4",
                 "[&_[data-slot=command-input-wrapper]_svg]:text-white/45 [&_[data-slot=command-input]]:h-12 [&_[data-slot=command-input]]:text-base [&_[data-slot=command-input]]:text-white [&_[data-slot=command-input]]:placeholder:text-white/35",
-                "[&_[data-slot=command-list]]:max-h-[340px] [&_[data-slot=command-list]]:!bg-transparent [&_[data-slot=command-list]]:p-2"
+                "[&_[data-slot=command-list]]:max-h-[340px] [&_[data-slot=command-list]]:bg-transparent! [&_[data-slot=command-list]]:p-2"
             )}
             showCloseButton={false}
         >
