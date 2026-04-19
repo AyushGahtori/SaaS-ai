@@ -27,6 +27,32 @@ function createAttachmentId(prefix: string, name: string): string {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${name}`;
 }
 
+function inferExtensionFromMimeType(mimeType: string): string {
+    const normalized = mimeType.toLowerCase().trim();
+    if (!normalized) return "bin";
+    if (normalized === "application/pdf") return "pdf";
+    if (normalized === "image/jpeg") return "jpg";
+    if (normalized.startsWith("image/")) {
+        const extension = normalized.slice("image/".length).split("+")[0].trim();
+        return extension || "png";
+    }
+    return "bin";
+}
+
+function shouldFallbackToLocalAttachment(error: unknown): boolean {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (!message) return false;
+
+    return (
+        message.includes("failed to fetch") ||
+        message.includes("network") ||
+        message.includes("load failed") ||
+        message.includes("bucket") ||
+        message.includes("timed out") ||
+        message.includes("503")
+    );
+}
+
 export function useChatAttachments(selectedModel: string) {
     const [attachments, setAttachments] = useState<ChatUploadAttachment[]>([]);
     const [attachError, setAttachError] = useState<string | null>(null);
@@ -120,25 +146,31 @@ export function useChatAttachments(selectedModel: string) {
         let queuedThisBatch = 0;
         let queuedBytes = 0;
 
-        for (const file of selected) {
-            const attachmentId = createAttachmentId("computer", file.name);
+        for (let index = 0; index < selected.length; index += 1) {
+            const file = selected[index];
+            const mimeType = file.type || "application/octet-stream";
+            const fileName =
+                file.name?.trim() ||
+                `pasted-file-${Date.now()}-${index + 1}.${inferExtensionFromMimeType(mimeType)}`;
+            const attachmentId = createAttachmentId("computer", fileName);
+            let dataUrl: string | null = null;
             try {
                 validateBeforeQueueing(
-                    file.name,
-                    file.type || "application/octet-stream",
+                    fileName,
+                    mimeType,
                     file.size,
                     queuedThisBatch + 1,
                     queuedBytes
                 );
                 setAttachError(null);
 
-                const dataUrl = await fileToDataUrl(file);
+                dataUrl = await fileToDataUrl(file);
 
                 const initialAttachment: ChatUploadAttachment = {
                     id: attachmentId,
                     source: "computer",
-                    name: file.name,
-                    mimeType: file.type || "application/octet-stream",
+                    name: fileName,
+                    mimeType,
                     size: file.size,
                     dataBase64: dataUrl,
                     uploadState: "uploading",
@@ -149,8 +181,8 @@ export function useChatAttachments(selectedModel: string) {
 
                 const persisted = await persistUploadedDoc({
                     source: "computer",
-                    name: file.name,
-                    mimeType: file.type || "application/octet-stream",
+                    name: fileName,
+                    mimeType,
                     size: file.size,
                     dataBase64: dataUrl,
                 });
@@ -163,11 +195,44 @@ export function useChatAttachments(selectedModel: string) {
             } catch (error) {
                 const message =
                     error instanceof Error ? error.message : "Failed to upload selected file.";
+
+                if (dataUrl && shouldFallbackToLocalAttachment(error)) {
+                    const safeDataUrl = dataUrl;
+                    setAttachments((prev) => {
+                        const exists = prev.some((item) => item.id === attachmentId);
+                        if (exists) {
+                            return prev.map((item) =>
+                                item.id === attachmentId
+                                    ? {
+                                        ...item,
+                                        uploadState: "ready",
+                                        uploadError: undefined,
+                                        uploadedDocId: undefined,
+                                    }
+                                    : item
+                            );
+                        }
+                        return [
+                            ...prev,
+                            {
+                                id: attachmentId,
+                                source: "computer",
+                                name: fileName,
+                                mimeType,
+                                size: file.size,
+                                dataBase64: safeDataUrl,
+                                uploadState: "ready",
+                            },
+                        ];
+                    });
+                    continue;
+                }
+
                 const failedAttachment: ChatUploadAttachment = {
                     id: attachmentId,
                     source: "computer",
-                    name: file.name,
-                    mimeType: file.type || "application/octet-stream",
+                    name: fileName,
+                    mimeType,
                     size: file.size,
                     uploadState: "error",
                     uploadError: message,
@@ -190,10 +255,10 @@ export function useChatAttachments(selectedModel: string) {
     };
 
     const handleComputerFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
-        const files = event.target.files;
-        if (!files || files.length === 0) return;
-        await queueComputerFiles(Array.from(files));
+        const selected = event.target.files ? Array.from(event.target.files) : [];
         event.target.value = "";
+        if (selected.length === 0) return;
+        await queueComputerFiles(selected);
     };
 
     const handleDroppedFiles = async (files: File[]) => {
@@ -346,6 +411,7 @@ export function useChatAttachments(selectedModel: string) {
         fileInputRef,
         removeAttachment,
         openComputerPicker,
+        addComputerFiles: queueComputerFiles,
         openDrivePicker,
         handleComputerFilesSelected,
         handleDroppedFiles,
