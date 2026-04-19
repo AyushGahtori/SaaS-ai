@@ -26,9 +26,34 @@ function normalizeBucketName(value: string | undefined): string | undefined {
     return bucketOnly || undefined;
 }
 
+function resolveServiceAccountPath(): string {
+    const fallbackPath = path.join(process.cwd(), "serviceAccountKey.json");
+    const configuredPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
+
+    // Keep the default path static so Turbopack can resolve it without broad dynamic globs.
+    if (!configuredPath) {
+        return fallbackPath;
+    }
+
+    if (
+        configuredPath === "serviceAccountKey.json" ||
+        configuredPath === "./serviceAccountKey.json"
+    ) {
+        return fallbackPath;
+    }
+
+    if (path.isAbsolute(configuredPath)) {
+        return configuredPath;
+    }
+
+    throw new Error(
+        `Firebase Admin: FIREBASE_SERVICE_ACCOUNT_KEY must be an absolute path or ` +
+        `"serviceAccountKey.json". Received "${configuredPath}".`
+    );
+}
+
 if (!getApps().length) {
-    const keyPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "./serviceAccountKey.json";
-    const resolvedPath = path.resolve(process.cwd(), keyPath);
+    const resolvedPath = resolveServiceAccountPath();
 
     if (!fs.existsSync(resolvedPath)) {
         throw new Error(

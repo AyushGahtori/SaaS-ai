@@ -170,12 +170,12 @@ export function ReminderManager() {
   return (
     <div className="space-y-6">
       {error ? (
-        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <div className="status-pill-error rounded-2xl px-4 py-3 text-sm">
           {error}
         </div>
       ) : null}
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+      <div className="ui-surface rounded-2xl p-5">
         <h2 className="text-lg font-semibold text-white">Add Reminder</h2>
         <p className="mt-1 text-xs text-white/40">Anything you create here uses the same reminder storage as the to-do agent.</p>
 
@@ -184,18 +184,18 @@ export function ReminderManager() {
             value={form.title}
             onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
             placeholder="Remind me about..."
-            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none"
+            className="rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-sm text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
           />
           <input
             type="datetime-local"
             value={form.datetime}
             onChange={(event) => setForm((prev) => ({ ...prev, datetime: event.target.value }))}
-            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none"
+            className="rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-sm text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
           />
           <select
             value={form.priority}
             onChange={(event) => setForm((prev) => ({ ...prev, priority: event.target.value }))}
-            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none"
+            className="rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-sm text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
           >
             <option value="normal">Normal</option>
             <option value="high">High</option>
@@ -203,7 +203,7 @@ export function ReminderManager() {
           <button
             onClick={addReminder}
             disabled={saving}
-            className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_10px_24px_rgb(107_76_255/34%)] transition hover:bg-primary/95 hover:shadow-[0_14px_28px_rgb(107_76_255/40%)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? "Adding..." : "Add"}
           </button>
@@ -211,7 +211,7 @@ export function ReminderManager() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <div className="ui-surface rounded-2xl p-5">
           <h2 className="text-lg font-semibold text-white">Upcoming</h2>
           <div className="mt-4 space-y-3">
             {pendingReminders.length ? pendingReminders.map((reminder) => (
@@ -226,7 +226,7 @@ export function ReminderManager() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => updateReminderStatus(reminder.id, "done")}
-                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:text-white"
+                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:border-primary/30 hover:text-white"
                     >
                       Done
                     </button>
@@ -247,7 +247,7 @@ export function ReminderManager() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <div className="ui-surface rounded-2xl p-5">
           <h2 className="text-lg font-semibold text-white">Completed</h2>
           <div className="mt-4 space-y-3">
             {completedReminders.length ? completedReminders.map((reminder) => (
@@ -261,7 +261,7 @@ export function ReminderManager() {
                   </div>
                   <button
                     onClick={() => updateReminderStatus(reminder.id, "pending")}
-                    className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:text-white"
+                    className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:border-primary/30 hover:text-white"
                   >
                     Restore
                   </button>

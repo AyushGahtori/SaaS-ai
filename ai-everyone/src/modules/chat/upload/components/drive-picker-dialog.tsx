@@ -32,7 +32,7 @@ export function DrivePickerDialog({
 }: DrivePickerDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-xl bg-[#101214] border-white/10 text-white">
+            <DialogContent className="sm:max-w-xl text-white">
                 <DialogHeader>
                     <DialogTitle>Upload from Drive</DialogTitle>
                     <DialogDescription className="text-white/60">
@@ -44,7 +44,7 @@ export function DrivePickerDialog({
                     value={query}
                     onChange={(event) => onQueryChange(event.target.value)}
                     placeholder="Search files by name"
-                    className="border-[#243246] bg-[#121a2b] text-cyan-50 placeholder:text-cyan-200/40 focus-visible:ring-cyan-400/40"
+                    className="bg-input/55 text-white placeholder:text-white/42"
                 />
 
                 <div className="custom-scrollbar-always max-h-72 overflow-y-auto rounded-md border border-white/10">
@@ -59,7 +59,7 @@ export function DrivePickerDialog({
                         files.map((file) => (
                             <button
                                 key={file.id}
-                                className="flex w-full items-start justify-between gap-3 border-b border-white/5 px-4 py-3 text-left hover:bg-white/5"
+                                className="flex w-full items-start justify-between gap-3 border-b border-white/5 px-4 py-3 text-left transition-[background-color,border-color,color] hover:border-primary/18 hover:bg-primary/8"
                                 onClick={() => onSelectFile(file)}
                             >
                                 <div className="min-w-0">

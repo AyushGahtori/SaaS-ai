@@ -49,12 +49,12 @@ export const AgentCard = ({
   };
 
   const actionButtonClass = installed
-    ? "bg-white/10 text-white hover:bg-white/20"
-    : "bg-white text-black hover:bg-white/90 shadow-md";
+    ? "border border-primary/28 bg-primary/16 text-white hover:bg-primary/24 hover:shadow-[0_10px_24px_rgb(92_53_229/24%)]"
+    : "bg-primary text-primary-foreground shadow-[0_10px_24px_rgb(107_76_255/34%)] hover:bg-primary/95 hover:shadow-[0_14px_28px_rgb(107_76_255/40%)]";
 
   const renderActionContent = () => {
     if (loading) {
-      return <Loader2 className="h-4 w-4 animate-spin text-black" />;
+      return <Loader2 className="h-4 w-4 animate-spin" />;
     }
 
     return (
@@ -71,11 +71,11 @@ export const AgentCard = ({
 
   return (
     <div
-      className="group relative flex flex-col rounded-xl bg-transparent p-3 transition-all duration-200 hover:bg-white/[0.04]"
+      className="group ui-surface relative flex flex-col rounded-2xl p-3 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-primary/30 hover:bg-primary/8 hover:shadow-[0_14px_30px_rgb(92_53_229/20%)]"
       style={{ minHeight: 152 }}
     >
       <div className="flex gap-4">
-        <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-2xl bg-[#2b2b2b] p-2 ring-1 ring-white/10 transition-shadow group-hover:shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
+        <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-[#171a2c] p-2 transition-shadow group-hover:shadow-[0_8px_24px_rgb(92_53_229/28%)]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={agent.iconUrl}

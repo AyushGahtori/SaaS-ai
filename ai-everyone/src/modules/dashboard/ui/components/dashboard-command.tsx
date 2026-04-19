@@ -60,14 +60,15 @@ export const DashboardCommand = ({ open, setOpen }: Props) => {
         <CommandDialog
             open={open}
             onOpenChange={setOpen}
+            overlayClassName="bg-black/42 backdrop-blur-[7px]"
             className={cn(
-                "border-white/10 bg-[#0C0D0D] p-0 text-white shadow-2xl",
+                "overflow-hidden rounded-2xl border border-white/14 !bg-[rgb(7_9_16/90%)] p-0 text-white shadow-[0_20px_60px_rgb(0_0_0/58%)] backdrop-blur-3xl backdrop-saturate-150",
                 "w-[min(42rem,calc(100vw-2rem))] sm:max-w-[42rem]",
                 dialogLeftClass,
-                "[&_[data-slot=command]]:bg-[#0C0D0D] [&_[data-slot=command]]:text-white",
-                "[&_[data-slot=command-input-wrapper]]:h-14 [&_[data-slot=command-input-wrapper]]:border-b-white/10 [&_[data-slot=command-input-wrapper]]:bg-[#101213] [&_[data-slot=command-input-wrapper]]:px-4",
+                "[&_[data-slot=command]]:relative [&_[data-slot=command]]:z-[1] [&_[data-slot=command]]:!bg-transparent [&_[data-slot=command]]:text-white",
+                "[&_[data-slot=command-input-wrapper]]:h-14 [&_[data-slot=command-input-wrapper]]:border-b-white/10 [&_[data-slot=command-input-wrapper]]:!bg-[rgb(7_9_16/74%)] [&_[data-slot=command-input-wrapper]]:backdrop-blur-xl [&_[data-slot=command-input-wrapper]]:px-4",
                 "[&_[data-slot=command-input-wrapper]_svg]:text-white/45 [&_[data-slot=command-input]]:h-12 [&_[data-slot=command-input]]:text-base [&_[data-slot=command-input]]:text-white [&_[data-slot=command-input]]:placeholder:text-white/35",
-                "[&_[data-slot=command-list]]:max-h-[340px] [&_[data-slot=command-list]]:bg-[#0C0D0D] [&_[data-slot=command-list]]:p-2"
+                "[&_[data-slot=command-list]]:max-h-[340px] [&_[data-slot=command-list]]:!bg-transparent [&_[data-slot=command-list]]:p-2"
             )}
             showCloseButton={false}
         >
@@ -87,7 +88,7 @@ export const DashboardCommand = ({ open, setOpen }: Props) => {
                             onSelect={() => {
                                 void handleSelectChat(chat.id);
                             }}
-                            className="group mx-1 rounded-md px-3 py-2 text-sm text-[#E5E5E5] data-[selected=true]:bg-white/10 data-[selected=true]:text-white"
+                            className="group mx-1 rounded-md border border-transparent px-3 py-2 text-sm text-[#E5E5E5] transition-[background-color,border-color,color,box-shadow] hover:border-primary/25 hover:bg-primary/10 data-[selected=true]:border-primary/35 data-[selected=true]:bg-primary/16 data-[selected=true]:text-white"
                         >
                             <MessageSquare className="h-4 w-4 flex-shrink-0 text-white/50" />
                             <span className="truncate text-sm font-medium">{chat.title}</span>

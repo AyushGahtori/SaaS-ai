@@ -16,7 +16,7 @@ const Layout = ({ children }: Props) => {
           <div className="flex h-screen w-full overflow-hidden">
             <DashboardSidebar />
 
-            <main className="flex-1 overflow-hidden bg-black text-foreground">
+            <main className="flex-1 overflow-hidden bg-[var(--surface-0)] text-foreground">
               <DashboardNavbar />
               {children}
             </main>
