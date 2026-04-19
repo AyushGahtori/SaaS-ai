@@ -46,6 +46,22 @@ export function interpretErrorWithPatterns(
     if (!error) return null;
 
     if (
+        input.agentId === "google-agent" &&
+        lower.includes("limit") &&
+        lower.includes("string") &&
+        (lower.includes("received") || lower.includes("expected"))
+    ) {
+        return {
+            status: "failed",
+            userMessage:
+                "The Google task failed because the result-limit format was invalid in this attempt. Please retry once; the system now sends limit values as text (for example \"10\") to match the agent contract.",
+            rootCause: "Google agent input contract mismatch for limit type.",
+            suggestedAction: "Retry the same request once.",
+            code: "GOOGLE_LIMIT_TYPE_MISMATCH",
+        };
+    }
+
+    if (
         containsAny(lower, [
             /missing[_\s-]?fields?/i,
             /missing required/i,

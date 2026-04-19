@@ -16,7 +16,7 @@ import React, {
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { CHAT_MODELS } from "@/lib/model-capabilities";
+import { CHAT_MODELS, isLocalOllamaModel } from "@/lib/model-capabilities";
 
 import type {
     Chat,
@@ -91,6 +91,156 @@ const AVAILABLE_MODELS = CHAT_MODELS.map((model) => ({
     id: model.id,
     label: model.label,
 }));
+
+const LOCAL_OLLAMA_URL_STORAGE_KEY = "pian.local_ollama_url";
+const DEFAULT_LOCAL_OLLAMA_URLS = [
+    "http://127.0.0.1:11434",
+    "http://localhost:11434",
+    "http://host.docker.internal:11434",
+];
+
+function normalizeHttpBaseUrl(value: string): string {
+    const trimmed = value.trim().replace(/\/+$/, "");
+    if (!trimmed) return "";
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `http://${trimmed}`;
+}
+
+function getLocalOllamaBaseUrlCandidates(): string[] {
+    const candidates: string[] = [];
+    const envCandidate = process.env.NEXT_PUBLIC_OLLAMA_BASE_URL;
+    if (typeof envCandidate === "string" && envCandidate.trim()) {
+        candidates.push(envCandidate.trim());
+    }
+
+    if (typeof window !== "undefined") {
+        try {
+            const stored = window.localStorage.getItem(LOCAL_OLLAMA_URL_STORAGE_KEY);
+            if (stored && stored.trim()) candidates.push(stored.trim());
+        } catch {
+            // Ignore storage access errors.
+        }
+    }
+
+    candidates.push(...DEFAULT_LOCAL_OLLAMA_URLS);
+
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+        const normalized = normalizeHttpBaseUrl(candidate);
+        if (!normalized || seen.has(normalized)) continue;
+        seen.add(normalized);
+        deduped.push(normalized);
+    }
+    return deduped;
+}
+
+function isAbortError(error: unknown): boolean {
+    if (!error) return false;
+    if (error instanceof DOMException) return error.name === "AbortError";
+    if (error instanceof Error) return error.name === "AbortError";
+    return false;
+}
+
+async function streamLocalOllama(
+    baseUrl: string,
+    model: string,
+    messages: Array<{ role: string; content: string }>,
+    onDelta: (delta: string) => void,
+    signal: AbortSignal
+): Promise<string> {
+    const ollamaMessages = messages.map((message) => ({
+        role: message.role === "agent" ? "assistant" : message.role,
+        content: message.content,
+    }));
+
+    const response = await fetch(`${baseUrl}/api/chat`, {
+        method: "POST",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            model,
+            messages: ollamaMessages,
+            stream: true,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(
+            `Local Ollama at ${baseUrl} returned ${response.status}${errorText ? `: ${errorText}` : ""}`
+        );
+    }
+
+    if (!response.body) {
+        throw new Error(`Local Ollama at ${baseUrl} did not return a response stream.`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullContent = "";
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            const payload = JSON.parse(trimmed) as { message?: { content?: string } };
+            const delta = payload.message?.content || "";
+            if (!delta) continue;
+            fullContent += delta;
+            onDelta(delta);
+        }
+    }
+
+    if (buffer.trim()) {
+        const payload = JSON.parse(buffer.trim()) as { message?: { content?: string } };
+        const delta = payload.message?.content || "";
+        if (delta) {
+            fullContent += delta;
+            onDelta(delta);
+        }
+    }
+
+    return fullContent;
+}
+
+async function tryStreamLocalOllama(
+    model: string,
+    messages: Array<{ role: string; content: string }>,
+    onDelta: (delta: string) => void,
+    signal: AbortSignal
+): Promise<string> {
+    const candidates = getLocalOllamaBaseUrlCandidates();
+    const errors: string[] = [];
+
+    for (const baseUrl of candidates) {
+        try {
+            return await streamLocalOllama(baseUrl, model, messages, onDelta, signal);
+        } catch (error) {
+            if (isAbortError(error)) throw error;
+            errors.push(`${baseUrl}: ${error instanceof Error ? error.message : "connection failed"}`);
+        }
+    }
+
+    throw new Error(
+        [
+            "Could not connect to local Ollama from the browser.",
+            `Tried: ${candidates.join(", ")}.`,
+            "If you're using Vercel, allow your app origin in Ollama (OLLAMA_ORIGINS) and keep Ollama running on your PC.",
+            errors.length > 0 ? `Details: ${errors.join(" | ")}` : "",
+        ]
+            .filter(Boolean)
+            .join(" ")
+    );
+}
 
 function parseHighDemandMessage(error: unknown): string | null {
     const raw = error instanceof Error ? error.message : String(error || "");
@@ -242,6 +392,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             let currentChatId = activeChatId;
             let tempAssistantId = "";
             let resolvedChatId: string | null = null;
+            let localOllamaError: Error | null = null;
 
             try {
                 if (!currentChatId) {
@@ -292,12 +443,82 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     },
                 ]);
 
+                const controller = new AbortController();
+                requestAbortControllerRef.current = controller;
+
+                const isLocalModelSelected = isLocalOllamaModel(selectedModel);
+                if (isLocalModelSelected) {
+                    if (attachments.length > 0) {
+                        throw new Error(
+                            "File attachments are not supported with local Ollama mode yet. Please use a Gemini model for file uploads."
+                        );
+                    }
+
+                    try {
+                        let streamedAssistantContent = "";
+                        const localContent = await tryStreamLocalOllama(
+                            selectedModel,
+                            historyForApi.map((message) => ({
+                                role: message.role,
+                                content: message.content,
+                            })),
+                            (delta) => {
+                                streamedAssistantContent += delta;
+                                setMessages((prev) =>
+                                    prev.map((message) =>
+                                        message.id === tempAssistantId
+                                            ? { ...message, content: streamedAssistantContent }
+                                            : message
+                                    )
+                                );
+                            },
+                            controller.signal
+                        );
+
+                        if (abortRef.current) return;
+
+                        const assistantContent =
+                            localContent || "No response received from local Ollama.";
+                        const assistantMsg = await createMessage(
+                            uid,
+                            resolvedChatIdValue,
+                            "assistant",
+                            assistantContent,
+                            undefined,
+                            undefined,
+                            isVoice,
+                            [],
+                            {
+                                runtime: "browser_local_ollama",
+                                model: selectedModel,
+                            }
+                        );
+                        setMessages((prev) =>
+                            prev.map((message) =>
+                                message.id === tempAssistantId ? assistantMsg : message
+                            )
+                        );
+                        await updateChat(uid, resolvedChatIdValue, {});
+                        return { type: "chat", content: assistantContent };
+                    } catch (error) {
+                        if (isAbortError(error) || abortRef.current) {
+                            throw error;
+                        }
+                        localOllamaError =
+                            error instanceof Error
+                                ? error
+                                : new Error("Local Ollama browser streaming failed.");
+                        console.warn(
+                            "[sendMessage] local Ollama attempt failed, falling back to /api/chat",
+                            localOllamaError
+                        );
+                    }
+                }
+
                 const token = await auth.currentUser?.getIdToken();
                 if (!token) {
                     throw new Error("Authentication expired. Please sign in again.");
                 }
-                const controller = new AbortController();
-                requestAbortControllerRef.current = controller;
 
                 const res = await fetch("/api/chat", {
                     method: "POST",
@@ -498,9 +719,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         prev.filter((message) => message.id !== tempAssistantId)
                     );
                 }
-                setError(
-                    err instanceof Error ? err.message : "Failed to send message."
-                );
+                const primaryError =
+                    err instanceof Error ? err.message : "Failed to send message.";
+                if (localOllamaError) {
+                    setError(
+                        `${primaryError}\n\nLocal Ollama attempt also failed: ${localOllamaError.message}`
+                    );
+                } else {
+                    setError(primaryError);
+                }
                 return undefined;
             } finally {
                 requestAbortControllerRef.current = null;

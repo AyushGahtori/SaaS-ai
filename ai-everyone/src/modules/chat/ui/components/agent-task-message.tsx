@@ -63,6 +63,10 @@ interface GmailRow {
     time: string;
 }
 
+interface GmailListMeta {
+    returnedCount: number;
+}
+
 interface DriveRow {
     name: string;
     mimeType: string;
@@ -233,6 +237,13 @@ function getDriveRows(result: Record<string, unknown>): DriveRow[] {
     });
 }
 
+function getGmailListMeta(result: Record<string, unknown>, rows: GmailRow[]): GmailListMeta {
+    const payload = (result.result as Record<string, unknown> | undefined) || result;
+    const returnedCount =
+        typeof payload.returnedCount === "number" ? Number(payload.returnedCount) : rows.length;
+    return { returnedCount };
+}
+
 function getDriveListMeta(result: Record<string, unknown>, rows: DriveRow[]): DriveListMeta {
     const payload = (result.result as Record<string, unknown> | undefined) || result;
     const hasMore = payload.hasMore === true;
@@ -250,7 +261,7 @@ function DriveTypeIcon({ typeLabel }: { typeLabel: string }) {
     return <FileText className="w-3.5 h-3.5 text-blue-300" />;
 }
 
-function GmailTableCard({ rows }: { rows: GmailRow[] }) {
+function GmailTableCard({ rows, meta }: { rows: GmailRow[]; meta: GmailListMeta }) {
     return (
         <div className="mt-3 rounded-xl border border-white/10 bg-black/35 overflow-hidden">
             <div className="grid grid-cols-[1.3fr_2.2fr_1fr_1fr] gap-3 px-3 py-2.5 text-[11px] uppercase tracking-wide text-white/50 border-b border-white/10">
@@ -259,7 +270,7 @@ function GmailTableCard({ rows }: { rows: GmailRow[] }) {
                 <span>Date</span>
                 <span>Time</span>
             </div>
-            <div className="custom-scrollbar max-h-48 overflow-y-auto">
+            <div className="custom-scrollbar-always max-h-48 overflow-y-auto">
                 {rows.map((row, idx) => (
                     <div key={`${row.from}-${row.subject}-${idx}`} className="grid grid-cols-[1.3fr_2.2fr_1fr_1fr] gap-3 px-3 py-2.5 text-xs text-white/85 border-b border-white/5 last:border-b-0">
                         <div className="flex items-center gap-2 min-w-0">
@@ -271,6 +282,10 @@ function GmailTableCard({ rows }: { rows: GmailRow[] }) {
                         <span className="truncate text-white/70">{row.time}</span>
                     </div>
                 ))}
+            </div>
+            <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2 text-[11px] text-white/55">
+                <span>Showing {meta.returnedCount} email(s)</span>
+                <span>Scroll inside the table to view all rows.</span>
             </div>
         </div>
     );
@@ -807,7 +822,7 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
         if (resultType === "google_gmail") {
             const rows = getGmailRows(result);
             if (rows.length > 0) {
-                return <GmailTableCard rows={rows} />;
+                return <GmailTableCard rows={rows} meta={getGmailListMeta(result, rows)} />;
             }
         }
 

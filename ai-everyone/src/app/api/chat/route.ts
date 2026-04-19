@@ -392,6 +392,8 @@ For the google-agent:
     "reasoning": "<brief explanation>"
   }
 - For Gmail or Drive listing requests, NEVER request or return more than 20 items at once.
+- If the user asks for a numeric count (example: "last 10 emails/files"), include "limit" as a STRING (example: "10"), not a number.
+- For Gmail listing, prefer action "list_emails". For Drive listing, prefer action "list_files".
 - Use "gmail" when the request is about Gmail inbox, reading emails, searching emails, or summarizing emails.
 - Use "drive" when the request is about files, Google Docs, Drive documents, reading docs, or summarizing docs.
 - Use "calendar" for calendar events, scheduling, and agendas.
@@ -716,6 +718,58 @@ function getGoogleIntentLimitViolation(intent: AgentIntent, userMessage: string)
     return null;
 }
 
+function normalizeGoogleLimitValue(value: unknown): string | null {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return String(Math.floor(value));
+    return null;
+}
+
+function normalizeGoogleExecutionPayload(intent: AgentIntent, userMessage: string): AgentIntent {
+    if (intent.agent_required !== "google-agent") return intent;
+
+    const normalized: AgentIntent = {
+        ...intent,
+        parameters: { ...intent.parameters },
+    };
+
+    const rawAgentType = normalized.parameters.agent_type;
+    const agentType = typeof rawAgentType === "string" ? rawAgentType.toLowerCase().trim() : "";
+    if (agentType !== "gmail" && agentType !== "drive") {
+        return normalized;
+    }
+
+    const requestedCount =
+        getNumericRequestCount(userMessage) ??
+        getNumericRequestCount(String(normalized.parameters.parameters || ""));
+
+    const existingLimit =
+        normalizeGoogleLimitValue(normalized.parameters.limit) ||
+        normalizeGoogleLimitValue(normalized.parameters.count) ||
+        normalizeGoogleLimitValue(normalized.parameters.maxResults) ||
+        normalizeGoogleLimitValue(normalized.parameters.pageSize);
+
+    const resolvedLimit =
+        existingLimit ||
+        (typeof requestedCount === "number" && requestedCount > 0 ? String(requestedCount) : null);
+
+    if (resolvedLimit) {
+        normalized.parameters.limit = resolvedLimit;
+        normalized.parameters.count = resolvedLimit;
+        normalized.parameters.maxResults = resolvedLimit;
+        normalized.parameters.pageSize = resolvedLimit;
+    }
+
+    const existingDetails =
+        typeof normalized.parameters.parameters === "string" && normalized.parameters.parameters.trim()
+            ? normalized.parameters.parameters.trim()
+            : "";
+    if (!existingDetails) {
+        normalized.parameters.parameters = userMessage;
+    }
+
+    return normalized;
+}
+
 function resolveGeminiModel(model: string): string {
     return GEMINI_MODEL_ALIASES[model] || model;
 }
@@ -1026,8 +1080,54 @@ async function buildPersonaContext(uid: string, userMessage: string): Promise<st
     }
 }
 
+function normalizeOllamaBaseUrl(value: string): string {
+    const trimmed = (value || "").trim().replace(/\/+$/, "");
+    if (!trimmed) return "";
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `http://${trimmed}`;
+}
+
+function getServerOllamaBaseUrls(): string[] {
+    const rawCandidates: string[] = [];
+    const primary = process.env.OLLAMA_BASE_URL;
+    if (primary && primary.trim()) rawCandidates.push(primary.trim());
+
+    const fallbackEnv = process.env.OLLAMA_BASE_URL_FALLBACKS || "";
+    if (fallbackEnv.trim()) {
+        rawCandidates.push(
+            ...fallbackEnv
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean)
+        );
+    }
+
+    if (!process.env.VERCEL) {
+        rawCandidates.push(
+            "http://host.docker.internal:11434",
+            "http://127.0.0.1:11434",
+            "http://localhost:11434"
+        );
+    }
+
+    const seen = new Set<string>();
+    const deduped: string[] = [];
+    for (const candidate of rawCandidates) {
+        const normalized = normalizeOllamaBaseUrl(candidate);
+        if (!normalized || seen.has(normalized)) continue;
+        seen.add(normalized);
+        deduped.push(normalized);
+    }
+
+    if (deduped.length === 0) {
+        deduped.push("http://127.0.0.1:11434");
+    }
+
+    return deduped;
+}
+
 async function streamOllamaChat(
-    baseUrl: string,
+    baseUrls: string[],
     model: string,
     messages: { role: string; content: string }[],
     onDelta: (delta: string) => void,
@@ -1035,76 +1135,96 @@ async function streamOllamaChat(
 ): Promise<string> {
     throwIfAborted(abortSignal);
 
-    const response = await fetch(`${baseUrl}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: abortSignal,
-        body: JSON.stringify({
-            model,
-            messages,
-            stream: true,
-        }),
-    });
+    const attempted: string[] = [];
+    let lastError: unknown = null;
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-            `Ollama returned status ${response.status}. ${errorText || "No details available."}`
-        );
-    }
+    for (const baseUrl of baseUrls) {
+        attempted.push(baseUrl);
+        try {
+            const response = await fetch(`${baseUrl}/api/chat`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                signal: abortSignal,
+                body: JSON.stringify({
+                    model,
+                    messages,
+                    stream: true,
+                }),
+            });
 
-    if (!response.body) {
-        throw new Error("Ollama did not return a streaming body.");
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let fullContent = "";
-
-    while (true) {
-        if (abortSignal?.aborted) {
-            try {
-                await reader.cancel();
-            } catch {
-                // Ignore reader cancel races.
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(
+                    `Ollama at ${baseUrl} returned status ${response.status}. ${
+                        errorText || "No details available."
+                    }`
+                );
             }
-            throw createAbortError();
-        }
-        const { value, done } = await reader.read();
-        if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            const payload = JSON.parse(trimmed) as {
-                done?: boolean;
-                message?: { content?: string };
-            };
-
-            const delta = payload.message?.content || "";
-            if (delta) {
-                fullContent += delta;
-                onDelta(delta);
+            if (!response.body) {
+                throw new Error(`Ollama at ${baseUrl} did not return a streaming body.`);
             }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let fullContent = "";
+
+            while (true) {
+                if (abortSignal?.aborted) {
+                    try {
+                        await reader.cancel();
+                    } catch {
+                        // Ignore reader cancel races.
+                    }
+                    throw createAbortError();
+                }
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed) continue;
+
+                    const payload = JSON.parse(trimmed) as {
+                        done?: boolean;
+                        message?: { content?: string };
+                    };
+
+                    const delta = payload.message?.content || "";
+                    if (delta) {
+                        fullContent += delta;
+                        onDelta(delta);
+                    }
+                }
+            }
+
+            if (buffer.trim()) {
+                const payload = JSON.parse(buffer.trim()) as { message?: { content?: string } };
+                const delta = payload.message?.content || "";
+                if (delta) {
+                    fullContent += delta;
+                    onDelta(delta);
+                }
+            }
+
+            return fullContent;
+        } catch (error) {
+            if (isAbortLikeError(error) || abortSignal?.aborted) {
+                throw error;
+            }
+            lastError = error;
         }
     }
 
-    if (buffer.trim()) {
-        const payload = JSON.parse(buffer.trim()) as { message?: { content?: string } };
-        const delta = payload.message?.content || "";
-        if (delta) {
-            fullContent += delta;
-            onDelta(delta);
-        }
-    }
-
-    return fullContent;
+    const lastErrorMessage = lastError instanceof Error ? lastError.message : String(lastError || "Unknown error");
+    throw new Error(
+        `Unable to reach Ollama. Tried: ${attempted.join(", ")}. Last error: ${lastErrorMessage}`
+    );
 }
 
 async function streamGeminiChat(
@@ -1279,7 +1399,7 @@ export async function POST(req: NextRequest) {
         cleanupExpiredUploadedDocs(uid).catch((error) => {
             console.error("[UploadedDocsCleanup] failed:", error);
         });
-        const baseUrl = process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434";
+        const ollamaBaseUrls = getServerOllamaBaseUrls();
         const model = body.model || process.env.OLLAMA_DEFAULT_MODEL || "qwen3.5:397b-cloud";
         const normalizedAttachments = Array.isArray(attachments) ? attachments : [];
         const normalizedFailedAttachments = normalizeFailedAttachments(failedAttachments);
@@ -1492,7 +1612,7 @@ export async function POST(req: NextRequest) {
                                 return result.content;
                             })()
                             : await streamOllamaChat(
-                                baseUrl,
+                                ollamaBaseUrls,
                                 model,
                                 messagesForModel,
                                 handleDelta,
@@ -1518,8 +1638,14 @@ export async function POST(req: NextRequest) {
                         }
 
                         if (parseResult && chatId) {
-                            const { intent } = parseResult;
-                            const googleLimitMessage = getGoogleIntentLimitViolation(intent, lastUserMessage);
+                            const effectiveIntent = normalizeGoogleExecutionPayload(
+                                parseResult.intent,
+                                lastUserMessage
+                            );
+                            const googleLimitMessage = getGoogleIntentLimitViolation(
+                                effectiveIntent,
+                                lastUserMessage
+                            );
                             if (googleLimitMessage) {
                                 if (!streamedText.trim()) {
                                     sendEvent("text", { content: googleLimitMessage });
@@ -1529,10 +1655,10 @@ export async function POST(req: NextRequest) {
                                 return;
                             }
 
-                            if (!installedAgentIds.includes(intent.agent_required)) {
-                                const installMessage = getInstallHintForAgent(intent.agent_required);
+                            if (!installedAgentIds.includes(effectiveIntent.agent_required)) {
+                                const installMessage = getInstallHintForAgent(effectiveIntent.agent_required);
                                 const suggestion = await buildUnavailableAgentSuggestionMeta(
-                                    intent.agent_required
+                                    effectiveIntent.agent_required
                                 );
                                 if (!streamedText.trim()) {
                                     sendEvent("text", { content: installMessage });
@@ -1553,10 +1679,10 @@ export async function POST(req: NextRequest) {
                                 return;
                             }
 
-                            if (!accessibleAgentIds.includes(intent.agent_required)) {
-                                const connectMessage = getInstallHintForAgent(intent.agent_required);
+                            if (!accessibleAgentIds.includes(effectiveIntent.agent_required)) {
+                                const connectMessage = getInstallHintForAgent(effectiveIntent.agent_required);
                                 const suggestion = await buildUnavailableAgentSuggestionMeta(
-                                    intent.agent_required
+                                    effectiveIntent.agent_required
                                 );
                                 if (!streamedText.trim()) {
                                     sendEvent("text", { content: connectMessage });
@@ -1578,12 +1704,12 @@ export async function POST(req: NextRequest) {
                             }
 
                             const agentInput: Record<string, unknown> = {
-                                action: intent.action,
-                                ...intent.parameters,
+                                action: effectiveIntent.action,
+                                ...effectiveIntent.parameters,
                             };
 
                             if (
-                                isStrataUploadIntent(intent) &&
+                                isStrataUploadIntent(effectiveIntent) &&
                                 !Array.isArray(agentInput.attachments) &&
                                 effectiveAttachments.length > 0
                             ) {
@@ -1600,8 +1726,8 @@ export async function POST(req: NextRequest) {
                             const task = await createAgentTask({
                                 userId: uid,
                                 chatId,
-                                agentId: intent.agent_required,
-                                parentLLMRequest: intent as unknown as Record<string, unknown>,
+                                agentId: effectiveIntent.agent_required,
+                                parentLLMRequest: effectiveIntent as unknown as Record<string, unknown>,
                                 agentInput,
                             });
 
@@ -1610,23 +1736,26 @@ export async function POST(req: NextRequest) {
                             );
 
                             const agentName =
-                                getAgentCatalogEntry(intent.agent_required)?.name || intent.agent_required;
+                                getAgentCatalogEntry(effectiveIntent.agent_required)?.name ||
+                                effectiveIntent.agent_required;
                             const content =
                                 `Delegating to ${agentName}.\n\n` +
-                                `Action: ${intent.action}` +
-                                (intent.reasoning ? `\n\nReasoning: ${intent.reasoning}` : "");
+                                `Action: ${effectiveIntent.action}` +
+                                (effectiveIntent.reasoning
+                                    ? `\n\nReasoning: ${effectiveIntent.reasoning}`
+                                    : "");
 
                             sendEvent("agent_task", {
                                 type: "agent_task",
                                 taskId: task.taskId,
-                                agentId: intent.agent_required,
+                                agentId: effectiveIntent.agent_required,
                                 status: "queued",
                                 content,
                             });
                             sendEvent("done", {
                                 type: "agent_task",
                                 taskId: task.taskId,
-                                agentId: intent.agent_required,
+                                agentId: effectiveIntent.agent_required,
                                 status: "queued",
                                 content,
                             });

@@ -62,3 +62,14 @@ export function supportsFileUpload(modelId: string): boolean {
     }
     return isGeminiModel(modelId);
 }
+
+export function isLocalOllamaModel(modelId: string): boolean {
+    const normalized = (modelId || "").toLowerCase();
+    const known = getModelById(modelId);
+    if (known) {
+        return known.provider === "ollama" && !normalized.includes("cloud");
+    }
+    if (normalized.includes("gemini")) return false;
+    if (normalized.includes("cloud")) return false;
+    return Boolean(normalized);
+}
