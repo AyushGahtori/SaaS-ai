@@ -162,6 +162,13 @@ export function SettingsView() {
     }
   };
 
+  const confirmUninstall = (item: Agent) => {
+    const actionLabel = item.kind === "bundle" ? "disconnect" : "uninstall";
+    const confirmed = window.confirm(`Are you sure you want to ${actionLabel} "${item.name}"?`);
+    if (!confirmed) return;
+    void handleUninstall(item);
+  };
+
   const installedItems = useMemo(
     () => marketplaceItems.filter((item) => installedIds.includes(item.id)),
     [installedIds, marketplaceItems]
@@ -191,7 +198,7 @@ export function SettingsView() {
     <div className="custom-scrollbar h-[calc(100vh-64px)] overflow-y-auto overflow-x-hidden w-full">
       <div className="mx-auto max-w-6xl space-y-8 px-6 py-8">
         <div className="flex items-center gap-3">
-          <Settings2 className="h-8 w-8 text-cyan-400" />
+          <Settings2 className="h-8 w-8 text-violet-300" />
           <div>
             <h1 className="text-2xl font-bold text-white/95">Settings</h1>
             <p className="text-sm text-white/40">
@@ -201,7 +208,7 @@ export function SettingsView() {
         </div>
 
         {error ? (
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <div className="status-pill-error rounded-2xl px-4 py-3 text-sm">
             {error}
           </div>
         ) : null}
@@ -211,9 +218,9 @@ export function SettingsView() {
             <button
               key={item.id}
               onClick={() => setTab(item.id)}
-              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${tab === item.id
-                  ? "bg-white text-black"
-                  : "border border-white/10 bg-white/[0.03] text-white/65 hover:text-white"
+              className={`interactive-lift flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-[background-color,border-color,color,box-shadow,transform] ${tab === item.id
+                  ? "border border-primary/35 bg-primary/18 text-white shadow-[0_8px_20px_rgb(92_53_229/20%)]"
+                  : "border border-white/10 bg-white/[0.03] text-white/65 hover:border-primary/30 hover:bg-primary/10 hover:text-white"
                 }`}
             >
               <item.icon className="h-4 w-4" />
@@ -224,7 +231,7 @@ export function SettingsView() {
 
         {tab === "profile" ? (
           <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="ui-surface rounded-2xl p-5">
               <h2 className="text-lg font-semibold text-white">Profile</h2>
               <p className="mt-1 text-xs text-white/40">These values help personalize the persona and chat experience without replacing your onboarding flow.</p>
 
@@ -234,7 +241,7 @@ export function SettingsView() {
                   <input
                     value={profileForm.name}
                     onChange={(event) => setProfileForm((prev) => ({ ...prev, name: event.target.value }))}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none"
+                    className="mt-2 w-full rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
                   />
                 </label>
 
@@ -243,7 +250,7 @@ export function SettingsView() {
                   <input
                     value={profileForm.email}
                     onChange={(event) => setProfileForm((prev) => ({ ...prev, email: event.target.value }))}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none"
+                    className="mt-2 w-full rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
                   />
                 </label>
 
@@ -253,7 +260,7 @@ export function SettingsView() {
                     value={profileForm.role}
                     onChange={(event) => setProfileForm((prev) => ({ ...prev, role: event.target.value }))}
                     placeholder="Founder, developer, operator..."
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none"
+                    className="mt-2 w-full rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
                   />
                 </label>
 
@@ -265,7 +272,7 @@ export function SettingsView() {
                       setProfileForm((prev) => ({ ...prev, communicationStyle: event.target.value }))
                     }
                     placeholder="Concise, detailed, direct..."
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none"
+                    className="mt-2 w-full rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
                   />
                 </label>
               </div>
@@ -273,13 +280,13 @@ export function SettingsView() {
               <button
                 onClick={handleProfileSave}
                 disabled={saving}
-                className="mt-5 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_10px_24px_rgb(107_76_255/34%)] transition hover:bg-primary/95 hover:shadow-[0_14px_28px_rgb(107_76_255/40%)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? "Saving..." : "Save Profile"}
               </button>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="ui-surface rounded-2xl p-5">
               <h2 className="text-lg font-semibold text-white">Workspace Summary</h2>
               <div className="mt-4 space-y-3 text-sm text-white/70">
                 <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
@@ -292,7 +299,7 @@ export function SettingsView() {
                 </div>
                 <Link
                   href="/agents"
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm text-white/75 transition hover:border-white/20 hover:text-white"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm text-white/75 transition hover:border-primary/30 hover:bg-primary/10 hover:text-white"
                 >
                   <Link2 className="h-4 w-4" />
                   Open marketplace to connect or install more agents
@@ -304,7 +311,7 @@ export function SettingsView() {
 
         {tab === "agents" ? (
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="ui-surface rounded-2xl p-5">
               <h2 className="text-lg font-semibold text-white">Connected Bundles</h2>
               <p className="mt-1 text-xs text-white/40">Disconnecting a bundle revokes provider access and uninstalls its child agents from your account.</p>
 
@@ -320,8 +327,8 @@ export function SettingsView() {
                       </div>
                     </div>
                     <button
-                      onClick={() => handleUninstall(item)}
-                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:text-white"
+                      onClick={() => confirmUninstall(item)}
+                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:border-primary/30 hover:text-white"
                     >
                       Disconnect
                     </button>
@@ -334,7 +341,7 @@ export function SettingsView() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="ui-surface rounded-2xl p-5">
               <h2 className="text-lg font-semibold text-white">Installed Agents</h2>
               <p className="mt-1 text-xs text-white/40">Only installed agents can be used by chat orchestration.</p>
 
@@ -350,8 +357,8 @@ export function SettingsView() {
                       </div>
                     </div>
                     <button
-                      onClick={() => handleUninstall(item)}
-                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:text-white"
+                      onClick={() => confirmUninstall(item)}
+                      className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:border-primary/30 hover:text-white"
                     >
                       Uninstall
                     </button>

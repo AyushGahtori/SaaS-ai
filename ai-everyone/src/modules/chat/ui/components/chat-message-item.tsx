@@ -132,16 +132,16 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
         >
             {/* Assistant avatar */}
             {!isUser && (
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                    <Bot className="w-5 h-5 text-white" />
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-primary/24 bg-primary/10 shadow-[0_8px_20px_rgb(92_53_229/22%)]">
+                    <Bot className="h-5 w-5 text-violet-100" />
                 </div>
             )}
 
             {/* Message content */}
             <div
                 className={`relative max-w-[76%] overflow-hidden rounded-2xl px-4 py-3 text-sm leading-relaxed ${isUser
-                        ? "bg-white/10 text-white rounded-br-sm"
-                        : "bg-white/5 text-[#E5E5E5] rounded-bl-sm"
+                        ? "rounded-br-sm border border-primary/28 bg-primary/16 text-white shadow-[0_10px_22px_rgb(92_53_229/20%)]"
+                        : "ui-surface rounded-bl-sm text-[#E5E5E5]"
                     }`}
             >
                 {isUser ? (
@@ -162,7 +162,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                                     pre: ({ children, ...props }) => (
                                         <pre
                                             {...props}
-                                            className="custom-scrollbar max-w-full overflow-x-auto rounded-lg bg-black/25 p-3"
+                                            className="custom-scrollbar max-w-full overflow-x-auto rounded-lg border border-white/8 bg-black/25 p-3"
                                         >
                                             {children}
                                         </pre>
@@ -179,7 +179,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                                         return (
                                             <code
                                                 {...props}
-                                                className="rounded bg-white/10 px-1.5 py-0.5 text-[0.9em]"
+                                                className="rounded-md border border-primary/22 bg-primary/14 px-1.5 py-0.5 text-[0.9em]"
                                             >
                                                 {children}
                                             </code>
@@ -202,8 +202,8 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
             {/* User avatar */}
             {isUser && (
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                    <User className="w-5 h-5 text-white" />
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/14 bg-white/8">
+                    <User className="h-5 w-5 text-white" />
                 </div>
             )}
         </div>

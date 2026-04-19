@@ -16,11 +16,17 @@ export function AttachmentStrip({ attachments, onRemove }: AttachmentStripProps)
             {attachments.map((attachment) => (
                 <div
                     key={attachment.id}
-                    className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/85"
+                    className={`interactive-lift flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs transition-[border-color,background-color,box-shadow,color] ${
+                        attachment.uploadState === "error"
+                            ? "border-red-400/30 bg-red-500/10 text-red-100"
+                            : attachment.uploadState === "uploading"
+                            ? "border-violet-300/35 bg-violet-500/10 text-violet-50 shadow-[0_8px_22px_rgb(98_62_224/18%)]"
+                            : "border-white/10 bg-white/5 text-white/85 hover:border-primary/30 hover:bg-primary/10"
+                    }`}
                 >
                     <div className="flex h-4 w-4 items-center justify-center">
                         {attachment.uploadState === "uploading" ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-300" />
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-200" />
                         ) : attachment.uploadState === "error" ? (
                             <TriangleAlert className="h-3.5 w-3.5 text-red-400" />
                         ) : (
@@ -40,7 +46,7 @@ export function AttachmentStrip({ attachments, onRemove }: AttachmentStripProps)
                     </div>
 
                     <button
-                        className="text-white/50 hover:text-white"
+                        className="rounded-full p-0.5 text-white/55 hover:bg-white/10 hover:text-white"
                         onClick={() => onRemove(attachment.id)}
                         aria-label={`Remove ${attachment.name}`}
                     >

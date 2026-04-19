@@ -113,15 +113,10 @@ export function useChatAttachments(selectedModel: string) {
         fileInputRef.current?.click();
     };
 
-    const handleComputerFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
-        const files = event.target.files;
-        if (!files || files.length === 0) return;
-        if (!ensureModelSupportsUpload()) {
-            event.target.value = "";
-            return;
-        }
+    const queueComputerFiles = async (selected: File[]) => {
+        if (selected.length === 0) return;
+        if (!ensureModelSupportsUpload()) return;
 
-        const selected = Array.from(files);
         let queuedThisBatch = 0;
         let queuedBytes = 0;
 
@@ -192,8 +187,17 @@ export function useChatAttachments(selectedModel: string) {
                 setAttachError(message);
             }
         }
+    };
 
+    const handleComputerFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
+        await queueComputerFiles(Array.from(files));
         event.target.value = "";
+    };
+
+    const handleDroppedFiles = async (files: File[]) => {
+        await queueComputerFiles(files);
     };
 
     const fetchDriveResults = async (query = "") => {
@@ -344,6 +348,7 @@ export function useChatAttachments(selectedModel: string) {
         openComputerPicker,
         openDrivePicker,
         handleComputerFilesSelected,
+        handleDroppedFiles,
         addDriveAttachment,
         clearAttachments,
         restoreAttachments,

@@ -139,8 +139,8 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[420px] max-w-[95vw] border-white/10 bg-[#0A0A0A] p-0 text-white sm:max-w-[420px]">
-        <SheetHeader className="border-b border-white/10 px-5 py-4">
+      <SheetContent className="w-[420px] max-w-[95vw] p-0 text-white sm:max-w-[420px]">
+        <SheetHeader className="border-b border-white/10 px-5 py-4 pr-12">
           <SheetTitle className="text-white">Daily Reminders</SheetTitle>
           <SheetDescription className="text-white/45">
             Quick reminder panel with upcoming and completed tasks.
@@ -152,32 +152,32 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">{error}</div>
           ) : null}
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="ui-surface rounded-2xl p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">Add Reminder</p>
             <div className="mt-3 space-y-2">
               <input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="What should I remind you about?"
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="w-full rounded-lg border border-input/90 bg-input/45 px-3 py-2 text-sm text-white shadow-[inset_0_1px_0_rgb(255_255_255/4%)] transition-[color,box-shadow,border-color,background-color] outline-none hover:border-primary/35 hover:bg-input/55 focus-visible:border-primary/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <textarea
                 value={details}
                 onChange={(event) => setDetails(event.target.value)}
                 placeholder="Add a short detail"
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="w-full rounded-lg border border-input/90 bg-input/45 px-3 py-2 text-sm text-white shadow-[inset_0_1px_0_rgb(255_255_255/4%)] transition-[color,box-shadow,border-color,background-color] outline-none hover:border-primary/35 hover:bg-input/55 focus-visible:border-primary/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <input
                 type="datetime-local"
                 value={toInputDateTime(scheduledFor)}
                 onChange={(event) => setScheduledFor(event.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                className="w-full rounded-lg border border-input/90 bg-input/45 px-3 py-2 text-sm text-white shadow-[inset_0_1px_0_rgb(255_255_255/4%)] transition-[color,box-shadow,border-color,background-color] outline-none hover:border-primary/35 hover:bg-input/55 focus-visible:border-primary/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <div className="flex gap-2">
                 <select
                   value={priority}
                   onChange={(event) => setPriority(event.target.value)}
-                  className="flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                  className="flex-1 rounded-lg border border-input/90 bg-input/45 px-3 py-2 text-sm text-white shadow-[inset_0_1px_0_rgb(255_255_255/4%)] transition-[color,box-shadow,border-color,background-color] outline-none hover:border-primary/35 hover:bg-input/55 focus-visible:border-primary/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="normal">Normal</option>
                   <option value="high">High</option>
@@ -185,7 +185,7 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
                 <button
                   onClick={addReminder}
                   disabled={saving}
-                  className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90 disabled:opacity-60"
+                  className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_10px_24px_rgb(107_76_255/34%)] transition hover:bg-primary/95 hover:shadow-[0_14px_28px_rgb(107_76_255/40%)] disabled:opacity-60"
                 >
                   {saving ? "Adding..." : "Add"}
                 </button>
@@ -200,13 +200,13 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
               <div className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-xs text-white/45">No upcoming reminders.</div>
             ) : null}
             {upcoming.map((item) => (
-              <div key={item.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+              <div key={item.id} className="ui-surface rounded-xl p-3">
                 <p className="text-sm font-medium text-white">{item.title}</p>
                 <p className="mt-1 text-xs text-white/45">{item.details || "No extra details"}</p>
                 <p className="mt-1 text-xs text-white/45">{item.scheduledFor || "No date set"}</p>
                 <div className="mt-2 flex gap-2">
-                  <button onClick={() => setStatus(item.id, "done")} className="rounded-md border border-white/10 px-2 py-1 text-xs text-white/70 hover:text-white">Done</button>
-                  <button onClick={() => deleteReminder(item.id)} className="rounded-md border border-rose-400/20 px-2 py-1 text-xs text-rose-200 hover:text-rose-100">Delete</button>
+                  <button onClick={() => setStatus(item.id, "done")} className="rounded-md border border-white/10 px-2 py-1 text-xs text-white/70 hover:border-primary/30 hover:text-white">Done</button>
+                  <button onClick={() => deleteReminder(item.id)} className="rounded-md border border-rose-400/20 px-2 py-1 text-xs text-rose-200 hover:border-rose-300/40 hover:text-rose-100">Delete</button>
                 </div>
               </div>
             ))}
@@ -218,7 +218,7 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
               <div className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-xs text-white/45">No completed reminders.</div>
             ) : null}
             {completed.map((item) => (
-              <div key={item.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+              <div key={item.id} className="ui-surface rounded-xl p-3">
                 <p className="text-sm font-medium text-white/80">{item.title}</p>
                 <p className="mt-1 text-xs text-white/45">{item.details || "No extra details"}</p>
                 <p className="mt-1 text-xs text-white/45">{item.scheduledFor || "No date set"}</p>

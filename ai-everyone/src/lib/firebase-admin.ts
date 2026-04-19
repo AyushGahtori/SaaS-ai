@@ -10,8 +10,8 @@
 import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStorage, type Storage } from "firebase-admin/storage";
-import path from "path";
 import fs from "fs";
+import { resolveServiceAccountPath } from "@/lib/firebase-admin-path";
 
 let adminApp: App;
 
@@ -26,9 +26,10 @@ function normalizeBucketName(value: string | undefined): string | undefined {
     return bucketOnly || undefined;
 }
 
+export { resolveServiceAccountPath } from "@/lib/firebase-admin-path";
+
 if (!getApps().length) {
-    const keyPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "./serviceAccountKey.json";
-    const resolvedPath = path.resolve(process.cwd(), keyPath);
+    const resolvedPath = resolveServiceAccountPath();
 
     if (!fs.existsSync(resolvedPath)) {
         throw new Error(

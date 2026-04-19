@@ -56,6 +56,16 @@ const CHIP_LABELS: Record<AgentFilterChip, string> = {
   reminders: "Reminders",
 };
 
+interface AgentsCatalogPayload {
+  allAgents: Agent[];
+  featuredAgents: Agent[];
+  trendingAgents: Agent[];
+}
+
+interface AgentsViewProps {
+  initialCatalog?: AgentsCatalogPayload;
+}
+
 async function getAuthHeaders() {
   const token = await auth.currentUser?.getIdToken();
   if (!token) {
@@ -68,16 +78,16 @@ async function getAuthHeaders() {
   };
 }
 
-export const AgentsView = () => {
-  const [allAgents, setAllAgents] = useState<Agent[]>([]);
-  const [featuredAgents, setFeaturedAgents] = useState<Agent[]>([]);
-  const [trendingAgents, setTrendingAgents] = useState<Agent[]>([]);
+export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
+  const [allAgents, setAllAgents] = useState<Agent[]>(() => initialCatalog?.allAgents ?? []);
+  const [featuredAgents, setFeaturedAgents] = useState<Agent[]>(() => initialCatalog?.featuredAgents ?? []);
+  const [trendingAgents, setTrendingAgents] = useState<Agent[]>(() => initialCatalog?.trendingAgents ?? []);
   const [installedIds, setInstalledIds] = useState<string[]>([]);
   const [accessibleIds, setAccessibleIds] = useState<string[]>([]);
   const [connectedBundleIds, setConnectedBundleIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeChip, setActiveChip] = useState<AgentFilterChip>("all");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialCatalog);
   const [uid, setUid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,7 +112,9 @@ export const AgentsView = () => {
   const loadMarketplace = useCallback(async () => {
     if (!uid) return;
 
-    setLoading(true);
+    if (!initialCatalog) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -122,7 +134,7 @@ export const AgentsView = () => {
     } finally {
       setLoading(false);
     }
-  }, [loadMarketplaceState, uid]);
+  }, [initialCatalog, loadMarketplaceState, uid]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -371,7 +383,7 @@ export const AgentsView = () => {
   if (loading) {
     return (
       <div className="flex h-[calc(100vh-64px)] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-white/30" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -383,7 +395,7 @@ export const AgentsView = () => {
     <div className="custom-scrollbar h-[calc(100vh-64px)] overflow-y-auto overflow-x-hidden w-full">
       <div className="max-w-7xl space-y-10 px-6 py-8">
         <div className="flex items-center gap-3">
-          <Bot className="h-8 w-8 text-indigo-400" />
+          <Bot className="h-8 w-8 text-violet-300" />
           <div>
             <h1 className="text-2xl font-bold text-white/95">Agent Marketplace</h1>
             <p className="text-sm text-white/40">
@@ -395,7 +407,7 @@ export const AgentsView = () => {
         <AgentsSearchBar value={searchQuery} onChange={setSearchQuery} />
 
         {error ? (
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <div className="status-pill-error rounded-2xl px-4 py-3 text-sm">
             {error}
           </div>
         ) : null}
@@ -405,9 +417,9 @@ export const AgentsView = () => {
             <button
               key={chip}
               onClick={() => setActiveChip(chip)}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${activeChip === chip
-                  ? "border-white/30 bg-white/[0.16] text-white"
-                  : "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/20 hover:text-white"
+              className={`interactive-lift rounded-full border px-3 py-1 text-xs font-semibold transition-[background-color,border-color,color,box-shadow,transform] ${activeChip === chip
+                  ? "border-primary/35 bg-primary/18 text-white shadow-[0_8px_20px_rgb(92_53_229/20%)]"
+                  : "border-white/10 bg-white/[0.04] text-white/70 hover:border-primary/30 hover:bg-primary/10 hover:text-white"
                 }`}
             >
               {CHIP_LABELS[chip]}

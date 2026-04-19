@@ -42,7 +42,7 @@ export const AttachFile = ({
                 <Button
                     variant="ghost"
                     size="icon"
-                    className="size-8 shrink-0 text-muted-foreground hover:text-foreground hover:bg-transparent"
+                    className="size-8 shrink-0 rounded-lg border border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/10 hover:text-foreground"
                     aria-label="Attach file"
                     title="Attach file"
                     disabled={disabled}
@@ -52,17 +52,17 @@ export const AttachFile = ({
             </DropdownMenuTrigger>
             <DropdownMenuContent
                 align="start"
-                className="w-52 border border-white/10 bg-[#0C0D0D] text-white backdrop-blur-md"
+                className="w-52 text-white"
             >
                 <DropdownMenuItem
                     onClick={onUploadFromComputer}
-                    className="cursor-pointer text-white focus:bg-white/10 focus:text-white"
+                    className="cursor-pointer text-white"
                 >
                     Upload from computer
                 </DropdownMenuItem>
                 <DropdownMenuItem
                     onClick={onUploadFromDrive}
-                    className="cursor-pointer text-white focus:bg-white/10 focus:text-white"
+                    className="cursor-pointer text-white"
                 >
                     Upload from Drive
                 </DropdownMenuItem>

@@ -18,7 +18,7 @@ export const AgentsSearchBar = ({ value, onChange }: AgentsSearchBarProps) => {
         placeholder="Search agents..."
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-white/[0.08] bg-white/[0.03] py-3.5 pl-12 pr-4 text-sm text-white/90 placeholder-white/25 outline-none backdrop-blur-sm transition-all duration-200 focus:border-white/[0.18] focus:bg-white/[0.05] focus:ring-1 focus:ring-white/[0.08]"
+        className="ui-surface w-full rounded-2xl border py-3.5 pl-12 pr-4 text-sm text-white/92 placeholder:text-white/28 outline-none transition-[background-color,border-color,box-shadow] focus:border-primary/35 focus:bg-primary/8 focus:shadow-[0_12px_26px_rgb(92_53_229/18%)]"
       />
     </div>
   );

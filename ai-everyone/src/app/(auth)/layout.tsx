@@ -4,7 +4,7 @@ interface Props {
 
 const Layout = ({ children }: Props) => {
     return (
-        <div className="dark min-h-screen w-full bg-black">
+        <div className="dark min-h-screen w-full bg-[var(--surface-0)] text-foreground">
             {children}
         </div>
     );

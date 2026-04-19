@@ -84,7 +84,7 @@ export const ChatMessageList: React.FC = () => {
         <div
             ref={listRef}
             onScroll={handleScroll}
-            className="flex-1 custom-scrollbar overflow-y-auto"
+            className="custom-scrollbar flex-1 overflow-y-auto"
         >
             <div className="max-w-6xl mx-auto py-4 px-4">
                 {/* Render all messages uniformly — no voice session grouping */}
@@ -108,11 +108,11 @@ export const ChatMessageList: React.FC = () => {
                 {/* Typing indicator while waiting for AI response */}
                 {showThinking && (
                     <div className="flex gap-3 px-4 py-4">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                            <Bot className="w-5 h-5 text-white thinking-pulse" />
+                        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/10 shadow-[0_8px_20px_rgb(92_53_229/24%)]">
+                            <Bot className="thinking-pulse h-5 w-5 text-violet-100" />
                         </div>
-                        <div className="flex items-center gap-2 bg-white/5 rounded-2xl rounded-bl-sm px-4 py-3">
-                            <span className="text-sm text-white/70 thinking-pulse">Thinking</span>
+                        <div className="ui-surface flex items-center gap-2 rounded-2xl rounded-bl-sm px-4 py-3">
+                            <span className="thinking-pulse text-sm text-white/82">Thinking</span>
                             <span className="thinking-dots" aria-hidden="true">
                                 <span>.</span>
                                 <span>.</span>

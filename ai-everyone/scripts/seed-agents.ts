@@ -1,11 +1,13 @@
 import "dotenv/config";
 import * as admin from "firebase-admin";
+import fs from "fs";
 import { MARKETPLACE_AGENTS } from "../src/lib/agents/marketplace";
+import { resolveServiceAccountPath } from "../src/lib/firebase-admin-path";
 
-const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+const serviceAccountPath = resolveServiceAccountPath();
 
-if (!serviceAccountPath) {
-    console.error("Missing FIREBASE_SERVICE_ACCOUNT_KEY in .env");
+if (!fs.existsSync(serviceAccountPath)) {
+    console.error(`Service account key not found at "${serviceAccountPath}"`);
     process.exit(1);
 }
 

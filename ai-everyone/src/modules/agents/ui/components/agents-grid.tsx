@@ -21,7 +21,7 @@ export const AgentsGrid = ({
 }: AgentsGridProps) => {
   if (agents.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-white/30">
+      <div className="ui-surface flex flex-col items-center justify-center rounded-2xl py-16 text-white/40">
         <p className="text-lg font-semibold">No agents found</p>
         <p className="mt-1 text-sm">Try adjusting your search</p>
       </div>
@@ -30,11 +30,11 @@ export const AgentsGrid = ({
 
   return (
     <section>
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-5 flex items-center justify-between">
         <h2 className="text-[18px] font-semibold text-white/95 tracking-tight">{title}</h2>
       </div>
 
-      <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 sm:gap-x-7 sm:gap-y-6 lg:grid-cols-3 xl:grid-cols-3">
         {agents.map((agent) => (
           <AgentCard
             key={agent.id}

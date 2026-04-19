@@ -30,17 +30,17 @@ export function SendStopButton({
             <button
                 onClick={onStop}
                 disabled={isStopping}
-                className="relative flex h-8 w-8 items-center justify-center rounded-full bg-white/15 transition-all duration-300 hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-70"
-                aria-label="Stop response"
+                className="relative flex h-8 w-8 items-center justify-center rounded-full border border-primary/35 bg-primary/16 text-white shadow-[0_8px_22px_rgb(92_53_229/26%)] transition-all duration-200 hover:bg-primary/24 hover:shadow-[0_10px_24px_rgb(92_53_229/32%)] disabled:cursor-not-allowed disabled:opacity-70"
+                aria-label={isStopping ? "Stopping..." : "Stop response"}
                 title={isStopping ? "Stopping..." : "Stop response"}
             >
                 {isStopping && (
-                    <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-300 border-r-cyan-300 animate-spin" />
+                    <span className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-violet-200 border-r-violet-200" />
                 )}
                 {isStopping ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-white" />
+                    <Loader2 className="h-4 w-4 animate-spin text-violet-100" />
                 ) : (
-                    <Square className="h-3.5 w-3.5 fill-white text-white" />
+                    <Square className="h-3.5 w-3.5 fill-violet-50 text-violet-50" />
                 )}
             </button>
         );
@@ -52,7 +52,7 @@ export function SendStopButton({
         <button
             onClick={onSend}
             disabled={sendDisabled}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-all duration-300 hover:bg-white/20 disabled:opacity-40"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/28 bg-primary/14 text-violet-50 shadow-[0_8px_22px_rgb(92_53_229/24%)] transition-all duration-200 hover:bg-primary/24 hover:shadow-[0_10px_24px_rgb(92_53_229/30%)] disabled:opacity-40"
             aria-label="Send message"
             title="Send message"
         >

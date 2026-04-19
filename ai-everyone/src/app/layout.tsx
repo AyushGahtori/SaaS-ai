@@ -1,10 +1,20 @@
 import './globals.css'
-import { Inter } from 'next/font/google'
+import { Manrope, Space_Grotesk } from 'next/font/google'
 
 import { TRPCReactProvider } from '@/trpc/client'
 import { FirestoreAbortNoiseGuard } from '@/components/dev/firestore-abort-noise-guard'
 
-const inter = Inter({ subsets: ['latin'] })
+const manrope = Manrope({
+  subsets: ['latin'],
+  variable: '--font-manrope',
+})
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  variable: '--font-space-grotesk',
+  display: 'swap',
+  preload: false,
+})
 
 export const metadata = {
   title: 'Pian',
@@ -19,7 +29,10 @@ export default function RootLayout({
   return (
     <TRPCReactProvider>
       <html lang="en" suppressHydrationWarning>
-        <body suppressHydrationWarning className={`${inter.className} min-h-screen bg-black text-white`}>
+        <body
+          suppressHydrationWarning
+          className={`${manrope.variable} ${spaceGrotesk.variable} min-h-screen bg-background text-foreground antialiased`}
+        >
           <FirestoreAbortNoiseGuard />
           {children}
         </body>

@@ -22,22 +22,22 @@ export function DriveUploadSigninOverlay({
 }: DriveUploadSigninOverlayProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-md border border-white/10 bg-[#0C0D0D] p-5 text-white">
+            <DialogContent className="max-w-md p-5 text-white">
                 <DialogHeader className="sr-only">
                     <DialogTitle>Drive Upload Sign-In</DialogTitle>
                 </DialogHeader>
                 <div className="mb-4">
                     <div>
-                        <p className="text-sm font-semibold text-cyan-100">Drive Upload Sign-In</p>
+                        <p className="text-sm font-semibold text-violet-100">Drive Upload Sign-In</p>
                         <p className="mt-1 text-xs text-white/60">
                             Sign in to Google Drive for chat uploads only.
                         </p>
                     </div>
                 </div>
 
-                <div className="mb-4 rounded-lg border border-white/10 bg-[#0C0D0D] px-3 py-2 text-xs text-white/70">
+                <div className="ui-surface mb-4 rounded-lg px-3 py-2 text-xs text-white/70">
                     This is separate from Agent connections. It only enables file picker access for
-                    "Upload from Drive" in chat.
+                    &quot;Upload from Drive&quot; in chat.
                 </div>
 
                 {authError ? (
@@ -50,7 +50,7 @@ export function DriveUploadSigninOverlay({
                     type="button"
                     onClick={onSignIn}
                     disabled={isSigningIn || !isReady}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#0C0D0D] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#151616] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_10px_24px_rgb(107_76_255/34%)] transition hover:bg-primary/95 hover:shadow-[0_14px_28px_rgb(107_76_255/40%)] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                     {isSigningIn ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     {isSigningIn ? "Signing in..." : "Sign in to Drive"}

@@ -19,7 +19,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-import { ChevronDownIcon, CreditCardIcon, LogOutIcon } from "lucide-react";
+import { ChevronRightIcon, CreditCardIcon, LogOutIcon } from "lucide-react";
 
 import { useRouter } from "next/navigation";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -42,7 +42,7 @@ export const DashboardUserButton = () => {
   if (isMobile) {
     return (
       <Drawer>
-        <DrawerTrigger asChild className="rounded-lg border border-border/10 p-3 w-full flex items-center justify-between bg-white/5 hover:bg-[#0C0D0D] hover:border-white/20 hover:shadow-[inset_0_0_12px_2px_rgba(255,255,255,0.06)] transition-all duration-300 overflow-hidden gap-x-2">
+        <DrawerTrigger asChild className="ui-surface w-full overflow-hidden rounded-xl border border-border/70 p-3 transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/30 hover:shadow-[0_12px_24px_rgb(93_58_216/22%)]">
           {/* asChild only accepts a single child, so wrap everything in one container */}
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -66,7 +66,7 @@ export const DashboardUserButton = () => {
                 </span>
               </div>
             </div>
-            <ChevronDownIcon className="size-4 text-muted-foreground shrink-0 ml-2" />
+            <ChevronRightIcon className="ml-2 size-4 shrink-0 text-muted-foreground" />
           </div>
         </DrawerTrigger>
         <DrawerContent>
@@ -79,14 +79,14 @@ export const DashboardUserButton = () => {
               <Button
                 variant="outline"
                 onClick={() => router.push("/billing")}>
-                <CreditCardIcon className="size-4 text-black" />
+                <CreditCardIcon className="size-4" />
                 Billing
               </Button>
               <Button
                 variant="outline"
                 onClick={handleLogout}
                 className="mt-2">
-                <LogOutIcon className="size-4 text-black" />
+                <LogOutIcon className="size-4" />
                 Logout
               </Button>
             </div>
@@ -98,7 +98,7 @@ export const DashboardUserButton = () => {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="rounded-lg border border-border/10 p-3 w-full flex items-center justify-between bg-white/5 hover:bg-[#0C0D0D] hover:border-white/20 hover:shadow-[inset_0_0_12px_2px_rgba(255,255,255,0.06)] transition-all duration-300 overflow-hidden gap-x-2">
+      <DropdownMenuTrigger className="ui-surface flex w-full items-center justify-between gap-2 overflow-hidden rounded-xl border border-border/70 p-3 text-left transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/30 hover:shadow-[0_12px_24px_rgb(93_58_216/22%)]">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {data.user.image ? (
             <Avatar>
@@ -120,9 +120,9 @@ export const DashboardUserButton = () => {
             </span>
           </div>
         </div>
-        <ChevronDownIcon className="size-4 text-muted-foreground shrink-0 ml-2" />
+        <ChevronRightIcon className="ml-2 size-4 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="right" className="w-72 bg-[#0C0D0D] text-white border-white/10">
+      <DropdownMenuContent align="end" side="right" className="w-72 text-white">
         <DropdownMenuLabel>
           <div className="flex flex-col gap-1">
             <span className="text-sm truncate w-full">
