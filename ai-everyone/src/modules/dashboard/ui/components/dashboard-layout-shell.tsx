@@ -33,8 +33,8 @@ export function DashboardLayoutShell({ children }: DashboardLayoutShellProps) {
     <div className="flex h-screen w-full overflow-hidden">
       {sidebar}
 
-      <main className="flex-1 overflow-hidden bg-black text-foreground">
-        <DashboardNavbar enableChatRuntime={chatRuntimeEnabled} />
+      <main className="flex-1 overflow-hidden bg-[var(--surface-0)] text-foreground">
+        <DashboardNavbar />
         {children}
       </main>
     </div>

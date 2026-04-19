@@ -112,7 +112,9 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
   const loadMarketplace = useCallback(async () => {
     if (!uid) return;
 
-    setLoading(true);
+    if (!initialCatalog) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -132,7 +134,7 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
     } finally {
       setLoading(false);
     }
-  }, [loadMarketplaceState, uid]);
+  }, [initialCatalog, loadMarketplaceState, uid]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {

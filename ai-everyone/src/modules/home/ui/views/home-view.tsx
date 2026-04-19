@@ -18,18 +18,17 @@ const QUICK_ACTIONS = [
   { label: "Email", prompt: "I want to send an email", icon: Mail },
 ] as const;
 
-const TOP_ROW_ACTIONS = [
-  QUICK_ACTIONS[0], // Schedule Meeting
-  QUICK_ACTIONS[2], // Message
-  QUICK_ACTIONS[3], // Generate PPT
-  QUICK_ACTIONS[5], // Update Todo
-] as const;
+const pickQuickActions = (labels: readonly string[]) =>
+  labels.map((label) => {
+    const action = QUICK_ACTIONS.find((item) => item.label === label);
+    if (!action) {
+      throw new Error(`Unknown quick action label: ${label}`);
+    }
+    return action;
+  });
 
-const BOTTOM_ROW_ACTIONS = [
-  QUICK_ACTIONS[1], // Call
-  QUICK_ACTIONS[4], // Summarize Document
-  QUICK_ACTIONS[6], // Email
-] as const;
+const TOP_ROW_ACTIONS = pickQuickActions(["Schedule Meeting", "Message", "Generate PPT", "Update Todo"]);
+const BOTTOM_ROW_ACTIONS = pickQuickActions(["Call", "Summarize Document", "Email"]);
 
 export const HomeView: React.FC = () => {
   const { data: session } = useSession();

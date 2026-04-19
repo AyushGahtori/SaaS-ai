@@ -31,7 +31,7 @@ export function SendStopButton({
                 onClick={onStop}
                 disabled={isStopping}
                 className="relative flex h-8 w-8 items-center justify-center rounded-full border border-primary/35 bg-primary/16 text-white shadow-[0_8px_22px_rgb(92_53_229/26%)] transition-all duration-200 hover:bg-primary/24 hover:shadow-[0_10px_24px_rgb(92_53_229/32%)] disabled:cursor-not-allowed disabled:opacity-70"
-                aria-label="Stop response"
+                aria-label={isStopping ? "Stopping..." : "Stop response"}
                 title={isStopping ? "Stopping..." : "Stop response"}
             >
                 {isStopping && (

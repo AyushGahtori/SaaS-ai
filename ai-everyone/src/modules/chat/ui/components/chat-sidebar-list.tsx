@@ -34,16 +34,21 @@ export const ChatSidebarList: React.FC = () => {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const confirmDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || isDeleting) return;
 
+    setDeleteError(null);
     setIsDeleting(true);
     try {
       await removeChatById(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete chat. Please try again.";
+      setDeleteError(message);
     } finally {
       setIsDeleting(false);
-      setDeleteTarget(null);
     }
   };
 
@@ -87,6 +92,7 @@ export const ChatSidebarList: React.FC = () => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+                    setDeleteError(null);
                     setDeleteTarget({ id: chat.id, title: chat.title });
                   }}
                   className="flex-shrink-0 rounded p-1 transition-colors hover:bg-white/10"
@@ -104,6 +110,7 @@ export const ChatSidebarList: React.FC = () => {
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {
           if (!open && !isDeleting) {
+            setDeleteError(null);
             setDeleteTarget(null);
           }
         }}
@@ -126,6 +133,7 @@ export const ChatSidebarList: React.FC = () => {
               Visit <span className="text-white/75 underline underline-offset-2">settings</span> to delete any
               memories saved during this chat.
             </p>
+            {deleteError ? <p className="pt-1 text-sm text-red-300">{deleteError}</p> : null}
           </AlertDialogHeader>
 
           <AlertDialogFooter className="mt-2 flex-row justify-end gap-3">
@@ -137,11 +145,12 @@ export const ChatSidebarList: React.FC = () => {
             </AlertDialogCancel>
 
             <AlertDialogAction
+              disabled={isDeleting}
               onClick={(e) => {
                 e.preventDefault();
                 void confirmDelete();
               }}
-              className="h-11 rounded-full !border-[#4c1d95] !bg-[#4c1d95] px-6 text-base font-semibold !text-white !shadow-none hover:!bg-[#5b21b6]"
+              className="h-11 rounded-full border-[#4c1d95]! bg-[#4c1d95]! px-6 text-base font-semibold text-white! shadow-none! hover:bg-[#5b21b6]!"
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>

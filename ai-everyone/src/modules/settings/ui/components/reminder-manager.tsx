@@ -215,7 +215,7 @@ export function ReminderManager() {
           <h2 className="text-lg font-semibold text-white">Upcoming</h2>
           <div className="mt-4 space-y-3">
             {pendingReminders.length ? pendingReminders.map((reminder) => (
-              <div key={reminder.id} className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+              <div key={reminder.id} className="rounded-xl border border-input/90 bg-input/45 px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium text-white">{reminder.title}</p>
@@ -251,7 +251,7 @@ export function ReminderManager() {
           <h2 className="text-lg font-semibold text-white">Completed</h2>
           <div className="mt-4 space-y-3">
             {completedReminders.length ? completedReminders.map((reminder) => (
-              <div key={reminder.id} className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+              <div key={reminder.id} className="rounded-xl border border-input/90 bg-input/45 px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium text-white/75">{reminder.title}</p>

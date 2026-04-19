@@ -198,9 +198,6 @@ export function useChatAttachments(selectedModel: string) {
 
     const handleDroppedFiles = async (files: File[]) => {
         await queueComputerFiles(files);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-        }
     };
 
     const fetchDriveResults = async (query = "") => {

@@ -28,7 +28,7 @@ const formSchema = z
   .object({
     name: z.string().min(1, { message: "Name is required" }),
     email: z.string().min(1, "Email is required").email("Invalid email address"),
-    password: z.string().min(1, { message: "Password is required" }),
+    password: z.string().min(8, { message: "Password must be at least 8 characters" }),
     confirmPassword: z.string().min(1, { message: "Confirm password is required" }),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -161,7 +161,7 @@ export const SignUpView = () => {
                 </Button>
 
                 <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-white/10">
-                  <span className="relative z-10 bg-[var(--surface-1)] px-2 text-muted-foreground">
+                  <span className="relative z-10 bg-(--surface-1) px-2 text-muted-foreground">
                     Or continue with
                   </span>
                 </div>

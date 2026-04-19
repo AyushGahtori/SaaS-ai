@@ -140,7 +140,7 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-[420px] max-w-[95vw] p-0 text-white sm:max-w-[420px]">
-        <SheetHeader className="border-b border-white/10 px-5 py-4">
+        <SheetHeader className="border-b border-white/10 px-5 py-4 pr-12">
           <SheetTitle className="text-white">Daily Reminders</SheetTitle>
           <SheetDescription className="text-white/45">
             Quick reminder panel with upcoming and completed tasks.
@@ -159,25 +159,25 @@ export function ReminderDrawer({ open, onOpenChange }: ReminderDrawerProps) {
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="What should I remind you about?"
-                className="w-full rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-sm text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
+                className="w-full rounded-lg border border-input/90 bg-input/45 px-3 py-2 text-sm text-white shadow-[inset_0_1px_0_rgb(255_255_255/4%)] transition-[color,box-shadow,border-color,background-color] outline-none hover:border-primary/35 hover:bg-input/55 focus-visible:border-primary/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <textarea
                 value={details}
                 onChange={(event) => setDetails(event.target.value)}
                 placeholder="Add a short detail"
-                className="w-full rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-sm text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
+                className="w-full rounded-lg border border-input/90 bg-input/45 px-3 py-2 text-sm text-white shadow-[inset_0_1px_0_rgb(255_255_255/4%)] transition-[color,box-shadow,border-color,background-color] outline-none hover:border-primary/35 hover:bg-input/55 focus-visible:border-primary/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <input
                 type="datetime-local"
                 value={toInputDateTime(scheduledFor)}
                 onChange={(event) => setScheduledFor(event.target.value)}
-                className="w-full rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-sm text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
+                className="w-full rounded-lg border border-input/90 bg-input/45 px-3 py-2 text-sm text-white shadow-[inset_0_1px_0_rgb(255_255_255/4%)] transition-[color,box-shadow,border-color,background-color] outline-none hover:border-primary/35 hover:bg-input/55 focus-visible:border-primary/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <div className="flex gap-2">
                 <select
                   value={priority}
                   onChange={(event) => setPriority(event.target.value)}
-                  className="flex-1 rounded-xl border border-input/90 bg-input/45 px-3 py-2 text-sm text-white outline-none hover:border-primary/35 focus-visible:border-primary/55"
+                  className="flex-1 rounded-lg border border-input/90 bg-input/45 px-3 py-2 text-sm text-white shadow-[inset_0_1px_0_rgb(255_255_255/4%)] transition-[color,box-shadow,border-color,background-color] outline-none hover:border-primary/35 hover:bg-input/55 focus-visible:border-primary/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="normal">Normal</option>
                   <option value="high">High</option>

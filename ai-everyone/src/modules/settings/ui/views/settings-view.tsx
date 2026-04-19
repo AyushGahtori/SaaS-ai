@@ -162,6 +162,13 @@ export function SettingsView() {
     }
   };
 
+  const confirmUninstall = (item: Agent) => {
+    const actionLabel = item.kind === "bundle" ? "disconnect" : "uninstall";
+    const confirmed = window.confirm(`Are you sure you want to ${actionLabel} "${item.name}"?`);
+    if (!confirmed) return;
+    void handleUninstall(item);
+  };
+
   const installedItems = useMemo(
     () => marketplaceItems.filter((item) => installedIds.includes(item.id)),
     [installedIds, marketplaceItems]
@@ -320,7 +327,7 @@ export function SettingsView() {
                       </div>
                     </div>
                     <button
-                      onClick={() => handleUninstall(item)}
+                      onClick={() => confirmUninstall(item)}
                       className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:border-primary/30 hover:text-white"
                     >
                       Disconnect
@@ -350,7 +357,7 @@ export function SettingsView() {
                       </div>
                     </div>
                     <button
-                      onClick={() => handleUninstall(item)}
+                      onClick={() => confirmUninstall(item)}
                       className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:border-primary/30 hover:text-white"
                     >
                       Uninstall
