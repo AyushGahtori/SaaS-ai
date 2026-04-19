@@ -50,7 +50,7 @@ def _normalize_gmail_action(action: str) -> str:
         return "reply"
     if raw in {"search", "search_emails"}:
         return "search"
-    if raw in {"read", "read_email"}:
+    if raw in {"read", "read_email", "summarize_email", "summarise_email", "email_summary", "summarize_message"}:
         return "read"
     if raw in {"mark_read", "mark_as_read", "mark_email_as_read"}:
         return "mark_read"
