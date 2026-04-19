@@ -9,6 +9,10 @@ import { useChatAttachments } from "@/modules/chat/upload/use-chat-attachments";
 import { AttachmentStrip } from "@/modules/chat/upload/components/attachment-strip";
 import { DrivePickerDialog } from "@/modules/chat/upload/components/drive-picker-dialog";
 import { DriveUploadSigninOverlay } from "@/modules/chat/upload/components/drive-upload-signin-overlay";
+import {
+  extractClipboardFiles,
+  readClipboardFilesFallback,
+} from "@/modules/chat/upload/clipboard-files";
 import { SendStopButton } from "@/modules/chat/ui/components/send-stop-button";
 import VoiceBar from "@/modules/chat/ui/components/VoiceBar";
 
@@ -58,6 +62,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
     fileInputRef,
     removeAttachment,
     openComputerPicker,
+    addComputerFiles,
     openDrivePicker,
     handleComputerFilesSelected,
     handleDroppedFiles,
@@ -128,6 +133,20 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
       event.preventDefault();
       void handleSend();
     }
+  };
+
+  const onTextareaPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const immediateFiles = extractClipboardFiles(event.clipboardData);
+    if (immediateFiles.length > 0) {
+      event.preventDefault();
+      void addComputerFiles(immediateFiles);
+      return;
+    }
+
+    void readClipboardFilesFallback().then((fallbackFiles) => {
+      if (fallbackFiles.length === 0) return;
+      void addComputerFiles(fallbackFiles);
+    });
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
@@ -217,6 +236,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
                   value={value}
                   onChange={(event) => setValue(event.target.value)}
                   onKeyDown={onTextareaKeyDown}
+                  onPaste={onTextareaPaste}
                   aria-label="Chat message input"
                 />
 
