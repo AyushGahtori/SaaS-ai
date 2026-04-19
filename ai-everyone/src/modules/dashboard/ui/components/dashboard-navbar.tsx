@@ -43,7 +43,7 @@ export const DashboardNavbar = () => {
       <DashboardCommand open={open} setOpen={setOpen} />
       <ReminderDrawer open={remindersOpen} onOpenChange={setRemindersOpen} />
 
-      <div className="flex items-center gap-x-2 bg-[var(--surface-0)] px-4 py-3">
+      <div className="flex items-center gap-x-2 bg-black px-4 py-3">
         <Button
           className="size-9 border-white/8 bg-[#0C0D0D] p-0 text-white hover:border-primary/28 hover:bg-primary/10 hover:shadow-[0_10px_24px_rgb(94_60_220/24%)]"
           variant="outline"

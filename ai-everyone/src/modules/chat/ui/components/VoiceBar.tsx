@@ -5,98 +5,107 @@ import { X } from 'lucide-react'
 import { subscribeToTask } from '@/lib/firestore-tasks'
 import { useChatContext } from '@/modules/chat/context/chat-context'
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
 type VoiceBarState = 'connecting' | 'listening' | 'thinking' | 'speaking'
 
 interface VoiceBarProps {
-  onSendMessage: (text: string, isVoice: boolean) => Promise<{ type: string; content?: string; taskId?: string } | undefined>
+  onSendMessage: (
+    text: string,
+    isVoice: boolean
+  ) => Promise<{ type: string; content?: string; taskId?: string } | undefined>
   onClose: () => void
   onFirstMessage?: () => void
 }
 
-// ── CSS-animated waveform ────────────────────────────────────────────────────
-// Matches old VoiceModal's fake CSS bars. No getUserMedia, no mic lock.
+function WaveformBars({ state }: { state: VoiceBarState }) {
+  const bars = [58, 34, 46, 28, 60, 64, 40, 52, 66, 48, 36, 30, 62, 68, 44, 56, 42, 32, 60, 66, 46, 54, 38, 28, 58, 62, 40, 50, 34, 60]
+  const isListening = state === 'listening'
+  const isSpeaking = state === 'speaking'
+  const isThinking = state === 'thinking'
+  const isActive = isListening || isSpeaking
 
-function WaveformBars({ active }: { active: boolean }) {
-  const heights = [16, 26, 36, 46, 54, 46, 36, 26, 36, 46, 36, 26, 16]
-  if (!active) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, height: 32 }}>
-        {heights.map((_, i) => (
-          <div key={i} style={{ width: 2, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.25)' }} />
-        ))}
-      </div>
-    )
-  }
   return (
     <>
       <style>{`
-        @keyframes vbBar {
-          from { transform: scaleY(0.25); opacity: 0.55; }
-          to   { transform: scaleY(1.0);  opacity: 1.0;  }
+        @keyframes vb-wave-listen {
+          0% { transform: scaleY(0.55); opacity: 0.52; }
+          100% { transform: scaleY(1); opacity: 1; }
+        }
+
+        @keyframes vb-wave-speak {
+          0% { transform: scaleY(0.45); opacity: 0.5; }
+          100% { transform: scaleY(0.92); opacity: 0.95; }
+        }
+
+        @keyframes vb-wave-think {
+          0%, 100% { opacity: 0.36; }
+          50% { opacity: 0.86; }
         }
       `}</style>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, height: 32, width: '100%', padding: '0 8px' }}>
-        {heights.map((h, i) => (
-          <div key={i} style={{
-            width: 2.5, height: h * 0.6, borderRadius: 2, background: 'rgba(255,255,255,0.85)',
-            transformOrigin: 'center center',
-            animation: `vbBar ${0.5 + (i % 5) * 0.12}s ease-in-out infinite alternate`,
-            animationDelay: `${i * 0.06}s`,
-          }} />
+
+      <div className="flex h-10 w-full items-center justify-center gap-[5px] px-1.5 sm:gap-[6px]">
+        {bars.map((height, index) => (
+          <span
+            key={index}
+            className="rounded-full"
+            style={{
+              width: 4,
+              height: Math.round(height * 0.34),
+              background: isActive ? 'rgb(239 242 248 / 94%)' : 'rgb(239 242 248 / 30%)',
+              boxShadow: isActive ? '0 0 7px rgb(255 255 255 / 10%)' : 'none',
+              transformOrigin: 'center',
+              animation: isListening
+                ? `vb-wave-listen ${0.48 + (index % 6) * 0.08}s cubic-bezier(0.22, 1, 0.36, 1) infinite alternate`
+                : isSpeaking
+                ? `vb-wave-speak ${0.5 + (index % 5) * 0.09}s ease-in-out infinite alternate`
+                : isThinking
+                ? `vb-wave-think ${1 + (index % 4) * 0.18}s ease-in-out infinite`
+                : 'none',
+              animationDelay: `${index * 0.03}s`,
+            }}
+          />
         ))}
       </div>
     </>
   )
 }
 
-// ── Close intent ────────────────────────────────────────────────────────────
-
 const CLOSE_INTENT = /\b(close|close voice|close assistant|stop listening|exit|goodbye|that'?s? all|finish|end session|quit)\b/i
-
-// ─────────────────────────────────────────────────────────────────────────────
-// VOICEBAR COMPONENT
-//
-// Root cause of prior failures: React Strict Mode double-mounts the component
-// in dev. The first SpeechRecognition is aborted, and its async onend callback
-// fires AFTER the second one starts, causing an infinite restart loop where
-// recognition keeps aborting itself. Fix: use a recognition generation counter
-// so stale onend/onerror callbacks are ignored, and delay the initial start.
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: VoiceBarProps) {
   const [state, setState] = useState<VoiceBarState>('connecting')
-  const [statusText, setStatusText] = useState('Starting…')
-  const [debugText, setDebugText] = useState('')  // visible debug
+  const [statusText, setStatusText] = useState('Starting...')
 
-  // Access context for pending voice response (survives remount)
   const { pendingVoiceResponse, setPendingVoiceResponse } = useChatContext()
 
-  // Refs
   const recognitionRef = useRef<any>(null)
   const isSpeakingRef = useRef(false)
   const isClosingRef = useRef(false)
   const interimTextRef = useRef('')
   const mountedRef = useRef(true)
-  const genRef = useRef(0) // recognition generation counter — fixes strict mode
+  const genRef = useRef(0)
 
-  // Stable refs for props
   const onSendMessageRef = useRef(onSendMessage)
   const onCloseRef = useRef(onClose)
   const onFirstMessageRef = useRef(onFirstMessage)
-  useEffect(() => { onSendMessageRef.current = onSendMessage }, [onSendMessage])
-  useEffect(() => { onCloseRef.current = onClose }, [onClose])
-  useEffect(() => { onFirstMessageRef.current = onFirstMessage }, [onFirstMessage])
 
-  // ── Helpers ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    onSendMessageRef.current = onSendMessage
+  }, [onSendMessage])
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    onFirstMessageRef.current = onFirstMessage
+  }, [onFirstMessage])
 
   const pickVoice = () => {
     const all = speechSynthesis.getVoices()
     return (
-      all.find(v => v.name.includes('Google UK English Female')) ||
-      all.find(v => v.name.includes('Google')) ||
-      all.find(v => v.name.includes('Microsoft')) ||
+      all.find((v) => v.name.includes('Google UK English Female')) ||
+      all.find((v) => v.name.includes('Google')) ||
+      all.find((v) => v.name.includes('Microsoft')) ||
       all[0]
     )
   }
@@ -105,61 +114,75 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     if (isClosingRef.current) return
     isClosingRef.current = true
     mountedRef.current = false
-    genRef.current++ // invalidate any pending callbacks
-    try { recognitionRef.current?.abort() } catch {}
+    genRef.current++
+    try {
+      recognitionRef.current?.abort()
+    } catch {}
     speechSynthesis.cancel()
     onCloseRef.current()
   }
 
-  // ── Speak response then re-listen ─────────────────────────────────────
-  // Identical to old VoiceModal.speakResponse
-
   const speakResponse = (text: string) => {
     if (!mountedRef.current || isClosingRef.current) return
+
     isSpeakingRef.current = true
     setState('speaking')
-    setStatusText('Speaking…')
-    setDebugText('TTS: ' + text.slice(0, 60))
-    try { recognitionRef.current?.abort() } catch {}
+    setStatusText('Speaking...')
+
+    try {
+      recognitionRef.current?.abort()
+    } catch {}
+
     speechSynthesis.cancel()
 
     const utter = new SpeechSynthesisUtterance(text)
-    const v = pickVoice(); if (v) utter.voice = v
-    utter.rate = 0.95; utter.pitch = 1.05; utter.volume = 1
+    const voice = pickVoice()
+    if (voice) utter.voice = voice
+
+    utter.rate = 0.95
+    utter.pitch = 1.05
+    utter.volume = 1
 
     utter.onend = () => {
       if (!mountedRef.current || isClosingRef.current) return
       isSpeakingRef.current = false
-      setTimeout(() => { if (mountedRef.current && !isClosingRef.current) startListening() }, 500)
+      setTimeout(() => {
+        if (mountedRef.current && !isClosingRef.current) startListening()
+      }, 500)
     }
+
     utter.onerror = () => {
       isSpeakingRef.current = false
-      if (mountedRef.current && !isClosingRef.current) setTimeout(startListening, 500)
+      if (mountedRef.current && !isClosingRef.current) {
+        setTimeout(startListening, 500)
+      }
     }
+
     speechSynthesis.speak(utter)
   }
-
-  // ── Listen loop ───────────────────────────────────────────────────────
-  // Same as old VoiceModal.startListening, plus generation counter.
 
   const startListeningRef = useRef<() => void>(() => {})
 
   const startListening = () => {
     if (!mountedRef.current || isClosingRef.current || isSpeakingRef.current) return
+
     if (speechSynthesis.speaking || speechSynthesis.pending) {
-      setTimeout(() => { if (mountedRef.current) startListening() }, 300)
+      setTimeout(() => {
+        if (mountedRef.current) startListening()
+      }, 300)
       return
     }
 
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) {
-      setDebugText('ERROR: SpeechRecognition API not available')
+      setStatusText('Voice not supported in this browser')
       return
     }
 
-    try { recognitionRef.current?.abort() } catch {}
+    try {
+      recognitionRef.current?.abort()
+    } catch {}
 
-    // Increment generation — any callbacks from older generations will be ignored
     const myGen = ++genRef.current
 
     const rec = new SR()
@@ -169,53 +192,55 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     recognitionRef.current = rec
 
     rec.onstart = () => {
-      if (genRef.current !== myGen) return // stale
-      if (!mountedRef.current || isSpeakingRef.current) { try { rec.abort() } catch {}; return }
+      if (genRef.current !== myGen) return
+      if (!mountedRef.current || isSpeakingRef.current) {
+        try {
+          rec.abort()
+        } catch {}
+        return
+      }
+
       interimTextRef.current = ''
       setState('listening')
-      setStatusText('Listening…')
-      setDebugText('rec.onstart ✓ (gen ' + myGen + ')')
+      setStatusText('Listening...')
     }
 
-    rec.onresult = (e: any) => {
-      if (genRef.current !== myGen) return // stale
+    rec.onresult = (event: any) => {
+      if (genRef.current !== myGen) return
       let text = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        text += e.results[i][0].transcript
-        if (e.results[i].isFinal) interimTextRef.current = text
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        text += event.results[i][0].transcript
+        if (event.results[i].isFinal) interimTextRef.current = text
       }
-      setDebugText('heard: "' + text + '"')
     }
 
-    rec.onerror = (e: any) => {
-      if (genRef.current !== myGen) return // stale
-      setDebugText('rec.onerror: ' + e.error)
-      if (e.error === 'aborted') return
+    rec.onerror = (event: any) => {
+      if (genRef.current !== myGen) return
+      if (event.error === 'aborted') return
+
       setTimeout(() => {
-        if (mountedRef.current && !isClosingRef.current && !isSpeakingRef.current) startListening()
+        if (mountedRef.current && !isClosingRef.current && !isSpeakingRef.current) {
+          startListening()
+        }
       }, 600)
     }
 
     rec.onend = () => {
-      // ★ KEY FIX: ignore callbacks from older recognition instances
-      if (genRef.current !== myGen) {
-        setDebugText('rec.onend IGNORED (stale gen ' + myGen + ', cur ' + genRef.current + ')')
-        return
-      }
-
+      if (genRef.current !== myGen) return
       if (!mountedRef.current || isClosingRef.current) return
 
       const said = interimTextRef.current.trim()
       interimTextRef.current = ''
 
-      setDebugText('rec.onend — said: "' + said + '"')
-
       if (!said) {
-        if (!isSpeakingRef.current) setTimeout(() => { if (mountedRef.current) startListening() }, 200)
+        if (!isSpeakingRef.current) {
+          setTimeout(() => {
+            if (mountedRef.current) startListening()
+          }, 200)
+        }
         return
       }
 
-      // Close intent
       if (CLOSE_INTENT.test(said)) {
         hardClose()
         return
@@ -223,87 +248,87 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
 
       if (isSpeakingRef.current) return
 
-      // ── Process ────────────────────────────────────────────────
       setState('thinking')
-      setStatusText('Processing…')
-      setDebugText('Sending to LLM: "' + said + '"')
-
+      setStatusText('Processing...')
       onFirstMessageRef.current?.()
 
-      onSendMessageRef.current(said, true).then((responseData) => {
-        // If this VoiceBar instance was unmounted (e.g. HomeView→ChatView
-        // transition during first message), save response to context so
-        // the NEW VoiceBar instance can pick it up and speak it.
-        if (!mountedRef.current || isClosingRef.current) {
-          if (responseData) {
-            let textToSpeak = ''
-            if (responseData.type === 'agent_task') {
-              textToSpeak = 'Task has been submitted. Please wait.'
-            } else {
-              textToSpeak = responseData.content || "I'm not sure what to say."
+      onSendMessageRef.current(said, true)
+        .then((responseData) => {
+          if (!mountedRef.current || isClosingRef.current) {
+            if (responseData) {
+              const textToSpeak =
+                responseData.type === 'agent_task'
+                  ? 'Task has been submitted. Please wait.'
+                  : responseData.content || "I'm not sure what to say."
+              setPendingVoiceResponse(textToSpeak)
             }
-            setPendingVoiceResponse(textToSpeak)
+            return
           }
-          return
-        }
 
-        if (!responseData) {
-          speakResponse('Sorry, I could not process that.')
-          return
-        }
+          if (!responseData) {
+            speakResponse('Sorry, I could not process that.')
+            return
+          }
 
-        if (responseData.type === 'agent_task') {
-          const taskId = responseData.taskId as string
-          setStatusText('Agent working…')
-          setDebugText('Agent task: ' + taskId)
+          if (responseData.type === 'agent_task') {
+            const taskId = responseData.taskId as string
+            setStatusText('Agent working...')
 
-          const unsub = subscribeToTask(taskId, (task) => {
-            if (!task) return
-            if (task.status === 'success') {
-              unsub()
-              const msg = (task.agentOutput?.message || 'I have completed the task.') as string
-              speakResponse(msg)
-            } else if (task.status === 'failed') {
-              unsub()
-              speakResponse('Sorry, I encountered an error.')
-            }
-          })
-        } else {
-          speakResponse(responseData.content || "I'm not sure what to say.")
-        }
-      }).catch((err) => {
-        setDebugText('ERROR: ' + String(err))
-        if (mountedRef.current) speakResponse('Sorry, there was a connection problem.')
-      })
+            const unsub = subscribeToTask(taskId, (task) => {
+              if (!task) return
+
+              if (task.status === 'success') {
+                unsub()
+                const message = (task.agentOutput?.message || 'I have completed the task.') as string
+                speakResponse(message)
+              } else if (task.status === 'failed') {
+                unsub()
+                speakResponse('Sorry, I encountered an error.')
+              }
+            })
+          } else {
+            speakResponse(responseData.content || "I'm not sure what to say.")
+          }
+        })
+        .catch(() => {
+          if (mountedRef.current) {
+            speakResponse('Sorry, there was a connection problem.')
+          }
+        })
     }
 
     rec.start()
-    setDebugText('rec.start() called (gen ' + myGen + ')')
   }
 
   startListeningRef.current = startListening
 
-  // ── Focus/visibility restart ──────────────────────────────────────────
-
   useEffect(() => {
     const onReturn = () => {
       if (!mountedRef.current || isClosingRef.current || isSpeakingRef.current) return
-      try { recognitionRef.current?.abort() } catch {}
+
+      try {
+        recognitionRef.current?.abort()
+      } catch {}
+
       setTimeout(() => {
         if (mountedRef.current && !isClosingRef.current && !isSpeakingRef.current) {
           startListeningRef.current()
         }
       }, 400)
     }
-    const onVis = () => { if (document.visibilityState === 'visible') onReturn() }
-    window.addEventListener('focus', onReturn)
-    document.addEventListener('visibilitychange', onVis)
-    return () => { window.removeEventListener('focus', onReturn); document.removeEventListener('visibilitychange', onVis) }
-  }, [])
 
-  // ── Init ──────────────────────────────────────────────────────────────
-  // ★ KEY FIX: delay start by 800ms so React Strict Mode's double-mount
-  //   is fully complete before we create the first SpeechRecognition.
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') onReturn()
+    }
+
+    window.addEventListener('focus', onReturn)
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      window.removeEventListener('focus', onReturn)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
 
   useEffect(() => {
     mountedRef.current = true
@@ -315,7 +340,6 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
 
     const timer = setTimeout(() => {
       if (mountedRef.current && !isClosingRef.current) {
-        setDebugText('Init: starting recognition after delay')
         startListeningRef.current()
       }
     }, 800)
@@ -323,83 +347,52 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     return () => {
       mountedRef.current = false
       isClosingRef.current = true
-      genRef.current++ // invalidate all pending callbacks
+      genRef.current++
       clearTimeout(timer)
-      try { recognitionRef.current?.abort() } catch {}
+      try {
+        recognitionRef.current?.abort()
+      } catch {}
       speechSynthesis.cancel()
     }
   }, [])
 
-  // ── Pick up pending voice response from a prior VoiceBar instance ─────
-  // Handles: first message from homepage creates new chat, HomeView→ChatView
-  // transition unmounts old VoiceBar mid-response. Response is saved in context.
   useEffect(() => {
     if (pendingVoiceResponse && mountedRef.current && !isClosingRef.current) {
-      const t = setTimeout(() => {
+      const timer = setTimeout(() => {
         if (mountedRef.current && !isClosingRef.current) {
           speakResponse(pendingVoiceResponse)
           setPendingVoiceResponse(null)
         }
       }, 400)
-      return () => clearTimeout(t)
+
+      return () => clearTimeout(timer)
     }
   }, [pendingVoiceResponse])
 
-  // ── Render ────────────────────────────────────────────────────────────
-
-  const stateColor =
-    state === 'listening' ? '#4ade80'
-    : state === 'thinking' ? '#fb923c'
-    : state === 'speaking' ? '#38bdf8'
-    : '#94a3b8'
-
   return (
-    <div
-      className="flex flex-col items-center gap-1 rounded-2xl border border-white/5 px-4 py-2.5"
-      style={{
-        backgroundColor: '#0C0D0D',
-        minHeight: 48,
-        maxWidth: 420,
-        width: '100%',
-        margin: '0 auto',
-      }}
-    >
-      <div className="flex items-center gap-3 w-full">
-        {/* Status dot */}
-        <div
-          className="shrink-0 rounded-full"
-          style={{
-            width: 8, height: 8,
-            backgroundColor: stateColor,
-            boxShadow: `0 0 8px ${stateColor}`,
-            animation: state === 'thinking' ? 'pulse 1.5s ease-in-out infinite' : 'none',
-          }}
-        />
+    <div className="relative w-full">
+      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/[0.07]" />
 
-        {/* Waveform + Status */}
-        <div className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
-          <WaveformBars active={state === 'listening'} />
-          <span className="text-[11px] font-medium tracking-wide" style={{ color: stateColor }}>
-            {statusText}
-          </span>
+      <div className="relative mx-auto flex w-full max-w-[380px] items-center rounded-[18px] border border-white/10 bg-[linear-gradient(180deg,#070b12,#060910)] px-3 py-1.5 shadow-[0_14px_28px_rgb(0_0_0/40%),inset_0_1px_0_rgb(255_255_255/4%)]">
+        <div className="min-w-0 flex-1 pr-1.5">
+          <WaveformBars state={state} />
         </div>
 
-        {/* Close button */}
+        <div className="mx-1 h-8 w-px bg-white/10" />
+
         <button
           onClick={hardClose}
-          className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors bg-white/5 hover:bg-white/15"
+          className="group inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-transparent bg-white/[0.02] transition-[background-color,border-color,color] hover:border-white/10 hover:bg-white/[0.06]"
           aria-label="Close voice input"
+          title="Close voice input"
         >
-          <X className="w-3.5 h-3.5 text-white/60" />
+          <X className="h-4 w-4 text-[#7d90b5] transition-colors group-hover:text-[#a8b6d2]" />
         </button>
       </div>
 
-      {/* Debug info — visible on screen so we can diagnose */}
-      {debugText && (
-        <div className="w-full text-center text-[9px] text-white/30 font-mono truncate mt-0.5">
-          {debugText}
-        </div>
-      )}
+      <span className="sr-only" aria-live="polite">
+        {statusText}
+      </span>
     </div>
   )
 }
