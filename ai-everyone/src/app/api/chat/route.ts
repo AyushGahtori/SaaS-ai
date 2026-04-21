@@ -537,15 +537,20 @@ For the ats-agent:
 - If the user asks ATS analysis without resume text or candidate context, ask a concise clarification.
 
 For the lms-agent:
-- run_lms_agent: extract "prompt" and optional filters like "dateRange", "department", "courseType", "enrollmentType", "learnerId", "learnerName".
-- learner_progress_dashboard: extract optional "dateRange", optional "department", optional "courseType", optional "enrollmentType".
-- courses_catalog: extract optional "department", optional "courseType", optional "dateRange".
-- learners_directory: extract optional "department".
+- learner_progress_dashboard: extract optional "department", optional "dateRange", optional "enrollmentType", and optional "courseType".
+- courses_catalog: extract optional "department", optional "dateRange", and optional "courseType".
+- learners_directory: extract optional "department" and optional "dateRange".
 - learner_detail: extract optional "learnerId" and optional "learnerName".
 - assignments_integrations: extract optional "dateRange".
 - list_snapshots: no parameters needed.
-- Use lms-agent for LMS analytics requests such as learner progress dashboards, course catalog summaries, learners directory views, learner detail reports, compliance assignment timelines, and Moodle sync status.
-- If the user asks for a specific learner detail and no learner name or learner id is provided, ask a concise clarification.
+- Use lms-agent for LMS reporting, learner progress boards, course catalog analytics, learner-level KPIs, and assignment/integration health summaries.
+- If user requests a specific learner report without learner name or learner ID, ask a concise clarification.
+
+For the building-construction-agent:
+- generate_plan: extract "prompt" (or "message"), optional "location" object, optional "budget_inr", optional "floors", optional "rooms", optional "design_style", optional "special_requirements", and optional "vendor_type".
+- list_plans: no parameters needed.
+- Use building-construction-agent for house planning, construction costing, plot/layout guidance, and nearby contractor/vendor discovery.
+- If the user requests construction planning without any requirement details, ask for a concise clarification (plot size/location, floor count, budget, or style).
 
 If an agent is needed, output ONLY:
 <AGENT_INTENT>
