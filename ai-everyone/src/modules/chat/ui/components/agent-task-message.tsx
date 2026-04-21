@@ -29,6 +29,7 @@ import { DashboardDesignerResultCard } from "./agent-renderers/dashboard-designe
 import { ATSResultCard } from "./agent-renderers/ats-result-card";
 import { BuildingConstructionResultCard } from "./agent-renderers/building-construction-result-card";
 import { LMSResultCard } from "./agent-renderers/lms-result-card";
+import { TravelHalperResultCard } from "./agent-renderers/travel-halper-result-card";
 import { InterpretedAgentGuidance } from "./agent-renderers/interpreted-agent-guidance";
 import { GenericAgentResultCard } from "./agent-renderers/generic-agent-result-card";
 
@@ -56,6 +57,7 @@ const AGENT_NAMES: Record<string, string> = {
     "ats-agent": "ATS Agent",
     "lms-agent": "LMS Agent",
     "building-construction-agent": "Building Construction Agent",
+    "travel-halper-agent": "Travel Halper Agent",
 };
 
 interface GmailRow {
@@ -877,6 +879,10 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
 
         if (typeof resultType === "string" && resultType.startsWith("lms_")) {
             return <LMSResultCard result={result} />;
+        }
+
+        if (typeof resultType === "string" && resultType.startsWith("travel_")) {
+            return <TravelHalperResultCard result={result} />;
         }
 
         const nestedPayload =

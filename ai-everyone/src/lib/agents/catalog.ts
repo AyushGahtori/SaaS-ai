@@ -140,6 +140,22 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         requiresConnection: false,
     },
     {
+        id: "travel-halper-agent",
+        name: "Travel Halper Agent",
+        description:
+            "Plan trips with flight and hotel options, then send the final travel brief as an HTML email.",
+        actions: ["plan_trip", "send_plan_email"],
+        examplePrompts: [
+            "Plan a trip from Delhi to Goa for next weekend with budget hotels",
+            "Find flights and 4-star hotels for Mumbai to Dubai in June",
+            "Email this travel plan to me once the itinerary is ready",
+        ],
+        provider: "internal",
+        category: "travel",
+        tags: ["travel", "flights", "hotels", "itinerary", "email"],
+        requiresConnection: false,
+    },
+    {
         id: "emergency-response-agent",
         name: "Emergency Response Agent",
         description:

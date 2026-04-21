@@ -476,6 +476,12 @@ For the zoom-agent:
 - list_upcoming_meetings: extract optional "type" (scheduled/upcoming, default upcoming)
 - get_meeting_summary: extract "meetingId"
 
+For the travel-halper-agent:
+- plan_trip: extract "prompt" with the complete travel request, including source, destination, dates, budget, and hotel/flight preferences when provided.
+- send_plan_email: extract optional "prompt", optional "threadId", required "receiverEmail", optional "senderEmail", and optional "subject".
+- Use travel-halper-agent for trip planning, flight and hotel discovery, itinerary drafting, and emailing finalized travel plans.
+- If the user asks to email the travel plan but does not provide recipient email, ask a concise clarification for the receiver email.
+
 For the strata-agent:
 - open_workspace: extract optional "symbol", optional "month", optional "months"
 - dashboard: extract optional "symbol", optional "month"

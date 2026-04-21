@@ -100,6 +100,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 860,
     },
+    "travel-halper-agent": {
+        iconUrl: makeMonogramIcon("Trip", "#2563eb", "#0f766e"),
+        installCount: 7800,
+        rating: 4.8,
+        createdAt: "2026-04-21T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 846,
+    },
     "emergency-response-agent": {
         iconUrl: localIcon("emergency.png"),
         installCount: 9600,
