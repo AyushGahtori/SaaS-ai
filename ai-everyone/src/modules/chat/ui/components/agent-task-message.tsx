@@ -27,7 +27,9 @@ import { SmartGTMResultCard } from "./agent-renderers/smart-gtm-result-card";
 import { SeoResultCard } from "./agent-renderers/seo-result-card";
 import { DashboardDesignerResultCard } from "./agent-renderers/dashboard-designer-result-card";
 import { ATSResultCard } from "./agent-renderers/ats-result-card";
+import { BuildingConstructionResultCard } from "./agent-renderers/building-construction-result-card";
 import { LMSResultCard } from "./agent-renderers/lms-result-card";
+import { TravelHalperResultCard } from "./agent-renderers/travel-halper-result-card";
 import { InterpretedAgentGuidance } from "./agent-renderers/interpreted-agent-guidance";
 import { GenericAgentResultCard } from "./agent-renderers/generic-agent-result-card";
 
@@ -54,6 +56,8 @@ const AGENT_NAMES: Record<string, string> = {
     "dashboard-designer-agent": "Dashboard Designer",
     "ats-agent": "ATS Agent",
     "lms-agent": "LMS Agent",
+    "building-construction-agent": "Building Construction Agent",
+    "travel-halper-agent": "Travel Halper Agent",
 };
 
 interface GmailRow {
@@ -875,6 +879,29 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
 
         if (typeof resultType === "string" && resultType.startsWith("lms_")) {
             return <LMSResultCard result={result} />;
+        }
+
+        if (typeof resultType === "string" && resultType.startsWith("travel_")) {
+            return <TravelHalperResultCard result={result} />;
+        }
+
+        const nestedPayload =
+            typeof result.result === "object" && result.result !== null
+                ? (result.result as Record<string, unknown>)
+                : {};
+        const structuredOutput =
+            (typeof nestedPayload.structured_output === "object" && nestedPayload.structured_output !== null
+                ? (nestedPayload.structured_output as Record<string, unknown>)
+                : typeof result.structured_output === "object" && result.structured_output !== null
+                    ? (result.structured_output as Record<string, unknown>)
+                    : {}) || {};
+        const hasConstructionShape =
+            typeof structuredOutput.layout_plan === "object" ||
+            typeof structuredOutput.cost_estimate === "object" ||
+            typeof structuredOutput.vendor_results === "object" ||
+            typeof structuredOutput.plot_analysis === "object";
+        if (resultType === "building_construction_result" || hasConstructionShape) {
+            return <BuildingConstructionResultCard result={result} />;
         }
 
         // Generic result

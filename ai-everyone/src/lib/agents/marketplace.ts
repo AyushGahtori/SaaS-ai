@@ -100,6 +100,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 860,
     },
+    "travel-halper-agent": {
+        iconUrl: makeMonogramIcon("Trip", "#2563eb", "#0f766e"),
+        installCount: 7800,
+        rating: 4.8,
+        createdAt: "2026-04-21T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 846,
+    },
     "emergency-response-agent": {
         iconUrl: localIcon("emergency.png"),
         installCount: 9600,
@@ -301,12 +309,20 @@ const agentUiMeta: Record<
         trendingScore: 717,
     },
     "lms-agent": {
-        iconUrl: makeMonogramIcon("LMS", "#475569", "#0f172a"),
-        installCount: 1900,
-        rating: 4.6,
-        createdAt: "2026-04-15T00:00:00.000Z",
+        iconUrl: makeMonogramIcon("LMS", "#3d5566", "#5f7586"),
+        installCount: 1850,
+        rating: 4.7,
+        createdAt: "2026-04-13T00:00:00.000Z",
         isFeatured: false,
-        trendingScore: 708,
+        trendingScore: 719,
+    },
+    "building-construction-agent": {
+        iconUrl: makeMonogramIcon("Build", "#5f6b78", "#7c8a99"),
+        installCount: 1900,
+        rating: 4.7,
+        createdAt: "2026-04-10T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 718,
     },
 };
 

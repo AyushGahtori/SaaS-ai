@@ -43,6 +43,7 @@ Detached runtime contract for all EC2 agents.
 - `GET /fundraising/health`
 - `GET /ats/health`
 - `GET /lms/health`
+- `GET /travelhalper/health`
 
 ## Action Routes
 
@@ -75,6 +76,7 @@ Detached runtime contract for all EC2 agents.
 - `POST /fundraising/action`
 - `POST /ats/action`
 - `POST /lms/action`
+- `POST /travelhalper/action`
 
 ## OAuth Ownership (Detached)
 
@@ -138,7 +140,7 @@ Stored fields:
 
 - OAuth: `teams-agent`, `google-agent`, `notion-agent`, `canva-agent`, `discord-agent`, `dropbox-agent`, `github-agent`, `gitlab-agent`, `jira-agent`, `linkedin-agent`, `zoom-agent`
 - API key: `freshdesk-agent`, `greenhouse-agent`
-- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`, `lms-agent`
+- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`, `lms-agent`, `travel-halper-agent`
 
 ## JS-Parity Notes
 
@@ -157,4 +159,8 @@ curl -X POST "${AGENT_PUBLIC_BASE_URL}/todo/action" \
 curl -X POST "${AGENT_PUBLIC_BASE_URL}/lms/action" \
   -H "Content-Type: application/json" \
   -d '{"taskId":"smoke-lms-1","userId":"smoke-user","agentId":"lms-agent","action":"list_snapshots"}'
+
+curl -X POST "${AGENT_PUBLIC_BASE_URL}/travelhalper/action" \
+  -H "Content-Type: application/json" \
+  -d '{"taskId":"smoke-travel-1","userId":"smoke-user","agentId":"travel-halper-agent","action":"plan_trip","prompt":"Plan a Delhi to Goa trip for 3 days"}'
 ```

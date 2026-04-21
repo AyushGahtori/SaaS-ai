@@ -140,6 +140,22 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         requiresConnection: false,
     },
     {
+        id: "travel-halper-agent",
+        name: "Travel Halper Agent",
+        description:
+            "Plan trips with flight and hotel options, then send the final travel brief as an HTML email.",
+        actions: ["plan_trip", "send_plan_email"],
+        examplePrompts: [
+            "Plan a trip from Delhi to Goa for next weekend with budget hotels",
+            "Find flights and 4-star hotels for Mumbai to Dubai in June",
+            "Email this travel plan to me once the itinerary is ready",
+        ],
+        provider: "internal",
+        category: "travel",
+        tags: ["travel", "flights", "hotels", "itinerary", "email"],
+        requiresConnection: false,
+    },
+    {
         id: "emergency-response-agent",
         name: "Emergency Response Agent",
         description:
@@ -527,9 +543,8 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         id: "lms-agent",
         name: "LMS Agent",
         description:
-            "Build learner progress dashboards, course catalogs, learner directories, compliance assignment timelines, and Moodle sync summaries.",
+            "Track learner progress, inspect course catalog performance, review learner-level KPIs, and monitor assignment plus LMS integration health.",
         actions: [
-            "run_lms_agent",
             "learner_progress_dashboard",
             "courses_catalog",
             "learners_directory",
@@ -538,13 +553,29 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
             "list_snapshots",
         ],
         examplePrompts: [
-            "Show learner progress dashboard for the last 90 days",
-            "Open LMS courses catalog for e-learning courses",
-            "Generate learner detail report for Sarah Chen",
+            "Show learner progress dashboard for engineering in the last 90 days",
+            "Open the LMS courses catalog and highlight draft vs published courses",
+            "Generate learner detail for Sarah Chen and include KPI summary",
         ],
         provider: "internal",
         category: "learning",
-        tags: ["lms", "training", "compliance", "courses", "learners"],
+        tags: ["lms", "learning", "training", "compliance", "progress"],
+        requiresConnection: false,
+    },
+    {
+        id: "building-construction-agent",
+        name: "Building Construction Agent",
+        description:
+            "Plan house construction with plot-aware layout recommendations, cost estimation, and nearby vendor guidance.",
+        actions: ["generate_plan", "list_plans"],
+        examplePrompts: [
+            "Plan a 3BHK house on a 30x40 plot with vastu guidelines",
+            "Estimate construction budget for a 2-floor modern home in Bengaluru",
+            "Find nearby contractor and architect options for my plot location",
+        ],
+        provider: "internal",
+        category: "construction",
+        tags: ["construction", "layout", "costing", "vendors", "house-plan"],
         requiresConnection: false,
     },
 ];

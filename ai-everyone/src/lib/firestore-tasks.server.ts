@@ -58,7 +58,9 @@ const AGENT_ROUTES: Record<string, string> = {
     "seo-agent": "/seo/action",
     "dashboard-designer-agent": "/dashboarddesigner/action",
     "ats-agent": "/ats/action",
+    "building-construction-agent": "/building/action",
     "lms-agent": "/lms/action",
+    "travel-halper-agent": "/travelhalper/action",
 };
 
 async function persistInterpretedFailure(params: {
@@ -266,7 +268,9 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "seo-agent": process.env.SEO_AGENT_URL,
         "dashboard-designer-agent": process.env.DASHBOARD_DESIGNER_AGENT_URL,
         "ats-agent": process.env.ATS_AGENT_URL,
+        "building-construction-agent": process.env.BUILDING_CONSTRUCTION_AGENT_URL,
         "lms-agent": process.env.LMS_AGENT_URL,
+        "travel-halper-agent": process.env.TRAVEL_HALPER_AGENT_URL,
     };
     const agentServerUrl =
         ENV_AGENT_URL_MAP[task.agentId] ||

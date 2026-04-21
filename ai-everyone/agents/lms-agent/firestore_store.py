@@ -12,11 +12,7 @@ from firebase_admin import credentials, firestore
 def _resolve_key_path() -> str | None:
     env_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     if env_path:
-        candidate = Path(env_path).expanduser()
-        if not candidate.is_absolute():
-            candidate = (Path(__file__).resolve().parent / candidate).resolve()
-        if candidate.exists():
-            return str(candidate)
+        return env_path
 
     root_fallback = Path(__file__).resolve().parents[2] / "serviceAccountKey.json"
     if root_fallback.exists():

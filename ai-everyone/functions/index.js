@@ -46,6 +46,7 @@ const AGENT_ROUTES = {
   "jira-agent": "/jira/action",
   "linkedin-agent": "/linkedin/action",
   "zoom-agent": "/zoom/action",
+  "travel-halper-agent": "/travelhalper/action",
 };
 
 // ---------------------------------------------------------------------------
@@ -126,6 +127,7 @@ exports.runAgentTask = onDocumentCreated(
         "jira-agent": process.env.JIRA_AGENT_URL,
         "linkedin-agent": process.env.LINKEDIN_AGENT_URL,
         "zoom-agent": process.env.ZOOM_AGENT_URL,
+        "travel-halper-agent": process.env.TRAVEL_HALPER_AGENT_URL,
       };
 
       const agentServerUrl =

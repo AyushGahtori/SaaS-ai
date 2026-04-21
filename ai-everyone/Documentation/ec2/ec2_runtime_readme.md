@@ -45,6 +45,7 @@ This runtime is detached from the main web app.
 | `startup-fundraising-agent` | 8035 | `/fundraising/action` | `/fundraising/health` |
 | `ats-agent` | 8036 | `/ats/action` | `/ats/health` |
 | `lms-agent` | 8039 | `/lms/action` | `/lms/health` |
+| `travel-halper-agent` | 8040 | `/travelhalper/action` | `/travelhalper/health` |
 
 ## Base URL Policy
 

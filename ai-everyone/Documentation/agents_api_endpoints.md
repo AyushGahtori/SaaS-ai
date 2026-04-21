@@ -96,3 +96,45 @@ Canonical endpoint contract for `lms-agent`.
   "action": "list_snapshots"
 }
 ```
+
+---
+
+# Travel Halper Agent API Endpoints
+
+Canonical endpoint contract for `travel-halper-agent`.
+
+## Public Routes (via Nginx)
+
+- `POST /travelhalper/action`
+- `GET /travelhalper/health`
+
+## Supported Actions
+
+- `plan_trip`
+- `send_plan_email`
+
+## Sample: Plan Trip
+
+```json
+{
+  "taskId": "travel-1",
+  "userId": "<uid>",
+  "agentId": "travel-halper-agent",
+  "action": "plan_trip",
+  "prompt": "Plan a Delhi to Goa trip for 3 days in June with budget-friendly hotels."
+}
+```
+
+## Sample: Send Plan Email
+
+```json
+{
+  "taskId": "travel-2",
+  "userId": "<uid>",
+  "agentId": "travel-halper-agent",
+  "action": "send_plan_email",
+  "threadId": "reuse-thread-id-from-plan",
+  "receiverEmail": "traveler@example.com",
+  "subject": "Goa Trip Plan"
+}
+```
