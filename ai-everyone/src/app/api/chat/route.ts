@@ -45,6 +45,7 @@ import {
     validateSingleAttachmentSize,
     validateTotalAttachmentSize,
 } from "@/lib/uploads/attachment-policy";
+import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 
 const GOOGLE_AGENT_TYPES = new Set(["calendar", "gmail", "meet", "drive", "tasks", "web_search"]);
 
@@ -1130,7 +1131,7 @@ function getServerOllamaBaseUrls(): string[] {
         deduped.push(normalized);
     }
 
-    if (deduped.length === 0) {
+    if (deduped.length === 0 && !process.env.VERCEL) {
         deduped.push("http://127.0.0.1:11434");
     }
 
@@ -1411,7 +1412,8 @@ export async function POST(req: NextRequest) {
             console.error("[UploadedDocsCleanup] failed:", error);
         });
         const ollamaBaseUrls = getServerOllamaBaseUrls();
-        const model = body.model || process.env.OLLAMA_DEFAULT_MODEL || "qwen3.5:397b-cloud";
+        const model =
+            body.model || process.env.OLLAMA_DEFAULT_MODEL || "gemini-3-flash-preview";
         const normalizedAttachments = Array.isArray(attachments) ? attachments : [];
         const normalizedFailedAttachments = normalizeFailedAttachments(failedAttachments);
         const usingGemini = isGeminiChatModel(model);
@@ -1800,8 +1802,10 @@ export async function POST(req: NextRequest) {
                             return;
                         }
                         console.error("[Chat API Error]", error);
-                        const message =
-                            error instanceof Error ? error.message : "Internal server error";
+                        const message = normalizeUserFacingError(error, {
+                            surface: "chat",
+                            fallbackMessage: "Internal server error",
+                        }).message;
                         sendEvent("error", { error: message });
                         safeClose();
                     }
@@ -1829,8 +1833,10 @@ export async function POST(req: NextRequest) {
         });
     } catch (error) {
         console.error("[Chat API Error]", error);
-        const message =
-            error instanceof Error ? error.message : "Unknown error occurred";
+        const message = normalizeUserFacingError(error, {
+            surface: "chat",
+            fallbackMessage: "Unknown error occurred",
+        }).message;
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }

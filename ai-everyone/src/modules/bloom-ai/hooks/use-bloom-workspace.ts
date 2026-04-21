@@ -25,6 +25,7 @@ import {
     updateBloomJournalEntry,
 } from "@/modules/bloom-ai/services/journal-service";
 import { updateBloomSettings as saveBloomSettings } from "@/modules/bloom-ai/services/settings-service";
+import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 import type {
     BloomConversation,
     BloomHabit,
@@ -74,7 +75,11 @@ export function useBloomWorkspace() {
                 });
             });
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to load Bloom AI.");
+            const parsed = normalizeUserFacingError(err, {
+                surface: "bloom",
+                fallbackMessage: "Failed to load Bloom AI.",
+            });
+            setError(parsed.message);
         } finally {
             setIsLoading(false);
         }
@@ -131,7 +136,11 @@ export function useBloomWorkspace() {
                 });
                 applyConversation(response.conversation);
             } catch (err) {
-                setError(err instanceof Error ? err.message : "Bloom AI could not reply.");
+                const parsed = normalizeUserFacingError(err, {
+                    surface: "bloom",
+                    fallbackMessage: "Bloom AI could not reply.",
+                });
+                setError(parsed.message);
             } finally {
                 setIsSending(false);
             }

@@ -42,8 +42,9 @@ Output ONLY the summary. No explanation, no preamble.`;
 // ---------------------------------------------------------------------------
 
 async function generateSummaryFromLLM(memories: MemoryItem[]): Promise<string> {
-    const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+    const baseUrl = resolveOllamaBaseUrl();
     const model = process.env.OLLAMA_DEFAULT_MODEL || "qwen2.5:7b";
+    if (!baseUrl) return buildFallbackSummary(memories);
 
     try {
         const res = await fetch(`${baseUrl}/api/chat`, {
@@ -64,6 +65,12 @@ async function generateSummaryFromLLM(memories: MemoryItem[]): Promise<string> {
     } catch {
         return buildFallbackSummary(memories);
     }
+}
+
+function resolveOllamaBaseUrl(): string {
+    const configured = process.env.OLLAMA_BASE_URL?.trim();
+    if (configured) return configured;
+    return process.env.VERCEL ? "" : "http://localhost:11434";
 }
 
 /** Simple deterministic fallback summary if LLM fails. */

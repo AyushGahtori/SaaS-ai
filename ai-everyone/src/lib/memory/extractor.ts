@@ -189,9 +189,16 @@ Example output:
 
 If no memory-worthy facts exist, return exactly: []`;
 
+function resolveOllamaBaseUrl(): string {
+    const configured = process.env.OLLAMA_BASE_URL?.trim();
+    if (configured) return configured;
+    return process.env.VERCEL ? "" : "http://localhost:11434";
+}
+
 export async function runLayer3(message: string): Promise<ExtractedMemory[]> {
-    const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+    const baseUrl = resolveOllamaBaseUrl();
     const model = process.env.OLLAMA_DEFAULT_MODEL || "qwen2.5:7b";
+    if (!baseUrl) return [];
 
     try {
         const res = await fetch(`${baseUrl}/api/chat`, {

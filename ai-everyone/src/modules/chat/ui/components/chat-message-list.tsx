@@ -13,6 +13,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import { ChatMessageItem } from "./chat-message-item";
 import { Bot } from "lucide-react";
+import { ThemedErrorBanner } from "@/components/error-ui/themed-error-banner";
+import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 
 const INITIAL_WINDOW_SIZE = 10;
 const WINDOW_STEP = 10;
@@ -34,6 +36,16 @@ export const ChatMessageList: React.FC = () => {
         [messages]
     );
     const showThinking = isGenerating && !streamingMessage?.content?.trim();
+    const mappedError = useMemo(
+        () =>
+            error
+                ? normalizeUserFacingError(error, {
+                    surface: "chat",
+                    fallbackMessage: "I could not complete that response right now.",
+                })
+                : null,
+        [error]
+    );
 
     useEffect(() => {
         const chatChanged = activeChatId !== lastChatIdRef.current;
@@ -123,11 +135,7 @@ export const ChatMessageList: React.FC = () => {
                 )}
 
                 {/* Error display */}
-                {error && (
-                    <div className="mx-4 my-2 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
-                        {error}
-                    </div>
-                )}
+                <ThemedErrorBanner error={mappedError} className="mx-4 my-2" />
 
                 {/* Scroll anchor */}
                 <div ref={bottomRef} />

@@ -15,6 +15,8 @@ import {
 } from "@/modules/chat/upload/clipboard-files";
 import { SendStopButton } from "@/modules/chat/ui/components/send-stop-button";
 import VoiceBar from "@/modules/chat/ui/components/VoiceBar";
+import { ThemedInlineError } from "@/components/error-ui/themed-inline-error";
+import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 
 interface ChatInputProps {
   onFirstMessage?: () => void;
@@ -201,7 +203,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onFirstMessage }) => {
               ) : null}
 
               {attachError ? (
-                <p className="status-pill-error w-fit rounded-full px-2.5 py-1 text-[11px] font-medium">{attachError}</p>
+                <ThemedInlineError
+                  className="w-fit"
+                  error={normalizeUserFacingError(attachError, { surface: "upload" })}
+                />
               ) : null}
 
               <div

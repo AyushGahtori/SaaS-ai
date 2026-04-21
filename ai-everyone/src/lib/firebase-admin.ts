@@ -7,13 +7,17 @@
  * The service account key path is read from FIREBASE_SERVICE_ACCOUNT_KEY env var.
  */
 
-import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
+import { initializeApp, getApps, cert, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStorage, type Storage } from "firebase-admin/storage";
 import fs from "fs";
 import { resolveServiceAccountPath } from "@/lib/firebase-admin-path";
 
 let adminApp: App;
+
+type ServiceAccountShape = ServiceAccount & {
+    project_id?: string;
+};
 
 function normalizeBucketName(value: string | undefined): string | undefined {
     if (!value) return undefined;
@@ -28,17 +32,39 @@ function normalizeBucketName(value: string | undefined): string | undefined {
 
 export { resolveServiceAccountPath } from "@/lib/firebase-admin-path";
 
-if (!getApps().length) {
-    const resolvedPath = resolveServiceAccountPath();
+function readServiceAccountFromEnv(): ServiceAccountShape | null {
+    const rawJson =
+        process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim() ||
+        process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim() ||
+        "";
+    if (!rawJson) return null;
 
+    if (!rawJson.startsWith("{")) return null;
+
+    try {
+        return JSON.parse(rawJson) as ServiceAccountShape;
+    } catch (error) {
+        throw new Error(
+            `Firebase Admin: invalid JSON in FIREBASE_SERVICE_ACCOUNT_JSON/FIREBASE_SERVICE_ACCOUNT_KEY. ` +
+            `${error instanceof Error ? error.message : "Unknown parse error"}`
+        );
+    }
+}
+
+function readServiceAccountFromFile(): ServiceAccountShape {
+    const resolvedPath = resolveServiceAccountPath();
     if (!fs.existsSync(resolvedPath)) {
         throw new Error(
             `Firebase Admin: service account key not found at "${resolvedPath}". ` +
-            `Set FIREBASE_SERVICE_ACCOUNT_KEY in .env.`
+            `Set FIREBASE_SERVICE_ACCOUNT_JSON (preferred) or FIREBASE_SERVICE_ACCOUNT_KEY in .env.`
         );
     }
 
-    const serviceAccount = JSON.parse(fs.readFileSync(resolvedPath, "utf-8"));
+    return JSON.parse(fs.readFileSync(resolvedPath, "utf-8")) as ServiceAccountShape;
+}
+
+if (!getApps().length) {
+    const serviceAccount = readServiceAccountFromEnv() || readServiceAccountFromFile();
     const bucketName = normalizeBucketName(
         process.env.FIREBASE_STORAGE_BUCKET ||
             process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
