@@ -1,4 +1,5 @@
-const DEFAULT_AGENT_SERVER_URL = "https://your-default-host";
+// No safe default host: this must be explicitly configured.
+const DEFAULT_AGENT_SERVER_URL = "";
 
 function normalizeBaseUrl(value: string | undefined | null): string {
     const trimmed = (value || "").trim().replace(/\/+$/, "");
@@ -8,10 +9,17 @@ function normalizeBaseUrl(value: string | undefined | null): string {
 }
 
 export function resolveAgentServerUrl(explicitBaseUrl?: string): string {
-    return (
+    const resolved =
         normalizeBaseUrl(explicitBaseUrl) ||
         normalizeBaseUrl(process.env.AGENT_SERVER_URL) ||
-        DEFAULT_AGENT_SERVER_URL
-    );
+        normalizeBaseUrl(DEFAULT_AGENT_SERVER_URL);
+
+    if (!resolved) {
+        throw new Error(
+            "Agent server URL is not configured. Set AGENT_SERVER_URL or the relevant per-agent env var."
+        );
+    }
+
+    return resolved;
 }
 
