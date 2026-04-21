@@ -8,6 +8,16 @@ export interface VerifiedFirebaseUser {
     name: string | null;
 }
 
+function isFirebaseCredentialError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    const message = error.message.toLowerCase();
+    return (
+        message.includes("default credentials") ||
+        message.includes("could not load the default credentials") ||
+        (message.includes("credential") && message.includes("fetch"))
+    );
+}
+
 function getBearerToken(req: NextRequest): string | null {
     const header = req.headers.get("authorization") || req.headers.get("Authorization");
     if (!header) return null;
@@ -30,6 +40,11 @@ export async function verifyFirebaseRequest(
             name: decoded.name || null,
         };
     } catch (error) {
+        if (isFirebaseCredentialError(error)) {
+            throw new Error(
+                "[ServerAuth] Firebase Admin credentials are missing or invalid at runtime."
+            );
+        }
         console.error("[ServerAuth] Firebase token verification failed:", error);
         return null;
     }
