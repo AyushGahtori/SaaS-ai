@@ -2,10 +2,13 @@
 // Provides signUp, signIn, signInWithGoogle, and logOut operations.
 import {
     createUserWithEmailAndPassword,
+    EmailAuthProvider,
+    reauthenticateWithCredential,
     signInWithEmailAndPassword,
     signInWithPopup,
     GoogleAuthProvider,
     signOut,
+    updatePassword,
     updateProfile,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -104,4 +107,56 @@ export async function signInWithGoogle() {
  */
 export async function logOut() {
     await signOut(auth);
+}
+
+/**
+ * Change password for the currently signed-in email/password user.
+ * Firebase requires re-authentication before sensitive credential changes.
+ */
+export async function changeCurrentUserPassword(currentPassword: string, newPassword: string): Promise<void> {
+    const user = auth.currentUser;
+    if (!user) {
+        throw new Error("Authentication expired. Please sign in again.");
+    }
+
+    if (!user.email) {
+        throw new Error("Password change is only available for email/password accounts.");
+    }
+
+    const hasPasswordProvider = user.providerData.some((provider) => provider.providerId === "password");
+    if (!hasPasswordProvider) {
+        throw new Error("This account is using social sign-in. Email password reset will be available soon.");
+    }
+
+    try {
+        const credential = EmailAuthProvider.credential(user.email, currentPassword);
+        await reauthenticateWithCredential(user, credential);
+        await updatePassword(user, newPassword);
+    } catch (error) {
+        const code =
+            typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                typeof (error as { code?: unknown }).code === "string"
+                ? ((error as { code: string }).code || "").toLowerCase()
+                : "";
+
+        if (code === "auth/invalid-credential" || code === "auth/wrong-password") {
+            throw new Error("Current password is incorrect.");
+        }
+
+        if (code === "auth/weak-password") {
+            throw new Error("New password is too weak. Use at least 8 characters with letters, numbers, and symbols.");
+        }
+
+        if (code === "auth/too-many-requests") {
+            throw new Error("Too many attempts detected. Please wait a moment and try again.");
+        }
+
+        if (code === "auth/requires-recent-login" || code === "auth/user-token-expired") {
+            throw new Error("Session expired. Please sign in again and retry.");
+        }
+
+        throw error instanceof Error ? error : new Error("Failed to change password.");
+    }
 }

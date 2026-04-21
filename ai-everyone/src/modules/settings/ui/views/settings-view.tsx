@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, updateProfile } from "firebase/auth";
-import { Bell, Bot, BrainCircuit, Link2, Settings2, User } from "lucide-react";
+import { Bell, Bot, BrainCircuit, KeyRound, Link2, Settings2, User } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { getUserProfile, updateUserProfile } from "@/lib/firestore";
 import { getAllAgents, type Agent } from "@/lib/firestore-agents";
 import { MemoryManager } from "@/modules/profile/ui/memory-manager";
+import { ChangePasswordTab } from "@/modules/settings/ui/components/change-password-tab";
 import { ReminderManager } from "@/modules/settings/ui/components/reminder-manager";
 
-type SettingsTab = "profile" | "agents" | "memory" | "reminders";
+type SettingsTab = "profile" | "agents" | "memory" | "reminders" | "changePassword";
 
 interface AgentStateResponse {
   installedAgentIds: string[];
@@ -184,6 +185,7 @@ export function SettingsView() {
     { id: "agents" as const, label: "Installed Agents", icon: Bot },
     { id: "memory" as const, label: "Memory", icon: BrainCircuit },
     { id: "reminders" as const, label: "Reminders", icon: Bell },
+    { id: "changePassword" as const, label: "Change Password", icon: KeyRound },
   ];
 
   if (loading) {
@@ -375,6 +377,7 @@ export function SettingsView() {
 
         {tab === "memory" ? <MemoryManager /> : null}
         {tab === "reminders" ? <ReminderManager /> : null}
+        {tab === "changePassword" ? <ChangePasswordTab /> : null}
       </div>
     </div>
   );
