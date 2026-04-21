@@ -1,19 +1,14 @@
 import "dotenv/config";
 import * as admin from "firebase-admin";
-import fs from "fs";
 import { MARKETPLACE_AGENTS } from "../src/lib/agents/marketplace";
-import { resolveServiceAccountPath } from "../src/lib/firebase-admin-path";
+import { loadServiceAccount } from "../src/lib/firebase-admin";
 
-const serviceAccountPath = resolveServiceAccountPath();
+const serviceAccount = loadServiceAccount();
 
-if (!fs.existsSync(serviceAccountPath)) {
-    console.error(`Service account key not found at "${serviceAccountPath}"`);
-    process.exit(1);
-}
-
-if (!admin.apps.length) {
+const hasDefaultApp = admin.apps.some((app) => app?.name === "[DEFAULT]");
+if (!hasDefaultApp) {
     admin.initializeApp({
-        credential: admin.credential.cert(serviceAccountPath),
+        credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
     });
 }
 

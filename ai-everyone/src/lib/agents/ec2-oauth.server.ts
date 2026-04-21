@@ -2,8 +2,7 @@ import crypto from "crypto";
 import type { NextRequest } from "next/server";
 
 import { getAgentBundle, getAgentCatalogEntry } from "@/lib/agents/catalog";
-
-const DEFAULT_AGENT_SERVER_URL = "http://35.154.54.246";
+import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 
 const OAUTH_AGENT_BASE_URLS: Record<string, string | undefined> = {
     "teams-agent": process.env.TEAMS_AGENT_URL,
@@ -113,10 +112,7 @@ export function buildEc2OauthLaunch(
     target: { bundleId?: string; agentId?: string }
 ): { authUrl: string; popupOrigin: string } {
     const resolved = resolveOauthTarget(target);
-    const baseUrl =
-        OAUTH_AGENT_BASE_URLS[resolved.authAgentId] ||
-        process.env.AGENT_SERVER_URL ||
-        DEFAULT_AGENT_SERVER_URL;
+    const baseUrl = resolveAgentServerUrl(OAUTH_AGENT_BASE_URLS[resolved.authAgentId]);
 
     const handoff = signPayload({
         uid,

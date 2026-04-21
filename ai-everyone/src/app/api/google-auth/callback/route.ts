@@ -8,8 +8,9 @@
  */
 
 import { NextRequest } from "next/server";
+import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 
-const GOOGLE_AGENT_URL = process.env.GOOGLE_AGENT_URL || "http://35.154.54.246";
+const GOOGLE_AGENT_URL = resolveAgentServerUrl(process.env.GOOGLE_AGENT_URL);
 const CALLBACK_PATH = "/api/google-auth/callback";
 
 function getRedirectUri(req: NextRequest): string {

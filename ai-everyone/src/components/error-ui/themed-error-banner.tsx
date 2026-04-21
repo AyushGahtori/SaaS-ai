@@ -22,6 +22,9 @@ export function ThemedErrorBanner({
 
     return (
         <div
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
             className={cn(
                 "rounded-2xl border border-rose-300/20 bg-[linear-gradient(180deg,rgba(220,38,38,0.14),rgba(12,14,24,0.85))] px-4 py-3 text-rose-50 shadow-[0_14px_32px_rgb(0_0_0/30%)]",
                 className

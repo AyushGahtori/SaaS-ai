@@ -40,6 +40,15 @@ const DEFAULT_MESSAGES: Record<ErrorSurface, string> = {
 function readErrorMessage(error: unknown): string {
     if (error instanceof Error && error.message.trim()) return error.message.trim();
     if (typeof error === "string" && error.trim()) return error.trim();
+    if (
+        typeof error === "object" &&
+        error !== null &&
+        "message" in error &&
+        typeof (error as { message?: unknown }).message === "string" &&
+        (error as { message: string }).message.trim()
+    ) {
+        return (error as { message: string }).message.trim();
+    }
     return "";
 }
 
@@ -413,6 +422,7 @@ export function normalizeUserFacingError(
     options: NormalizeErrorOptions = {}
 ): UserFacingError {
     const surface = options.surface || "general";
+    const surfaceMessage = options.fallbackMessage || DEFAULT_MESSAGES[surface];
     const rawMessage = readErrorMessage(error);
     const code = readErrorCode(error, rawMessage);
     const status = readErrorStatus(error, rawMessage);
@@ -442,13 +452,13 @@ export function normalizeUserFacingError(
         return buildError(surface, {
             code: code || undefined,
             provider: "unknown",
-            message: rawMessage,
+            message: surfaceMessage,
         });
     }
 
     return buildError(surface, {
         provider: "unknown",
-        message: options.fallbackMessage || DEFAULT_MESSAGES[surface],
+        message: surfaceMessage,
     });
 }
 

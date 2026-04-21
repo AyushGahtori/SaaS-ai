@@ -259,11 +259,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [taskStatuses, setTaskStatuses] = useState<
         Record<string, { status: string; result?: Record<string, unknown> }>
     >({});
-    const [selectedModel, setSelectedModel] = useState(
-        AVAILABLE_MODELS.some((model) => model.id === DEFAULT_CHAT_MODEL_ID)
-            ? DEFAULT_CHAT_MODEL_ID
-            : AVAILABLE_MODELS[0].id
-    );
+    const [selectedModel, setSelectedModel] = useState(() => {
+        if (AVAILABLE_MODELS.some((model) => model.id === DEFAULT_CHAT_MODEL_ID)) {
+            return DEFAULT_CHAT_MODEL_ID;
+        }
+        return AVAILABLE_MODELS[0]?.id || DEFAULT_CHAT_MODEL_ID;
+    });
     const [isVoiceActive, setIsVoiceActive] = useState(false);
     const [pendingVoiceResponse, setPendingVoiceResponse] = useState<string | null>(null);
 
@@ -689,11 +690,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     return { type: "aborted" };
                 }
 
+                const parsedError = normalizeUserFacingError(err, {
+                    surface: "chat",
+                    fallbackMessage: "Failed to send message.",
+                });
+
                 if (tempAssistantId) {
-                    const parsedError = normalizeUserFacingError(err, {
-                        surface: "chat",
-                        fallbackMessage: "Failed to send message.",
-                    });
                     if (resolvedChatId && isRetryableHighTrafficGeminiError(parsedError)) {
                         const assistantMsg = await createMessage(
                             uid,
@@ -716,11 +718,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         prev.filter((message) => message.id !== tempAssistantId)
                     );
                 }
-
-                const parsedError = normalizeUserFacingError(err, {
-                    surface: "chat",
-                    fallbackMessage: "Failed to send message.",
-                });
 
                 if (localOllamaError) {
                     const localFallback = normalizeUserFacingError(localOllamaError, {

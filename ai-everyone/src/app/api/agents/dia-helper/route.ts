@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
+import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 
 interface DiaHelperPayload {
     action: "generate_diagram" | "update_diagram";
@@ -51,10 +52,7 @@ export async function POST(req: NextRequest) {
         editInstruction: body.editInstruction?.trim() || undefined,
     };
 
-    const baseUrl =
-        process.env.DIA_HELPER_AGENT_URL ||
-        process.env.AGENT_SERVER_URL ||
-        "http://35.154.54.246";
+    const baseUrl = resolveAgentServerUrl(process.env.DIA_HELPER_AGENT_URL);
     const url = `${baseUrl}/diahelper/action`;
 
     try {

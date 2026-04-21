@@ -7,6 +7,7 @@ import {
     getInstalledAgentIds,
 } from "@/lib/agents/user-access.server";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
+import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 
 const GOOGLE_AGENT_ID = "google-agent";
 
@@ -126,10 +127,7 @@ export async function POST(req: NextRequest) {
         }
 
         const authPayload = await getAgentExecutionAuth(verifiedUser.uid, GOOGLE_AGENT_ID);
-        const googleBaseUrl =
-            process.env.GOOGLE_AGENT_URL ||
-            process.env.AGENT_SERVER_URL ||
-            "http://35.154.54.246";
+        const googleBaseUrl = resolveAgentServerUrl(process.env.GOOGLE_AGENT_URL);
 
         const gmailInstruction = `Send email to ${to}\nSubject: ${subject}\nBody: ${emailBody}`;
 

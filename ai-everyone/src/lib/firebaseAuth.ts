@@ -42,16 +42,22 @@ export async function signUpWithEmail(
     email: string,
     password: string
 ) {
+    let userCredential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>>;
+
     try {
-        const userCredential = await createUserWithEmailAndPassword(
+        userCredential = await createUserWithEmailAndPassword(
             auth,
             email,
             password
         );
         // Set the display name on the Firebase Auth user profile.
         await updateProfile(userCredential.user, { displayName: name });
+    } catch (error) {
+        rethrowAsFriendlyError(error, "auth_sign_up");
+    }
 
-        // Create a user profile document in Firestore.
+    try {
+        // Create a user profile document in Firestore after auth succeeds.
         await createUserProfile(userCredential.user.uid, {
             name,
             email,
@@ -62,11 +68,14 @@ export async function signUpWithEmail(
 
         // Seed predefined memory skeleton (fire-and-forget).
         seedNewUserMemory(userCredential.user.uid);
-
-        return userCredential.user;
     } catch (error) {
-        rethrowAsFriendlyError(error, "auth_sign_up");
+        console.error("[AuthClient] Post sign-up setup failed:", error);
+        throw new Error(
+            "Your account was created, but we could not finish profile setup. Please sign in and try again."
+        );
     }
+
+    return userCredential.user;
 }
 
 /**

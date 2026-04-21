@@ -4,7 +4,8 @@
  * Used by Next.js API routes and server actions to write to Firestore
  * collections that are not writable by client-side rules (e.g. agentTasks).
  *
- * The service account key path is read from FIREBASE_SERVICE_ACCOUNT_KEY env var.
+ * Service account credentials are loaded from FIREBASE_SERVICE_ACCOUNT_JSON /
+ * FIREBASE_SERVICE_ACCOUNT_KEY JSON first, then from a resolved key file path.
  */
 
 import { initializeApp, getApps, cert, type App, type ServiceAccount } from "firebase-admin/app";
@@ -17,6 +18,7 @@ let adminApp: App;
 
 type ServiceAccountShape = ServiceAccount & {
     project_id?: string;
+    projectId?: string;
 };
 
 function normalizeBucketName(value: string | undefined): string | undefined {
@@ -33,19 +35,28 @@ function normalizeBucketName(value: string | undefined): string | undefined {
 export { resolveServiceAccountPath } from "@/lib/firebase-admin-path";
 
 function readServiceAccountFromEnv(): ServiceAccountShape | null {
-    const rawJson =
-        process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim() ||
-        process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim() ||
-        "";
+    const rawJsonFromJsonEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim() || "";
+    const rawJsonFromKeyEnv = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim() || "";
+    const rawJson = rawJsonFromJsonEnv || rawJsonFromKeyEnv;
     if (!rawJson) return null;
 
-    if (!rawJson.startsWith("{")) return null;
+    if (!rawJson.startsWith("{")) {
+        const source = rawJsonFromJsonEnv
+            ? "FIREBASE_SERVICE_ACCOUNT_JSON"
+            : "FIREBASE_SERVICE_ACCOUNT_KEY";
+        throw new Error(
+            `Firebase Admin: ${source} must contain a JSON object, but received a non-JSON value.`
+        );
+    }
 
     try {
         return JSON.parse(rawJson) as ServiceAccountShape;
     } catch (error) {
+        const source = rawJsonFromJsonEnv
+            ? "FIREBASE_SERVICE_ACCOUNT_JSON"
+            : "FIREBASE_SERVICE_ACCOUNT_KEY";
         throw new Error(
-            `Firebase Admin: invalid JSON in FIREBASE_SERVICE_ACCOUNT_JSON/FIREBASE_SERVICE_ACCOUNT_KEY. ` +
+            `Firebase Admin: invalid JSON in ${source}. ` +
             `${error instanceof Error ? error.message : "Unknown parse error"}`
         );
     }
@@ -63,13 +74,18 @@ function readServiceAccountFromFile(): ServiceAccountShape {
     return JSON.parse(fs.readFileSync(resolvedPath, "utf-8")) as ServiceAccountShape;
 }
 
+export function loadServiceAccount(): ServiceAccountShape {
+    return readServiceAccountFromEnv() || readServiceAccountFromFile();
+}
+
 if (!getApps().length) {
-    const serviceAccount = readServiceAccountFromEnv() || readServiceAccountFromFile();
+    const serviceAccount = loadServiceAccount();
+    const serviceAccountProjectId = serviceAccount.project_id || serviceAccount.projectId;
     const bucketName = normalizeBucketName(
         process.env.FIREBASE_STORAGE_BUCKET ||
             process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
-            (serviceAccount.project_id
-                ? `${serviceAccount.project_id}.appspot.com`
+            (serviceAccountProjectId
+                ? `${serviceAccountProjectId}.appspot.com`
                 : undefined)
     );
 
