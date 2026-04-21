@@ -18,7 +18,7 @@ async def test():
     }
     print("=== STEP 1: Generate Netflix diagram ===")
     async with httpx.AsyncClient(timeout=90.0) as client:
-        r = await client.post("http://15.206.162.82/diahelper/action", json=payload)
+        r = await client.post("http://35.154.54.246/diahelper/action", json=payload)
         data = r.json()
         print(f"Status: {r.status_code}")
         result = data.get("result", {})
@@ -43,7 +43,7 @@ async def test():
     }
     print("\n=== STEP 2: Update - add database ===")
     async with httpx.AsyncClient(timeout=90.0) as client:
-        r2 = await client.post("http://15.206.162.82/diahelper/action", json=payload2)
+        r2 = await client.post("http://35.154.54.246/diahelper/action", json=payload2)
         data2 = r2.json()
         print(f"Status: {r2.status_code}")
         result2 = data2.get("result", {})

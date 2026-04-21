@@ -51,13 +51,13 @@ def update_env():
     with open(env_file, "r", encoding="utf-8") as f:
         content = f.read()
 
-    new_env = "\\n# ── New Integration Agents ────────────────────────────────\\n"
+    new_env = "\\n# â”€â”€ New Integration Agents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\\n"
     for a in AGENTS:
         NAME = a.replace("-", "_").upper()
         if f"{NAME}_AGENT_URL" not in content:
-            new_env += f"{NAME}_AGENT_URL=http://15.206.162.82\\n"
+            new_env += f"{NAME}_AGENT_URL=http://35.154.54.246\\n"
             
-    if "# ── New Integration Agents ────────────────────────────────" not in content:
+    if "# â”€â”€ New Integration Agents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€" not in content:
          content += new_env
          with open(env_file, "w", encoding="utf-8") as f:
              f.write(content)

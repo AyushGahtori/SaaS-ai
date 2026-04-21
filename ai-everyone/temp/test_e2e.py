@@ -16,7 +16,7 @@ async def test():
         "editInstruction": None,
     }
     async with httpx.AsyncClient(timeout=90.0) as client:
-        r = await client.post("http://15.206.162.82/diahelper/action", json=payload)
+        r = await client.post("http://35.154.54.246/diahelper/action", json=payload)
         print(f"Status: {r.status_code}")
         data = r.json()
         print(json.dumps(data, indent=2)[:2000])

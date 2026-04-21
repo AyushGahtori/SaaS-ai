@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const baseUrl =
         process.env.DIA_HELPER_AGENT_URL ||
         process.env.AGENT_SERVER_URL ||
-        "http://15.206.162.82";
+        "http://35.154.54.246";
     const url = `${baseUrl}/diahelper/action`;
 
     try {

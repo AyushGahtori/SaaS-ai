@@ -9,7 +9,7 @@
 
 import { NextRequest } from "next/server";
 
-const GOOGLE_AGENT_URL = process.env.GOOGLE_AGENT_URL || "http://15.206.162.82";
+const GOOGLE_AGENT_URL = process.env.GOOGLE_AGENT_URL || "http://35.154.54.246";
 const CALLBACK_PATH = "/api/google-auth/callback";
 
 function getRedirectUri(req: NextRequest): string {
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
         return new Response(
             `<html><body style="background:#111;color:#f55;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
                 <div style="text-align:center">
-                    <h2>❌ Google Auth Error</h2>
+                    <h2>âŒ Google Auth Error</h2>
                     <p>${error}</p>
                     <p style="color:#888">Close this tab and try again.</p>
                 </div>
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
         return new Response(
             `<html><body style="background:#111;color:#f55;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
                 <div style="text-align:center">
-                    <h2>❌ Missing authorization code</h2>
+                    <h2>âŒ Missing authorization code</h2>
                     <p style="color:#888">Close this tab and try again.</p>
                 </div>
             </body></html>`,
@@ -101,7 +101,7 @@ export async function GET(req: NextRequest) {
             return new Response(
                 `<html><body style="background:#111;color:#4f4;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
                     <div style="text-align:center">
-                        <h2>✅ Google account connected!</h2>
+                        <h2>âœ… Google account connected!</h2>
                         <p style="color:#ccc">You can close this tab and go back to Pian.</p>
                         <script>setTimeout(()=>window.close(),3000)</script>
                     </div>
@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
             return new Response(
                 `<html><body style="background:#111;color:#f55;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
                     <div style="text-align:center">
-                        <h2>❌ Token exchange failed</h2>
+                        <h2>âŒ Token exchange failed</h2>
                         <p style="color:#888">${body}</p>
                     </div>
                 </body></html>`,
@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
         return new Response(
             `<html><body style="background:#111;color:#f55;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
                 <div style="text-align:center">
-                    <h2>❌ Cannot reach Google Agent</h2>
+                    <h2>âŒ Cannot reach Google Agent</h2>
                     <p style="color:#888">Is the Google agent running on EC2?</p>
                     <p style="color:#666">${err instanceof Error ? err.message : "Unknown error"}</p>
                 </div>

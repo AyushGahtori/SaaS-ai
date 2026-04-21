@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 const TEAMS_AGENT_URL =
     process.env.TEAMS_AGENT_URL ||
     process.env.AGENT_SERVER_URL ||
-    "http://15.206.162.82";
+    "http://35.154.54.246";
 
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get("code");
