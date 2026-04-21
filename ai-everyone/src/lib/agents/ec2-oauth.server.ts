@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { getAgentBundle, getAgentCatalogEntry } from "@/lib/agents/catalog";
 
-const DEFAULT_AGENT_SERVER_URL = "http://15.206.162.82";
+const DEFAULT_AGENT_SERVER_URL = "http://35.154.54.246";
 
 const OAUTH_AGENT_BASE_URLS: Record<string, string | undefined> = {
     "teams-agent": process.env.TEAMS_AGENT_URL,

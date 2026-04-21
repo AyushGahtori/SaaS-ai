@@ -24,7 +24,7 @@ import {
 } from "@/lib/agent-error";
 
 // ---------------------------------------------------------------------------
-// Agent routing map — maps agentId to its API endpoint path.
+// Agent routing map â€” maps agentId to its API endpoint path.
 // Must match the routes defined in each agent's FastAPI server.
 // ---------------------------------------------------------------------------
 
@@ -174,16 +174,16 @@ export async function createAgentTask(data: {
 }
 
 // ---------------------------------------------------------------------------
-// Direct Agent Execution (local dev — bypasses Cloud Function)
+// Direct Agent Execution (local dev â€” bypasses Cloud Function)
 // ---------------------------------------------------------------------------
 
 /**
  * Execute an agent task by calling its FastAPI server directly.
  *
  * This replaces the Cloud Function trigger for local development:
- *  1. Updates status → "running"
+ *  1. Updates status â†’ "running"
  *  2. POSTs to the Python agent server
- *  3. Updates status → "success" or "failed" with agentOutput
+ *  3. Updates status â†’ "success" or "failed" with agentOutput
  *
  * Called as a fire-and-forget from the API route so the response
  * is returned immediately while the task runs in the background.
@@ -191,7 +191,7 @@ export async function createAgentTask(data: {
 export async function executeAgentTask(task: AgentTask): Promise<void> {
     const taskRef = adminDb.collection("agentTasks").doc(task.taskId);
 
-    // ── 1. Validate agent route ───────────────────────────────────────
+    // â”€â”€ 1. Validate agent route â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const agentRoute = AGENT_ROUTES[task.agentId];
     if (!agentRoute) {
         console.error(`[executeAgentTask] Unknown agent: ${task.agentId}`);
@@ -229,14 +229,14 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         return;
     }
 
-    // ── 2. Update status to "running" ─────────────────────────────────
+    // â”€â”€ 2. Update status to "running" â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     await taskRef.update({
         status: "running",
         startedAt: FieldValue.serverTimestamp(),
     });
 
-    // ── 3. Call the agent's FastAPI server ─────────────────────────────
-    // Per-agent env override (falls back to AGENT_SERVER_URL → EC2 root)
+    // â”€â”€ 3. Call the agent's FastAPI server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Per-agent env override (falls back to AGENT_SERVER_URL â†’ EC2 root)
     const ENV_AGENT_URL_MAP: Record<string, string | undefined> = {
         "teams-agent": process.env.TEAMS_AGENT_URL,
         "email-agent": process.env.TEAMS_AGENT_URL,
@@ -271,7 +271,7 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     const agentServerUrl =
         ENV_AGENT_URL_MAP[task.agentId] ||
         process.env.AGENT_SERVER_URL ||
-        "http://15.206.162.82";
+        "http://35.154.54.246";
     const agentUrl = `${agentServerUrl}${agentRoute}`;
     const executionAuth = await getAgentExecutionAuth(task.userId, task.agentId);
 
@@ -310,7 +310,7 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         const result = normalizeAgentExecutionResult(rawResult);
         console.log(`[executeAgentTask] Agent result`, result);
 
-        // ── 4. Update task with result ────────────────────────────────
+        // â”€â”€ 4. Update task with result â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (result.status === "success" || result.status === "partial_success") {
             await taskRef.update({
                 status: result.status,

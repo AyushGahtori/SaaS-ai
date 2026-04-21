@@ -77,7 +77,7 @@ curl http://localhost:8022/health
 
 ### Deployment Steps
 ```bash
-ssh -i "C:\Users\Ayush\Downloads\agent-key.pem" ubuntu@15.206.162.82
+ssh -i "C:\Users\Ayush\Downloads\agent-key.pem" ubuntu@35.154.54.246
 cd /home/ubuntu/app
 git pull
 sudo ./deploy.sh
@@ -92,10 +92,10 @@ systemctl is-active career-switch-agent
 curl http://localhost:8022/health
 
 # Public health check
-curl "http://15.206.162.82/career-switch/health"
+curl "http://35.154.54.246/career-switch/health"
 
 # Action endpoint smoke test
-curl -X POST "http://15.206.162.82/career-switch/action" \
+curl -X POST "http://35.154.54.246/career-switch/action" \
   -H "Content-Type: application/json" \
   -d '{
     "action": "generate_plan",
@@ -216,37 +216,37 @@ This ensures the user always receives a complete, actionable response even when 
 ### Local
 ```
 agents/career-switch-agent/
-├── main.py            # Entry point launcher
-├── server.py          # FastAPI server with action endpoint
-├── requirements.txt   # Python dependencies
-├── .env.example       # Configuration template
-└── api/              # Source logic (migrated from career-switch-data)
-    ├── config.py
-    ├── database.py
-    ├── models.py
-    ├── skill_gap.py
-    ├── llm_engine.py
-    ├── routes.py
-    ├── adzuna.py
-    ├── jsearch.py
-    ├── linkedin.py
-    └── youtube.py
+â”œâ”€â”€ main.py            # Entry point launcher
+â”œâ”€â”€ server.py          # FastAPI server with action endpoint
+â”œâ”€â”€ requirements.txt   # Python dependencies
+â”œâ”€â”€ .env.example       # Configuration template
+â””â”€â”€ api/              # Source logic (migrated from career-switch-data)
+    â”œâ”€â”€ config.py
+    â”œâ”€â”€ database.py
+    â”œâ”€â”€ models.py
+    â”œâ”€â”€ skill_gap.py
+    â”œâ”€â”€ llm_engine.py
+    â”œâ”€â”€ routes.py
+    â”œâ”€â”€ adzuna.py
+    â”œâ”€â”€ jsearch.py
+    â”œâ”€â”€ linkedin.py
+    â””â”€â”€ youtube.py
 ```
 
 ### EC2
 ```
 EC2/agents/career-switch-agent/
-├── main.py            # Entry point launcher
-├── server.py          # FastAPI server (identical to local)
-├── requirements.txt   # Python dependencies
-├── .env.example       # Configuration template
-└── (all source files copied from api/)
+â”œâ”€â”€ main.py            # Entry point launcher
+â”œâ”€â”€ server.py          # FastAPI server (identical to local)
+â”œâ”€â”€ requirements.txt   # Python dependencies
+â”œâ”€â”€ .env.example       # Configuration template
+â””â”€â”€ (all source files copied from api/)
 
 EC2/systemd/
-└── career-switch-agent.service  # Systemd service file
+â””â”€â”€ career-switch-agent.service  # Systemd service file
 
 EC2/nginx/sites-available/
-└── agents  # Updated with upstream & location blocks
+â””â”€â”€ agents  # Updated with upstream & location blocks
 ```
 
 ## Notes

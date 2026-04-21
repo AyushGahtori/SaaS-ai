@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
         const agentBaseUrl =
             process.env.EMERGENCY_RESPONSE_AGENT_URL ||
             process.env.AGENT_SERVER_URL ||
-            "http://15.206.162.82";
+            "http://35.154.54.246";
 
         const response = await fetch(`${agentBaseUrl}/emergency/action`, {
             method: "POST",

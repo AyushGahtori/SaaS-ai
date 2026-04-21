@@ -1,9 +1,9 @@
 /**
- * Firebase Cloud Functions — Task Runner.
+ * Firebase Cloud Functions â€” Task Runner.
  *
  * Triggers when a new agentTask document is created in Firestore.
  * Routes the task to the correct agent's FastAPI server, updates
- * the task status through its lifecycle (queued → running → success/failed).
+ * the task status through its lifecycle (queued â†’ running â†’ success/failed).
  *
  * Deployed via: firebase deploy --only functions
  */
@@ -22,7 +22,7 @@ const db = getFirestore();
 setGlobalOptions({maxInstances: 10});
 
 // ---------------------------------------------------------------------------
-// Agent routing map — maps agentId to its API endpoint path.
+// Agent routing map â€” maps agentId to its API endpoint path.
 // The base URL comes from the AGENT_SERVER_URL environment variable.
 // ---------------------------------------------------------------------------
 
@@ -49,7 +49,7 @@ const AGENT_ROUTES = {
 };
 
 // ---------------------------------------------------------------------------
-// Task Runner — triggered on agentTasks/{taskId} creation
+// Task Runner â€” triggered on agentTasks/{taskId} creation
 // ---------------------------------------------------------------------------
 
 exports.runAgentTask = onDocumentCreated(
@@ -70,7 +70,7 @@ exports.runAgentTask = onDocumentCreated(
         action: task.agentInput?.action,
       });
 
-      // ── 1. Validate agent exists ─────────────────────────────────────
+      // â”€â”€ 1. Validate agent exists â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const agentRoute = AGENT_ROUTES[task.agentId];
       if (!agentRoute) {
         logger.error(`Unknown agent: ${task.agentId}`);
@@ -98,14 +98,14 @@ exports.runAgentTask = onDocumentCreated(
         return;
       }
 
-      // ── 2. Update status to "running" ────────────────────────────────
+      // â”€â”€ 2. Update status to "running" â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       await taskRef.update({
         status: "running",
         startedAt: FieldValue.serverTimestamp(),
       });
 
-      // ── 3. Call the agent's FastAPI server ───────────────────────────
-      const defaultHost = "http://15.206.162.82";
+      // â”€â”€ 3. Call the agent's FastAPI server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      const defaultHost = "http://35.154.54.246";
       const ENV_AGENT_URL_MAP = {
         "teams-agent": process.env.TEAMS_AGENT_URL,
         "email-agent": process.env.TEAMS_AGENT_URL,
@@ -241,7 +241,7 @@ exports.runAgentTask = onDocumentCreated(
         const result = await response.json();
         logger.info(`[runAgentTask] Agent result`, result);
 
-        // ── 4. Update task with result ────────────────────────────────
+        // â”€â”€ 4. Update task with result â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (result.status === "success" || result.status === "action_required") {
           await taskRef.update({
             status: result.status,
