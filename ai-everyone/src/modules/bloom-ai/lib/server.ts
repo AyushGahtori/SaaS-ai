@@ -91,8 +91,8 @@ function serializeReminder(
         typeof data.scheduledFor === "string" && data.scheduledFor.trim()
             ? String(data.scheduledFor)
             : typeof data.datetime === "string" && data.datetime.trim()
-              ? String(data.datetime).replace(" ", "T")
-              : "";
+                ? String(data.datetime).replace(" ", "T")
+                : "";
 
     return {
         id: snapshot.id,
@@ -158,8 +158,8 @@ function serializeJournalEntry(
         content: String(data.content || ""),
         mood:
             data.mood === "energized" ||
-            data.mood === "calm" ||
-            data.mood === "focused"
+                data.mood === "calm" ||
+                data.mood === "focused"
                 ? data.mood
                 : "reflective",
         entryDate: String(data.entryDate || serializeTimestamp(data.createdAt)),
@@ -174,6 +174,7 @@ async function listConversationMessages(uid: string, conversationId: string): Pr
         .doc(conversationId)
         .collection(MESSAGE_COLLECTION)
         .orderBy("createdAt", "asc")
+        .orderBy("sequence", "asc")
         .get();
 
     return snapshot.docs.map(serializeMessage);
@@ -330,12 +331,13 @@ export async function appendConversationMessages(
     }
 
     const batch = adminDb.batch();
-    payload.forEach((message) => {
+    payload.forEach((message, index) => {
         const messageRef = docRef.collection(MESSAGE_COLLECTION).doc();
         batch.set(messageRef, {
             role: message.role,
             content: message.content,
             createdAt: FieldValue.serverTimestamp(),
+            sequence: index,
         });
     });
 
@@ -409,8 +411,8 @@ export async function updateReminder(
                 updates.status === "done"
                     ? FieldValue.serverTimestamp()
                     : updates.status === "pending"
-                      ? null
-                      : undefined,
+                        ? null
+                        : undefined,
         },
         { merge: true }
     );
@@ -585,17 +587,37 @@ export async function buildBloomContextSources(
         settings.dataAccess.journal ? listBloomJournalEntries(uid) : Promise.resolve([]),
     ]);
 
+    const MAX_CHARS = 4000;
+    let usedChars = 0;
+
+    const resultNotes: string[] = [];
+    for (const note of notes.filter((n) => n.status === "active")) {
+        const str = `${note.title}: ${note.content.substring(0, 200)}`;
+        if (usedChars + str.length > MAX_CHARS) break;
+        resultNotes.push(str);
+        usedChars += str.length;
+    }
+
+    const resultHabits: string[] = [];
+    for (const habit of habits) {
+        const streak = habit.completedDates.slice(-7).join(", ") || "No recent completions";
+        const str = `${habit.name} (${habit.category}) recent check-ins: ${streak}`;
+        if (usedChars + str.length > MAX_CHARS) break;
+        resultHabits.push(str);
+        usedChars += str.length;
+    }
+
+    const resultJournal: string[] = [];
+    for (const entry of journalEntries) {
+        const str = `${entry.title} on ${entry.entryDate}: ${entry.content.slice(0, 200)}`;
+        if (usedChars + str.length > MAX_CHARS) break;
+        resultJournal.push(str);
+        usedChars += str.length;
+    }
+
     return {
-        notes: notes
-            .filter((note) => note.status === "active")
-            .slice(0, 5)
-            .map((note) => `${note.title}: ${note.content.slice(0, 180)}`),
-        habits: habits.slice(0, 5).map((habit) => {
-            const streak = habit.completedDates.slice(-5).join(", ") || "No recent completions";
-            return `${habit.name} (${habit.category}) recent check-ins: ${streak}`;
-        }),
-        journal: journalEntries
-            .slice(0, 5)
-            .map((entry) => `${entry.title} on ${entry.entryDate}: ${entry.content.slice(0, 180)}`),
+        notes: resultNotes,
+        habits: resultHabits,
+        journal: resultJournal,
     };
 }
