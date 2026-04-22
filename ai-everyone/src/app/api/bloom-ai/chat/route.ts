@@ -8,6 +8,7 @@ import {
     upsertConversationMetadata,
 } from "@/modules/bloom-ai/lib/server";
 import { generateBloomReply, resolveBloomModel } from "@/modules/bloom-ai/lib/gemini";
+import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 
 export async function POST(req: NextRequest) {
     const verifiedUser = await verifyFirebaseRequest(req);
@@ -76,8 +77,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ conversation: updatedConversation });
     } catch (error) {
         console.error("[Bloom Chat]", error);
+        const mapped = normalizeUserFacingError(error, {
+            surface: "bloom",
+            fallbackMessage: "Bloom AI could not reply right now.",
+        });
         return NextResponse.json(
-            { error: error instanceof Error ? error.message : "Bloom AI could not reply right now." },
+            { error: mapped.message },
             { status: 500 }
         );
     }

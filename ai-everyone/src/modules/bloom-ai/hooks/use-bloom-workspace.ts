@@ -25,6 +25,8 @@ import {
     updateBloomJournalEntry,
 } from "@/modules/bloom-ai/services/journal-service";
 import { updateBloomSettings as saveBloomSettings } from "@/modules/bloom-ai/services/settings-service";
+import type { UserFacingError } from "@/lib/errors/user-facing-errors";
+import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 import type {
     BloomConversation,
     BloomHabit,
@@ -50,7 +52,7 @@ export function useBloomWorkspace() {
     const [snapshot, setSnapshot] = useState<BloomWorkspaceSnapshot | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<UserFacingError | null>(null);
     const [activeSection, setActiveSection] = useState<BloomSection>("agent");
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
     const [isRemindersOpen, setIsRemindersOpen] = useState(false);
@@ -74,7 +76,11 @@ export function useBloomWorkspace() {
                 });
             });
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to load Bloom AI.");
+            const parsed = normalizeUserFacingError(err, {
+                surface: "bloom",
+                fallbackMessage: "Failed to load Bloom AI.",
+            });
+            setError(parsed);
         } finally {
             setIsLoading(false);
         }
@@ -131,7 +137,11 @@ export function useBloomWorkspace() {
                 });
                 applyConversation(response.conversation);
             } catch (err) {
-                setError(err instanceof Error ? err.message : "Bloom AI could not reply.");
+                const parsed = normalizeUserFacingError(err, {
+                    surface: "bloom",
+                    fallbackMessage: "Bloom AI could not reply.",
+                });
+                setError(parsed);
             } finally {
                 setIsSending(false);
             }

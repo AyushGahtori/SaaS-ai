@@ -13,13 +13,14 @@ import {
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { createUserProfile, getUserProfile } from "@/lib/firestore";
+import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 
 // Google auth provider instance (reusable).
 const googleProvider = new GoogleAuthProvider();
 
 /**
  * Call the server-side API to seed predefined memory skeleton documents
- * for a brand-new user. Fire-and-forget — doesn't block sign-in flow.
+ * for a brand-new user. Fire-and-forget does not block sign-in flow.
  */
 function seedNewUserMemory(uid: string): void {
     fetch("/api/user/seed", {
@@ -27,6 +28,11 @@ function seedNewUserMemory(uid: string): void {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: uid }),
     }).catch((err) => console.error("[AuthClient] Failed to seed user memory:", err));
+}
+
+function rethrowAsFriendlyError(error: unknown, surface: "auth_sign_in" | "auth_sign_up"): never {
+    const parsed = normalizeUserFacingError(error, { surface });
+    throw new Error(parsed.message);
 }
 
 /**
@@ -39,25 +45,38 @@ export async function signUpWithEmail(
     email: string,
     password: string
 ) {
-    const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-    );
-    // Set the display name on the Firebase Auth user profile.
-    await updateProfile(userCredential.user, { displayName: name });
+    let userCredential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>>;
 
-    // Create a user profile document in Firestore.
-    await createUserProfile(userCredential.user.uid, {
-        name,
-        email,
-        image: userCredential.user.photoURL || null,
-        createdAt: new Date().toISOString(),
-        onboardingComplete: false,
-    });
+    try {
+        userCredential = await createUserWithEmailAndPassword(
+            auth,
+            email,
+            password
+        );
+        // Set the display name on the Firebase Auth user profile.
+        await updateProfile(userCredential.user, { displayName: name });
+    } catch (error) {
+        rethrowAsFriendlyError(error, "auth_sign_up");
+    }
 
-    // Seed predefined memory skeleton (fire-and-forget)
-    seedNewUserMemory(userCredential.user.uid);
+    try {
+        // Create a user profile document in Firestore after auth succeeds.
+        await createUserProfile(userCredential.user.uid, {
+            name,
+            email,
+            image: userCredential.user.photoURL || null,
+            createdAt: new Date().toISOString(),
+            onboardingComplete: false,
+        });
+
+        // Seed predefined memory skeleton (fire-and-forget).
+        seedNewUserMemory(userCredential.user.uid);
+    } catch (error) {
+        console.error("[AuthClient] Post sign-up setup failed:", error);
+        throw new Error(
+            "Your account was created, but we could not finish profile setup. Please sign in and try again."
+        );
+    }
 
     return userCredential.user;
 }
@@ -66,12 +85,16 @@ export async function signUpWithEmail(
  * Sign in an existing user with email and password.
  */
 export async function signInWithEmail(email: string, password: string) {
-    const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-    );
-    return userCredential.user;
+    try {
+        const userCredential = await signInWithEmailAndPassword(
+            auth,
+            email,
+            password
+        );
+        return userCredential.user;
+    } catch (error) {
+        rethrowAsFriendlyError(error, "auth_sign_in");
+    }
 }
 
 /**
@@ -80,26 +103,30 @@ export async function signInWithEmail(email: string, password: string) {
  * a Firestore user profile document is created automatically.
  */
 export async function signInWithGoogle() {
-    const userCredential = await signInWithPopup(auth, googleProvider);
-    const user = userCredential.user;
+    try {
+        const userCredential = await signInWithPopup(auth, googleProvider);
+        const user = userCredential.user;
 
-    // Check if a Firestore profile already exists for this user.
-    const existingProfile = await getUserProfile(user.uid);
-    if (!existingProfile) {
-        // First-time Google sign-in — create a Firestore profile.
-        await createUserProfile(user.uid, {
-            name: user.displayName || "User",
-            email: user.email || "",
-            image: user.photoURL || null,
-            createdAt: new Date().toISOString(),
-            onboardingComplete: false,
-        });
+        // Check if a Firestore profile already exists for this user.
+        const existingProfile = await getUserProfile(user.uid);
+        if (!existingProfile) {
+            // First-time Google sign-in, create a Firestore profile.
+            await createUserProfile(user.uid, {
+                name: user.displayName || "User",
+                email: user.email || "",
+                image: user.photoURL || null,
+                createdAt: new Date().toISOString(),
+                onboardingComplete: false,
+            });
 
-        // Seed predefined memory skeleton (fire-and-forget)
-        seedNewUserMemory(user.uid);
+            // Seed predefined memory skeleton (fire-and-forget).
+            seedNewUserMemory(user.uid);
+        }
+
+        return user;
+    } catch (error) {
+        rethrowAsFriendlyError(error, "auth_sign_in");
     }
-
-    return user;
 }
 
 /**

@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { OctagonAlert } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { FaGoogle } from "react-icons/fa";
 
@@ -21,8 +20,12 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Alert, AlertTitle } from "@/components/ui/alert";
 import { signInWithGoogle, signUpWithEmail } from "@/lib/firebaseAuth";
+import {
+  normalizeUserFacingError,
+  type UserFacingError,
+} from "@/lib/errors/user-facing-errors";
+import { ThemedErrorBanner } from "@/components/error-ui/themed-error-banner";
 
 const formSchema = z
   .object({
@@ -38,7 +41,7 @@ const formSchema = z
 
 export const SignUpView = () => {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingError | null>(null);
   const [pending, setPending] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -58,8 +61,12 @@ export const SignUpView = () => {
       await signUpWithEmail(data.name, data.email, data.password);
       router.push("/");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Sign up failed";
-      setError(message);
+      setError(
+        normalizeUserFacingError(err, {
+          surface: "auth_sign_up",
+          fallbackMessage: "Sign up failed. Please try again.",
+        })
+      );
     } finally {
       setPending(false);
     }
@@ -72,8 +79,12 @@ export const SignUpView = () => {
       await signInWithGoogle();
       router.push("/");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Google sign in failed";
-      setError(message);
+      setError(
+        normalizeUserFacingError(err, {
+          surface: "auth_sign_up",
+          fallbackMessage: "Google sign in failed. Please try again.",
+        })
+      );
     } finally {
       setPending(false);
     }
@@ -149,12 +160,7 @@ export const SignUpView = () => {
                   />
                 </div>
 
-                {error ? (
-                  <Alert variant="destructive">
-                    <OctagonAlert className="h-4 w-4" />
-                    <AlertTitle>{error}</AlertTitle>
-                  </Alert>
-                ) : null}
+                <ThemedErrorBanner error={error} />
 
                 <Button disabled={pending} type="submit" className="w-full">
                   {pending ? "Creating account..." : "Sign Up"}
