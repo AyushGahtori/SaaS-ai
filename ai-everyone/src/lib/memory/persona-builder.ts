@@ -10,8 +10,16 @@
  * Server-side only.
  */
 
+import { GoogleGenAI } from "@google/genai";
 import type { MemoryItem, PersonaSummary } from "@/lib/memory/types";
 import { getActiveMemories, getPersona, savePersona } from "@/lib/memory/memory-repository.server";
+
+const DEFAULT_PERSONA_SUMMARY_MODEL =
+    process.env.GEMINI_MODEL_FLASH ||
+    process.env.GEMINI_MODEL_FLASH_LITE ||
+    "gemini-2.5-flash-lite";
+
+let personaGeminiWarningEmitted = false;
 
 // ---------------------------------------------------------------------------
 // Prompt
@@ -42,26 +50,28 @@ Output ONLY the summary. No explanation, no preamble.`;
 // ---------------------------------------------------------------------------
 
 async function generateSummaryFromLLM(memories: MemoryItem[]): Promise<string> {
-    const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-    const model = process.env.OLLAMA_DEFAULT_MODEL || "qwen2.5:7b";
+    const apiKey = process.env.GEMINI_API_KEY?.trim() || "";
+    if (!apiKey) {
+        if (!personaGeminiWarningEmitted) {
+            console.warn(
+                `[PersonaBuilder] GEMINI_API_KEY is not configured${process.env.VERCEL ? " on Vercel" : ""
+                }; using deterministic fallback summary. Ollama is chat-only.`
+            );
+            personaGeminiWarningEmitted = true;
+        }
+        return buildFallbackSummary(memories);
+    }
 
+    const ai = new GoogleGenAI({ apiKey });
     try {
-        const res = await fetch(`${baseUrl}/api/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                model,
-                messages: [{ role: "user", content: buildAssemblyPrompt(memories) }],
-                stream: false,
-            }),
-            signal: AbortSignal.timeout(20000),
+        const response = await ai.models.generateContent({
+            model: DEFAULT_PERSONA_SUMMARY_MODEL,
+            contents: [{ role: "user", parts: [{ text: buildAssemblyPrompt(memories) }] }],
         });
-
-        if (!res.ok) return buildFallbackSummary(memories);
-
-        const data = await res.json();
-        return (data?.message?.content ?? "").trim() || buildFallbackSummary(memories);
-    } catch {
+        const summary = response.text?.trim() || "";
+        return summary || buildFallbackSummary(memories);
+    } catch (error) {
+        console.error("[PersonaBuilder] Gemini summary failed:", error);
         return buildFallbackSummary(memories);
     }
 }

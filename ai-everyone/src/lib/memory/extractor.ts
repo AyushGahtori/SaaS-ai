@@ -6,15 +6,21 @@
  *          Returns an array of ExtractedMemory items if confident.
  *          Returns null if the message is too ambiguous.
  *
- * Layer 3: LLM-based extraction via Ollama.
+ * Layer 3: LLM-based extraction via Gemini API.
  *          Only called when Layer 2 returns null or empty.
  *          Uses a strict JSON prompt and discards low-confidence results.
  *
  * This module must only be run server-side (imports happen in API routes).
  */
 
+import { GoogleGenAI } from "@google/genai";
 import type { ExtractedMemory } from "@/lib/memory/types";
 import { KEY_META } from "@/lib/memory/types";
+
+const DEFAULT_MEMORY_EXTRACTION_MODEL =
+    process.env.GEMINI_MODEL_FLASH_LITE ||
+    process.env.GEMINI_MODEL_FLASH ||
+    "gemini-2.5-flash-lite";
 
 // ---------------------------------------------------------------------------
 // Layer 2 — Rule-based slot extractors
@@ -161,7 +167,7 @@ export function runLayer2(message: string): ExtractedMemory[] | null {
 }
 
 // ---------------------------------------------------------------------------
-// Layer 3 — LLM extraction (Ollama)
+// Layer 3 — LLM extraction (Gemini)
 // ---------------------------------------------------------------------------
 
 const EXTRACTION_PROMPT = (message: string) => `You are a memory extraction system. Extract persona facts from the user message.
@@ -189,54 +195,71 @@ Example output:
 
 If no memory-worthy facts exist, return exactly: []`;
 
+let geminiLayer3WarningEmitted = false;
+
+function readGeminiApiKey(): string {
+    const apiKey = process.env.GEMINI_API_KEY?.trim() || "";
+    if (apiKey) return apiKey;
+
+    if (!geminiLayer3WarningEmitted) {
+        console.warn(
+            `[MemoryLayer3] GEMINI_API_KEY is not configured${process.env.VERCEL ? " on Vercel" : ""
+            }; Layer 3 extraction is disabled. Ollama is chat-only.`
+        );
+        geminiLayer3WarningEmitted = true;
+    }
+
+    return "";
+}
+
+function stripCodeFences(value: string): string {
+    return value
+        .trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+}
+
 export async function runLayer3(message: string): Promise<ExtractedMemory[]> {
-    const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-    const model = process.env.OLLAMA_DEFAULT_MODEL || "qwen2.5:7b";
+    const apiKey = readGeminiApiKey();
+    if (!apiKey) return [];
+    const ai = new GoogleGenAI({ apiKey });
 
     try {
-        const res = await fetch(`${baseUrl}/api/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                model,
-                messages: [
-                    { role: "user", content: EXTRACTION_PROMPT(message) }
-                ],
-                stream: false,
-            }),
-            signal: AbortSignal.timeout(15000),
+        const response = await ai.models.generateContent({
+            model: DEFAULT_MEMORY_EXTRACTION_MODEL,
+            contents: [{ role: "user", parts: [{ text: EXTRACTION_PROMPT(message) }] }],
         });
-
-        if (!res.ok) {
-            console.error(`[MemoryLayer3] Ollama error: ${res.status}`);
-            return [];
-        }
-
-        const data = await res.json();
-        const raw = data?.message?.content ?? "[]";
-
-        // Strip markdown code fences if present
-        const cleaned = raw
-            .trim()
-            .replace(/^```(?:json)?\s*/i, "")
-            .replace(/\s*```$/i, "")
-            .trim();
+        const raw = response.text?.trim() || "[]";
+        const cleaned = stripCodeFences(raw);
 
         const parsed = JSON.parse(cleaned);
         if (!Array.isArray(parsed)) return [];
 
         const results: ExtractedMemory[] = [];
         for (const item of parsed) {
-            if (!item.key || !item.value || typeof item.confidence !== "number") continue;
-            if (item.confidence < 0.6) continue; // discard low confidence
+            if (
+                !item ||
+                typeof item !== "object" ||
+                typeof (item as { key?: unknown }).key !== "string" ||
+                typeof (item as { value?: unknown }).value !== "string" ||
+                typeof (item as { confidence?: unknown }).confidence !== "number"
+            ) {
+                continue;
+            }
 
-            const meta = KEY_META[item.key];
+            const key = (item as { key: string }).key;
+            const value = (item as { value: string }).value;
+            const confidence = (item as { confidence: number }).confidence;
+            if (confidence < 0.6) continue; // discard low confidence
+
+            const meta = KEY_META[key as keyof typeof KEY_META];
             if (!meta) continue; // only accept known keys
 
             results.push({
-                key: item.key,
-                value: String(item.value).trim(),
-                confidence: item.confidence,
+                key: key as ExtractedMemory["key"],
+                value: value.trim(),
+                confidence,
                 type: meta.type,
                 scope: meta.scope,
             });
@@ -245,7 +268,7 @@ export async function runLayer3(message: string): Promise<ExtractedMemory[]> {
         console.log(`[MemoryLayer3] LLM extracted ${results.length} items`);
         return results;
     } catch (err) {
-        console.error("[MemoryLayer3] extraction failed:", err);
+        console.error("[MemoryLayer3] Gemini extraction failed:", err);
         return [];
     }
 }

@@ -36,6 +36,10 @@ import {
     deleteMessages,
 } from "@/modules/chat/db/messages";
 import { subscribeToTask } from "@/lib/firestore-tasks";
+import {
+    isRetryableHighTrafficGeminiError,
+    normalizeUserFacingError,
+} from "@/lib/errors/user-facing-errors";
 
 interface StreamPayload {
     type: string;
@@ -91,6 +95,7 @@ const AVAILABLE_MODELS = CHAT_MODELS.map((model) => ({
     id: model.id,
     label: model.label,
 }));
+const DEFAULT_CHAT_MODEL_ID = "gemini-3-flash-preview";
 
 const LOCAL_OLLAMA_URL_STORAGE_KEY = "pian.local_ollama_url";
 const DEFAULT_LOCAL_OLLAMA_URLS = [
@@ -242,21 +247,6 @@ async function tryStreamLocalOllama(
     );
 }
 
-function parseHighDemandMessage(error: unknown): string | null {
-    const raw = error instanceof Error ? error.message : String(error || "");
-    const normalized = raw.toLowerCase();
-    const isHighDemand =
-        normalized.includes("503") ||
-        normalized.includes("unavailable") ||
-        normalized.includes("service unavailable") ||
-        normalized.includes("high demand") ||
-        normalized.includes("spikes in demand");
-
-    if (!isHighDemand) return null;
-
-    return "I am currently seeing unusually high demand on the model right now. Please bear with me for a moment and try again shortly.";
-}
-
 export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [uid, setUid] = useState<string | null>(null);
     const [chats, setChats] = useState<Chat[]>([]);
@@ -269,7 +259,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [taskStatuses, setTaskStatuses] = useState<
         Record<string, { status: string; result?: Record<string, unknown> }>
     >({});
-    const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
+    const [selectedModel, setSelectedModel] = useState(() => {
+        if (AVAILABLE_MODELS.some((model) => model.id === DEFAULT_CHAT_MODEL_ID)) {
+            return DEFAULT_CHAT_MODEL_ID;
+        }
+        return AVAILABLE_MODELS[0]?.id || DEFAULT_CHAT_MODEL_ID;
+    });
     const [isVoiceActive, setIsVoiceActive] = useState(false);
     const [pendingVoiceResponse, setPendingVoiceResponse] = useState<string | null>(null);
 
@@ -695,14 +690,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     return { type: "aborted" };
                 }
 
+                const parsedError = normalizeUserFacingError(err, {
+                    surface: "chat",
+                    fallbackMessage: "Failed to send message.",
+                });
+
                 if (tempAssistantId) {
-                    const highDemandMessage = parseHighDemandMessage(err);
-                    if (highDemandMessage && resolvedChatId) {
+                    if (resolvedChatId && isRetryableHighTrafficGeminiError(parsedError)) {
                         const assistantMsg = await createMessage(
                             uid,
                             resolvedChatId,
                             "assistant",
-                            highDemandMessage,
+                            parsedError.message,
                             undefined,
                             undefined,
                             isVoice
@@ -712,21 +711,23 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                                 message.id === tempAssistantId ? assistantMsg : message
                             )
                         );
-                        return { type: "chat", content: highDemandMessage };
+                        return { type: "chat", content: parsedError.message };
                     }
 
                     setMessages((prev) =>
                         prev.filter((message) => message.id !== tempAssistantId)
                     );
                 }
-                const primaryError =
-                    err instanceof Error ? err.message : "Failed to send message.";
+
                 if (localOllamaError) {
+                    const localFallback = normalizeUserFacingError(localOllamaError, {
+                        surface: "chat",
+                    });
                     setError(
-                        `${primaryError}\n\nLocal Ollama attempt also failed: ${localOllamaError.message}`
+                        `${parsedError.message}\n\nLocal Ollama attempt also failed: ${localFallback.message}`
                     );
                 } else {
-                    setError(primaryError);
+                    setError(parsedError.message);
                 }
                 return undefined;
             } finally {

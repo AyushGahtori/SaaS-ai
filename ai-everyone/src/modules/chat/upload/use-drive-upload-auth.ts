@@ -10,6 +10,7 @@ import {
     signOut,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 
 type CodedError = Error & { code?: string };
 
@@ -30,7 +31,7 @@ async function requestDriveTokenViaFirebasePopup(): Promise<{
 }> {
     const currentUser = auth.currentUser;
     if (!currentUser) {
-        throw new Error("Please sign in to Pian first, then retry Drive upload sign-in.");
+        throw new Error("Please sign in first, then retry Drive upload sign-in.");
     }
 
     const provider = new GoogleAuthProvider();
@@ -94,10 +95,11 @@ export function useDriveUploadAuth() {
             setAuthError(null);
             return token;
         } catch (error) {
-            const message =
-                error instanceof Error
-                    ? error.message
-                    : "Google Drive sign-in failed. Please try again.";
+            const parsed = normalizeUserFacingError(error, {
+                surface: "upload",
+                fallbackMessage: "Google Drive sign-in failed. Please try again.",
+            });
+            const message = parsed.message;
             setAuthError(message);
             throw createDriveAuthError(message);
         } finally {
