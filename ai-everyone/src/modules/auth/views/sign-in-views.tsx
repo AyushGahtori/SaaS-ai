@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { OctagonAlert } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { FaGoogle } from "react-icons/fa";
 
@@ -21,8 +20,12 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Alert, AlertTitle } from "@/components/ui/alert";
 import { signInWithEmail, signInWithGoogle } from "@/lib/firebaseAuth";
+import {
+  normalizeUserFacingError,
+  type UserFacingError,
+} from "@/lib/errors/user-facing-errors";
+import { ThemedErrorBanner } from "@/components/error-ui/themed-error-banner";
 
 const formSchema = z.object({
   email: z.string().min(1, "Email is required").email("Invalid email address"),
@@ -31,7 +34,7 @@ const formSchema = z.object({
 
 export const SignInView = () => {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UserFacingError | null>(null);
   const [pending, setPending] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -49,8 +52,12 @@ export const SignInView = () => {
       await signInWithEmail(data.email, data.password);
       router.push("/");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Sign in failed";
-      setError(message);
+      setError(
+        normalizeUserFacingError(err, {
+          surface: "auth_sign_in",
+          fallbackMessage: "Sign in failed. Please try again.",
+        })
+      );
     } finally {
       setPending(false);
     }
@@ -63,8 +70,12 @@ export const SignInView = () => {
       await signInWithGoogle();
       router.push("/");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Google sign in failed";
-      setError(message);
+      setError(
+        normalizeUserFacingError(err, {
+          surface: "auth_sign_in",
+          fallbackMessage: "Google sign in failed. Please try again.",
+        })
+      );
     } finally {
       setPending(false);
     }
@@ -114,12 +125,7 @@ export const SignInView = () => {
                   />
                 </div>
 
-                {error ? (
-                  <Alert variant="destructive">
-                    <OctagonAlert className="h-4 w-4" />
-                    <AlertTitle>{error}</AlertTitle>
-                  </Alert>
-                ) : null}
+                <ThemedErrorBanner error={error} />
 
                 <Button disabled={pending} type="submit" className="w-full">
                   {pending ? "Signing in..." : "Sign In"}

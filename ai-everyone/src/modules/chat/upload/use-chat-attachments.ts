@@ -22,6 +22,7 @@ import {
     persistUploadedDoc,
 } from "@/modules/chat/upload/api";
 import { useDriveUploadAuth } from "@/modules/chat/upload/use-drive-upload-auth";
+import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 
 function createAttachmentId(prefix: string, name: string): string {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${name}`;
@@ -193,8 +194,10 @@ export function useChatAttachments(selectedModel: string) {
                     uploadedDocId: persisted.uploadedDocId,
                 }));
             } catch (error) {
-                const message =
-                    error instanceof Error ? error.message : "Failed to upload selected file.";
+                const message = normalizeUserFacingError(error, {
+                    surface: "upload",
+                    fallbackMessage: "Failed to upload selected file.",
+                }).message;
 
                 if (dataUrl && shouldFallbackToLocalAttachment(error)) {
                     const safeDataUrl = dataUrl;
@@ -282,7 +285,10 @@ export function useChatAttachments(selectedModel: string) {
                 return;
             }
             const message =
-                error instanceof Error ? error.message : "Failed to load Drive files.";
+                normalizeUserFacingError(error, {
+                    surface: "upload",
+                    fallbackMessage: "Failed to load Drive files.",
+                }).message;
             setDriveFiles([]);
             setAttachError(message);
         } finally {
@@ -305,10 +311,10 @@ export function useChatAttachments(selectedModel: string) {
             setIsDriveDialogOpen(true);
             void fetchDriveResults(driveSearch);
         } catch (error) {
-            const message =
-                error instanceof Error
-                    ? error.message
-                    : "Drive sign-in failed. Please try again.";
+            const message = normalizeUserFacingError(error, {
+                surface: "upload",
+                fallbackMessage: "Drive sign-in failed. Please try again.",
+            }).message;
             setAttachError(message);
         }
     };
@@ -360,7 +366,10 @@ export function useChatAttachments(selectedModel: string) {
                 return;
             }
             const message =
-                error instanceof Error ? error.message : "Failed to store Drive attachment.";
+                normalizeUserFacingError(error, {
+                    surface: "upload",
+                    fallbackMessage: "Failed to store Drive attachment.",
+                }).message;
             setAttachError(message);
         }
     };

@@ -1,25 +1,26 @@
 // src/app/api/teams/auth/poll/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 
-export async function POST(req: NextRequest) {
-    const configuredBase = (process.env.AGENT_SERVER_URL || "").trim().replace(/\/+$/, "");
-    // Keep detached EC2 fallback for Vercel/serverless environments.
-    const agentServerUrl = configuredBase || "http://35.154.54.246";
+export async function POST() {
+    const agentServerUrl = resolveAgentServerUrl();
     const agentUrl = `${agentServerUrl}/auth/poll`;
 
     try {
         const response = await fetch(agentUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json" }
+            headers: { "Content-Type": "application/json" },
+            signal: AbortSignal.timeout(10000),
         });
 
         const data = await response.json().catch(() => ({}));
-        
+
         return NextResponse.json(data, { status: response.status });
-    } catch (error: any) {
-        console.error("[Teams Auth Poll Proxy Error]", error.message);
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[Teams Auth Poll Proxy Error]", message);
         return NextResponse.json(
-            { error: `Cannot reach agent server: ${error.message}` },
+            { error: `Cannot reach agent server: ${message}` },
             { status: 502 }
         );
     }

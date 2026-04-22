@@ -18,6 +18,7 @@ import { processExtractedMemories } from "@/lib/memory/deduper";
 import { rebuildPersona, formatPersonaForPrompt } from "@/lib/memory/persona-builder";
 import { getPersona } from "@/lib/memory/memory-repository.server";
 import { getTopKMemories, formatMemoriesForPrompt } from "@/lib/memory/retrieval";
+import { getServerOllamaBaseUrls } from "@/lib/memory/server-ollama-base-urls";
 import {
     AGENT_BUNDLES,
     AGENT_CATALOG,
@@ -45,6 +46,7 @@ import {
     validateSingleAttachmentSize,
     validateTotalAttachmentSize,
 } from "@/lib/uploads/attachment-policy";
+import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 
 const GOOGLE_AGENT_TYPES = new Set(["calendar", "gmail", "meet", "drive", "tasks", "web_search"]);
 
@@ -1091,52 +1093,6 @@ async function buildPersonaContext(uid: string, userMessage: string): Promise<st
     }
 }
 
-function normalizeOllamaBaseUrl(value: string): string {
-    const trimmed = (value || "").trim().replace(/\/+$/, "");
-    if (!trimmed) return "";
-    if (/^https?:\/\//i.test(trimmed)) return trimmed;
-    return `http://${trimmed}`;
-}
-
-function getServerOllamaBaseUrls(): string[] {
-    const rawCandidates: string[] = [];
-    const primary = process.env.OLLAMA_BASE_URL;
-    if (primary && primary.trim()) rawCandidates.push(primary.trim());
-
-    const fallbackEnv = process.env.OLLAMA_BASE_URL_FALLBACKS || "";
-    if (fallbackEnv.trim()) {
-        rawCandidates.push(
-            ...fallbackEnv
-                .split(",")
-                .map((item) => item.trim())
-                .filter(Boolean)
-        );
-    }
-
-    if (!process.env.VERCEL) {
-        rawCandidates.push(
-            "http://host.docker.internal:11434",
-            "http://127.0.0.1:11434",
-            "http://localhost:11434"
-        );
-    }
-
-    const seen = new Set<string>();
-    const deduped: string[] = [];
-    for (const candidate of rawCandidates) {
-        const normalized = normalizeOllamaBaseUrl(candidate);
-        if (!normalized || seen.has(normalized)) continue;
-        seen.add(normalized);
-        deduped.push(normalized);
-    }
-
-    if (deduped.length === 0) {
-        deduped.push("http://127.0.0.1:11434");
-    }
-
-    return deduped;
-}
-
 async function streamOllamaChat(
     baseUrls: string[],
     model: string,
@@ -1411,7 +1367,8 @@ export async function POST(req: NextRequest) {
             console.error("[UploadedDocsCleanup] failed:", error);
         });
         const ollamaBaseUrls = getServerOllamaBaseUrls();
-        const model = body.model || process.env.OLLAMA_DEFAULT_MODEL || "qwen3.5:397b-cloud";
+        const model =
+            body.model || process.env.OLLAMA_DEFAULT_MODEL || "gemini-3-flash-preview";
         const normalizedAttachments = Array.isArray(attachments) ? attachments : [];
         const normalizedFailedAttachments = normalizeFailedAttachments(failedAttachments);
         const usingGemini = isGeminiChatModel(model);
@@ -1804,8 +1761,10 @@ export async function POST(req: NextRequest) {
                             return;
                         }
                         console.error("[Chat API Error]", error);
-                        const message =
-                            error instanceof Error ? error.message : "Internal server error";
+                        const message = normalizeUserFacingError(error, {
+                            surface: "chat",
+                            fallbackMessage: "Internal server error",
+                        }).message;
                         sendEvent("error", { error: message });
                         safeClose();
                     }
@@ -1833,8 +1792,10 @@ export async function POST(req: NextRequest) {
         });
     } catch (error) {
         console.error("[Chat API Error]", error);
-        const message =
-            error instanceof Error ? error.message : "Unknown error occurred";
+        const message = normalizeUserFacingError(error, {
+            surface: "chat",
+            fallbackMessage: "Unknown error occurred",
+        }).message;
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }

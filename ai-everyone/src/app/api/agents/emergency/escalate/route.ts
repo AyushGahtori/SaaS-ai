@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getInstallHintForAgent } from "@/lib/agents/catalog";
 import { getAccessibleAgentIds, getInstalledAgentIds } from "@/lib/agents/user-access.server";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
+import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 
 const EMERGENCY_AGENT_ID = "emergency-response-agent";
 
@@ -42,10 +43,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const agentBaseUrl =
-            process.env.EMERGENCY_RESPONSE_AGENT_URL ||
-            process.env.AGENT_SERVER_URL ||
-            "http://35.154.54.246";
+        const agentBaseUrl = resolveAgentServerUrl(process.env.EMERGENCY_RESPONSE_AGENT_URL);
 
         const response = await fetch(`${agentBaseUrl}/emergency/action`, {
             method: "POST",

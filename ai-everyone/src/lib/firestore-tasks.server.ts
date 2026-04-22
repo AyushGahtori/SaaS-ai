@@ -17,6 +17,7 @@ import {
     getInstalledAgentIds,
 } from "@/lib/agents/user-access.server";
 import { getInstallHintForAgent } from "@/lib/agents/catalog";
+import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 import {
     interpretAgentError,
     normalizeAgentExecutionResult,
@@ -287,9 +288,7 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "travel-halper-agent": process.env.TRAVEL_HALPER_AGENT_URL,
     };
     const agentServerUrl =
-        ENV_AGENT_URL_MAP[task.agentId] ||
-        process.env.AGENT_SERVER_URL ||
-        "http://35.154.54.246";
+        resolveAgentServerUrl(ENV_AGENT_URL_MAP[task.agentId]);
     const agentUrl = `${agentServerUrl}${agentRoute}`;
     const executionAuth = await getAgentExecutionAuth(task.userId, task.agentId);
 
