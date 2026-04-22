@@ -1,12 +1,10 @@
-const path = require("path");
-
 /** @type {import('next').NextConfig} */
-const workspaceRoot = path.resolve(__dirname, "..");
+const appRoot = __dirname;
 
 const nextConfig = {
-  outputFileTracingRoot: workspaceRoot,
+  outputFileTracingRoot: appRoot,
   turbopack: {
-    root: workspaceRoot,
+    root: appRoot,
   },
   async rewrites() {
     return [
