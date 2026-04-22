@@ -578,6 +578,37 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         tags: ["construction", "layout", "costing", "vendors", "house-plan"],
         requiresConnection: false,
     },
+    {
+        id: "devika-engineer-agent",
+        name: "Devika Engineer Agent",
+        description:
+            "Software engineering copilot for project planning, implementation strategy, debugging, deployment readiness, and technical reporting.",
+        actions: [
+            "run_devika_agent",
+            "plan_project",
+            "research_plan",
+            "implement_feature",
+            "fix_bug",
+            "run_project",
+            "deploy_project",
+            "generate_report",
+            "answer_question",
+            "repo_intake",
+            "browser_strategy",
+            "list_snapshots",
+            "agent_status",
+            "token_estimate",
+        ],
+        examplePrompts: [
+            "Plan the architecture for a multi-tenant SaaS billing module",
+            "Help me debug this Python stack trace and propose a fix checklist",
+            "Prepare a production deployment and rollback plan for this API service",
+        ],
+        provider: "internal",
+        category: "development",
+        tags: ["software-engineering", "planning", "debugging", "deployment", "reporting"],
+        requiresConnection: false,
+    },
 ];
 
 export const AGENT_BUNDLES: AgentBundle[] = [

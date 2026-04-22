@@ -324,6 +324,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 718,
     },
+    "devika-engineer-agent": {
+        iconUrl: makeMonogramIcon("Dev", "#3b4f6a", "#5e7e95"),
+        installCount: 1600,
+        rating: 4.8,
+        createdAt: "2026-04-22T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 724,
+    },
 };
 
 function makeDefaultAgentMeta(agent: AgentCatalogEntry) {

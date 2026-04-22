@@ -47,6 +47,7 @@ const AGENT_ROUTES = {
   "linkedin-agent": "/linkedin/action",
   "zoom-agent": "/zoom/action",
   "travel-halper-agent": "/travelhalper/action",
+  "devika-engineer-agent": "/devika/action",
 };
 
 // ---------------------------------------------------------------------------
@@ -128,6 +129,7 @@ exports.runAgentTask = onDocumentCreated(
         "linkedin-agent": process.env.LINKEDIN_AGENT_URL,
         "zoom-agent": process.env.ZOOM_AGENT_URL,
         "travel-halper-agent": process.env.TRAVEL_HALPER_AGENT_URL,
+        "devika-engineer-agent": process.env.DEVIKA_ENGINEER_AGENT_URL,
       };
 
       const agentServerUrl =

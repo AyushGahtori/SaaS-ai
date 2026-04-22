@@ -46,6 +46,7 @@ This runtime is detached from the main web app.
 | `ats-agent` | 8036 | `/ats/action` | `/ats/health` |
 | `lms-agent` | 8039 | `/lms/action` | `/lms/health` |
 | `travel-halper-agent` | 8040 | `/travelhalper/action` | `/travelhalper/health` |
+| `devika-engineer-agent` | 8041 | `/devika/action` | `/devika/health` |
 
 ## Base URL Policy
 

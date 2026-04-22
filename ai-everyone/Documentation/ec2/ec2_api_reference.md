@@ -44,6 +44,7 @@ Detached runtime contract for all EC2 agents.
 - `GET /ats/health`
 - `GET /lms/health`
 - `GET /travelhalper/health`
+- `GET /devika/health`
 
 ## Action Routes
 
@@ -77,6 +78,7 @@ Detached runtime contract for all EC2 agents.
 - `POST /ats/action`
 - `POST /lms/action`
 - `POST /travelhalper/action`
+- `POST /devika/action`
 
 ## OAuth Ownership (Detached)
 
@@ -140,7 +142,7 @@ Stored fields:
 
 - OAuth: `teams-agent`, `google-agent`, `notion-agent`, `canva-agent`, `discord-agent`, `dropbox-agent`, `github-agent`, `gitlab-agent`, `jira-agent`, `linkedin-agent`, `zoom-agent`
 - API key: `freshdesk-agent`, `greenhouse-agent`
-- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`, `lms-agent`, `travel-halper-agent`
+- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`, `lms-agent`, `travel-halper-agent`, `devika-engineer-agent`
 
 ## JS-Parity Notes
 
@@ -163,4 +165,8 @@ curl -X POST "${AGENT_PUBLIC_BASE_URL}/lms/action" \
 curl -X POST "${AGENT_PUBLIC_BASE_URL}/travelhalper/action" \
   -H "Content-Type: application/json" \
   -d '{"taskId":"smoke-travel-1","userId":"smoke-user","agentId":"travel-halper-agent","action":"plan_trip","prompt":"Plan a Delhi to Goa trip for 3 days"}'
+
+curl -X POST "${AGENT_PUBLIC_BASE_URL}/devika/action" \
+  -H "Content-Type: application/json" \
+  -d '{"taskId":"smoke-devika-1","userId":"smoke-user","agentId":"devika-engineer-agent","action":"plan_project","prompt":"Design a retry-safe job processor with idempotency keys"}'
 ```
