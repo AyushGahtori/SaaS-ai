@@ -34,6 +34,33 @@ function serializeTimestamp(value: unknown): string {
     return new Date().toISOString();
 }
 
+function toSortableMillis(value: unknown): number {
+    if (value instanceof Timestamp) return value.toMillis();
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.getTime();
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+        const parsed = Date.parse(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+}
+
+function toSortableSequence(value: unknown): number {
+    const parsed = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isFirestoreIndexError(error: unknown): boolean {
+    const code = (error as { code?: unknown } | null)?.code;
+    const details = (error as { details?: unknown } | null)?.details;
+    const message = error instanceof Error ? error.message : String(error || "");
+
+    if (code === 9 || code === "9") return true;
+
+    const combined = `${String(details || "")} ${message}`;
+    return /FAILED_PRECONDITION|requires an index/i.test(combined);
+}
+
 function serializeSettings(data: Record<string, unknown> | undefined): BloomSettings {
     const nextDataAccess = (data?.dataAccess ?? {}) as Partial<Record<BloomContextSource, boolean>>;
 
@@ -169,15 +196,41 @@ function serializeJournalEntry(
 }
 
 async function listConversationMessages(uid: string, conversationId: string): Promise<BloomMessage[]> {
-    const snapshot = await userRef(uid)
+    const messagesRef = userRef(uid)
         .collection(CHAT_COLLECTION)
         .doc(conversationId)
-        .collection(MESSAGE_COLLECTION)
-        .orderBy("createdAt", "asc")
-        .orderBy("sequence", "asc")
-        .get();
+        .collection(MESSAGE_COLLECTION);
 
-    return snapshot.docs.map(serializeMessage);
+    try {
+        const snapshot = await messagesRef
+            .orderBy("createdAt", "asc")
+            .orderBy("sequence", "asc")
+            .get();
+        return snapshot.docs.map(serializeMessage);
+    } catch (error) {
+        if (!isFirestoreIndexError(error)) {
+            throw error;
+        }
+
+        // Fallback avoids bootstrap/chat hard failures while Firestore indexes catch up.
+        const fallbackSnapshot = await messagesRef.get();
+        const sorted = [...fallbackSnapshot.docs].sort((left, right) => {
+            const leftData = left.data() || {};
+            const rightData = right.data() || {};
+
+            const createdAtDiff =
+                toSortableMillis(leftData.createdAt) - toSortableMillis(rightData.createdAt);
+            if (createdAtDiff !== 0) return createdAtDiff;
+
+            const sequenceDiff =
+                toSortableSequence(leftData.sequence) - toSortableSequence(rightData.sequence);
+            if (sequenceDiff !== 0) return sequenceDiff;
+
+            return left.id.localeCompare(right.id);
+        });
+
+        return sorted.map(serializeMessage);
+    }
 }
 
 export async function getBloomSettings(uid: string): Promise<BloomSettings> {
@@ -245,12 +298,30 @@ export async function listBloomJournalEntries(uid: string): Promise<BloomJournal
 
 export async function getBloomWorkspaceSnapshot(uid: string): Promise<BloomWorkspaceSnapshot> {
     const [conversations, reminders, notes, habits, journalEntries, settings] = await Promise.all([
-        listBloomConversations(uid),
-        listBloomReminders(uid),
-        listBloomNotes(uid),
-        listBloomHabits(uid),
-        listBloomJournalEntries(uid),
-        getBloomSettings(uid),
+        listBloomConversations(uid).catch((error) => {
+            console.error("[Bloom Workspace] Conversations failed", error);
+            return [];
+        }),
+        listBloomReminders(uid).catch((error) => {
+            console.error("[Bloom Workspace] Reminders failed", error);
+            return [];
+        }),
+        listBloomNotes(uid).catch((error) => {
+            console.error("[Bloom Workspace] Notes failed", error);
+            return [];
+        }),
+        listBloomHabits(uid).catch((error) => {
+            console.error("[Bloom Workspace] Habits failed", error);
+            return [];
+        }),
+        listBloomJournalEntries(uid).catch((error) => {
+            console.error("[Bloom Workspace] Journal failed", error);
+            return [];
+        }),
+        getBloomSettings(uid).catch((error) => {
+            console.error("[Bloom Workspace] Settings failed", error);
+            return DEFAULT_BLOOM_SETTINGS;
+        }),
     ]);
 
     return {
