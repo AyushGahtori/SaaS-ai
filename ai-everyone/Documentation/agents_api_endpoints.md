@@ -138,3 +138,56 @@ Canonical endpoint contract for `travel-halper-agent`.
   "subject": "Goa Trip Plan"
 }
 ```
+
+---
+
+# Devika Engineer Agent API Endpoints
+
+Canonical endpoint contract for `devika-engineer-agent`.
+
+## Public Routes (via Nginx)
+
+- `POST /devika/action`
+- `GET /devika/health`
+
+## Supported Actions
+
+- `run_devika_agent`
+- `plan_project`
+- `research_plan`
+- `implement_feature`
+- `fix_bug`
+- `run_project`
+- `deploy_project`
+- `generate_report`
+- `answer_question`
+- `repo_intake`
+- `browser_strategy`
+- `list_snapshots`
+- `agent_status`
+- `token_estimate`
+
+## Sample: Auto Route Request
+
+```json
+{
+  "taskId": "devika-1",
+  "userId": "<uid>",
+  "agentId": "devika-engineer-agent",
+  "action": "run_devika_agent",
+  "prompt": "Plan and implement a retry-safe webhook processor with dead-letter handling."
+}
+```
+
+## Sample: Bug-Fix Strategy
+
+```json
+{
+  "taskId": "devika-2",
+  "userId": "<uid>",
+  "agentId": "devika-engineer-agent",
+  "action": "fix_bug",
+  "errorLog": "TypeError: Cannot read properties of undefined (reading 'status')",
+  "codeSnippet": "if (job.result.status === 'ok') { ... }"
+}
+```

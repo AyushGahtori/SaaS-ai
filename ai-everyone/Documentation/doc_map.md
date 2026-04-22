@@ -18,6 +18,7 @@ docker_networking_guide.md: Docker/networking troubleshooting.
 ec2/ec2_api_reference.md: Detached EC2 endpoint/auth contract.
 ec2/ec2_deployment_runbook.md: Deploy/runbook + verification.
 ec2/ec2_runtime_readme.md: Runtime scope and service map.
+devika_engineer_agent_test_matrix.md: Devika engineer prompts/use-cases, caching behavior, and failure checks.
 implementation_plan.md: Implementation planning doc.
 navbar-search-button.txt: UI note.
 persona_memory_architecture.md: Persona memory architecture.

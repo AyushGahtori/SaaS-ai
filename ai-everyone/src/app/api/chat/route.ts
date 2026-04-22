@@ -560,6 +560,24 @@ For the building-construction-agent:
 - Use building-construction-agent for house planning, construction costing, plot/layout guidance, and nearby contractor/vendor discovery.
 - If the user requests construction planning without any requirement details, ask for a concise clarification (plot size/location, floor count, budget, or style).
 
+For the devika-engineer-agent:
+- run_devika_agent: extract "prompt" with the full software engineering request.
+- plan_project: extract "prompt", optional "projectName", optional "constraints", optional "files".
+- research_plan: extract "prompt", optional "context", optional "files".
+- implement_feature: extract "featureRequest" (or "prompt"), optional "projectName", optional "files", optional "constraints", optional "codebaseSummary".
+- fix_bug: extract "errorLog" or "stackTrace", optional "codeSnippet", optional "projectName".
+- run_project: extract "prompt", optional "projectName", optional "context.command".
+- deploy_project: extract "prompt", optional "projectName", optional "constraints".
+- generate_report: extract "prompt", optional "projectName", optional "files".
+- answer_question: extract "question" (or "prompt"), optional "codebaseSummary".
+- repo_intake: extract required "repositoryUrl", optional "branch".
+- browser_strategy: extract "prompt" describing the interaction objective.
+- list_snapshots: no additional parameters needed.
+- agent_status: no additional parameters needed.
+- token_estimate: extract "prompt" text to estimate.
+- Use devika-engineer-agent for software-engineering planning, bug triage, feature implementation strategy, repo onboarding, and deployment/report workflows.
+- If user asks for repo analysis but no repository URL is provided, ask a concise clarification for the repository URL.
+
 If an agent is needed, output ONLY:
 <AGENT_INTENT>
 {
