@@ -1742,9 +1742,13 @@ export async function POST(req: NextRequest) {
                                 agentInput,
                             });
 
-                            executeAgentTask(task).catch((err) =>
-                                console.error("[executeAgentTask] background error:", err)
-                            );
+                            try {
+                                // In serverless runtimes, fire-and-forget can be terminated before execution.
+                                // Awaiting guarantees the task is actually dispatched to the EC2 agent runtime.
+                                await executeAgentTask(task);
+                            } catch (err) {
+                                console.error("[executeAgentTask] execution error:", err);
+                            }
 
                             const agentName =
                                 getAgentCatalogEntry(effectiveIntent.agent_required)?.name ||

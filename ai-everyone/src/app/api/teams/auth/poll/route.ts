@@ -2,8 +2,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
-    // Process env AGENT_SERVER_URL matching firestore-tasks.server.ts
-    const agentServerUrl = process.env.AGENT_SERVER_URL || "http://host.docker.internal:8100";
+    const configuredBase = (process.env.AGENT_SERVER_URL || "").trim().replace(/\/+$/, "");
+    // Keep detached EC2 fallback for Vercel/serverless environments.
+    const agentServerUrl = configuredBase || "http://35.154.54.246";
     const agentUrl = `${agentServerUrl}/auth/poll`;
 
     try {

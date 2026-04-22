@@ -206,10 +206,24 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         return;
     }
 
-    const [installedAgentIds, accessibleAgentIds] = await Promise.all([
-        getInstalledAgentIds(task.userId),
-        getAccessibleAgentIds(task.userId),
-    ]);
+    let installedAgentIds: string[] = [];
+    let accessibleAgentIds: string[] = [];
+    try {
+        [installedAgentIds, accessibleAgentIds] = await Promise.all([
+            getInstalledAgentIds(task.userId),
+            getAccessibleAgentIds(task.userId),
+        ]);
+    } catch (error) {
+        const errorMessage =
+            error instanceof Error ? error.message : "Unknown access-check error";
+        await persistInterpretedFailure({
+            taskRef,
+            task,
+            rawError: `Agent execution setup failed: ${errorMessage}`,
+            incrementRetry: true,
+        });
+        return;
+    }
 
     if (!installedAgentIds.includes(task.agentId)) {
         await persistInterpretedFailure({

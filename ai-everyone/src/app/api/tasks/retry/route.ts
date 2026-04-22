@@ -19,10 +19,8 @@ export async function POST(req: NextRequest) {
 
         const task = doc.data() as AgentTask;
         
-        // Trigger background execution
-        executeAgentTask(task).catch(err => {
-            console.error("[Task Retry Error]", err);
-        });
+        // Run deterministically in serverless to avoid orphaned queued tasks.
+        await executeAgentTask(task);
 
         return NextResponse.json({ success: true, message: "Task retry initiated" });
     } catch (e: any) {
