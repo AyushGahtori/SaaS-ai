@@ -578,6 +578,13 @@ For the devika-engineer-agent:
 - Use devika-engineer-agent for software-engineering planning, bug triage, feature implementation strategy, repo onboarding, and deployment/report workflows.
 - If user asks for repo analysis but no repository URL is provided, ask a concise clarification for the repository URL.
 
+For the data-analyst-agent:
+- monitor: extract required "data" (numeric array), optional "label", optional "forceRefresh".
+- autonomous: extract required "goal" (or "prompt"), optional "data", optional "label", optional "forceRefresh".
+- list_capabilities: no additional parameters needed.
+- Use data-analyst-agent for anomaly detection, data-quality checks, numeric trend sanity checks, and goal-driven analysis workflows.
+- If the user asks for anomaly detection without numeric data, ask a concise clarification requesting a numeric series.
+
 If an agent is needed, output ONLY:
 <AGENT_INTENT>
 {

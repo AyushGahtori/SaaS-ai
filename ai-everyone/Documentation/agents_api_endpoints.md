@@ -191,3 +191,46 @@ Canonical endpoint contract for `devika-engineer-agent`.
   "codeSnippet": "if (job.result.status === 'ok') { ... }"
 }
 ```
+
+---
+
+# Data Analyst Agent API Endpoints
+
+Canonical endpoint contract for `data-analyst-agent`.
+
+## Public Routes (via Nginx)
+
+- `POST /dataanalyst/action`
+- `GET /dataanalyst/health`
+
+## Supported Actions
+
+- `monitor`
+- `autonomous`
+- `list_capabilities`
+
+## Sample: Monitor Dataset
+
+```json
+{
+  "taskId": "data-1",
+  "userId": "<uid>",
+  "agentId": "data-analyst-agent",
+  "action": "monitor",
+  "label": "weekly_revenue",
+  "data": [100, 102, 98, 105, 5000, 101, 99]
+}
+```
+
+## Sample: Autonomous Analysis
+
+```json
+{
+  "taskId": "data-2",
+  "userId": "<uid>",
+  "agentId": "data-analyst-agent",
+  "action": "autonomous",
+  "goal": "Review churn metric quality and suggest next checks",
+  "data": [2.1, 2.0, 2.2, 2.1, 5.9, 2.0]
+}
+```

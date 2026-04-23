@@ -563,6 +563,22 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         requiresConnection: false,
     },
     {
+        id: "data-analyst-agent",
+        name: "Data Analyst Agent",
+        description:
+            "Run anomaly detection on numeric datasets, generate goal-driven analysis, and stream concise data-quality insights.",
+        actions: ["monitor", "autonomous", "list_capabilities"],
+        examplePrompts: [
+            "Analyze this weekly revenue series and flag anomalies",
+            "Autonomously review churn data quality and suggest next checks",
+            "Show what this data analyst agent can do",
+        ],
+        provider: "internal",
+        category: "analytics",
+        tags: ["anomaly-detection", "data-quality", "analytics", "insights", "monitoring"],
+        requiresConnection: false,
+    },
+    {
         id: "building-construction-agent",
         name: "Building Construction Agent",
         description:
