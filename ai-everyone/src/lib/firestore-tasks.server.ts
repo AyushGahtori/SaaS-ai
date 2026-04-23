@@ -24,6 +24,8 @@ import {
     type AgentExecutionContract,
 } from "@/lib/agent-error";
 
+const AGENT_HTTP_TIMEOUT_MS = Number(process.env.AGENT_HTTP_TIMEOUT_MS || 45000);
+
 // ---------------------------------------------------------------------------
 // Agent routing map â€” maps agentId to its API endpoint path.
 // Must match the routes defined in each agent's FastAPI server.
@@ -299,18 +301,26 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     console.log(`[executeAgentTask] Calling agent at ${agentUrl}`);
 
     try {
-        const response = await fetch(agentUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                taskId: task.taskId,
-                userId: task.userId,
-                agentId: task.agentId,
-                chatId: task.chatId,
-                ...task.agentInput,
-                ...executionAuth,
-            }),
-        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), AGENT_HTTP_TIMEOUT_MS);
+        let response: Response;
+        try {
+            response = await fetch(agentUrl, {
+                method: "POST",
+                signal: controller.signal,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    taskId: task.taskId,
+                    userId: task.userId,
+                    agentId: task.agentId,
+                    chatId: task.chatId,
+                    ...task.agentInput,
+                    ...executionAuth,
+                }),
+            });
+        } finally {
+            clearTimeout(timeout);
+        }
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -368,13 +378,14 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
             error instanceof Error ? error.message : "Unknown error";
         const isConnectionError =
             errorMessage.includes("ECONNREFUSED") ||
-            errorMessage.includes("fetch failed");
+            errorMessage.includes("fetch failed") ||
+            errorMessage.toLowerCase().includes("abort");
 
         await persistInterpretedFailure({
             taskRef,
             task,
             rawError: isConnectionError
-                ? `Cannot connect to agent server at ${agentServerUrl}. Is the agent running?`
+                ? `Cannot connect to agent server at ${agentServerUrl}. Is the agent running and healthy?`
                 : `Agent execution error: ${errorMessage}`,
             incrementRetry: true,
         });
