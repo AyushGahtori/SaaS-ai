@@ -66,6 +66,13 @@ git pull
 sudo ./deploy.sh
 ```
 
+## SSH Access Policy
+
+- SSH uses TCP port `22`, so Security Group inbound rules for port `22` control host access.
+- Prefer `x.x.x.x/32` CIDR for SSH allow rules. `/32` means exactly one public IP address.
+- If your ISP/public IP changes, SSH will fail until the new IP is added as another `/32` (or replaces the old one).
+- Keep `/32` restrictions for safety; avoid `0.0.0.0/0` for SSH.
+
 ## What `deploy.sh` does
 
 - Validates expected directories.
