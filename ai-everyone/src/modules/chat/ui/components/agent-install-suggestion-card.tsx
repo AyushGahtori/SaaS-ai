@@ -22,6 +22,12 @@ interface AgentInstallSuggestionCardProps {
     suggestion: AgentInstallSuggestion;
 }
 
+interface AgentStateResponse {
+    installedAgentIds: string[];
+    accessibleAgentIds: string[];
+    connectedBundleIds: string[];
+}
+
 async function getAuthHeaders() {
     const token = await auth.currentUser?.getIdToken();
     if (!token) {
@@ -75,14 +81,52 @@ export function AgentInstallSuggestionCard({
 
         await new Promise<void>((resolve, reject) => {
             let done = false;
+            let closeCheckRunning = false;
+
+            const verifyConnectionState = async () => {
+                const verifyHeaders = await getAuthHeaders();
+                const stateResponse = await fetch("/api/agents", {
+                    method: "GET",
+                    headers: verifyHeaders,
+                });
+                if (!stateResponse.ok) return false;
+                const stateData = (await stateResponse.json()) as AgentStateResponse;
+
+                if (target.bundleId) {
+                    return (stateData.connectedBundleIds || []).includes(target.bundleId);
+                }
+                if (target.agentId) {
+                    return (
+                        (stateData.accessibleAgentIds || []).includes(target.agentId) ||
+                        (stateData.installedAgentIds || []).includes(target.agentId)
+                    );
+                }
+                return false;
+            };
+
             const timeout = window.setTimeout(() => {
                 cleanup();
                 reject(new Error("Authorization timed out. Please try again."));
             }, 180000);
             const interval = window.setInterval(() => {
-                if (popup.closed && !done) {
-                    cleanup();
-                    reject(new Error("Authorization window was closed."));
+                if (popup.closed && !done && !closeCheckRunning) {
+                    closeCheckRunning = true;
+                    void (async () => {
+                        try {
+                            const connected = await verifyConnectionState();
+                            if (connected) {
+                                done = true;
+                                cleanup();
+                                resolve();
+                                return;
+                            }
+                            cleanup();
+                            reject(new Error("Authorization window was closed."));
+                        } catch {
+                            cleanup();
+                            reject(new Error("Authorization window was closed."));
+                        }
+                    })();
                 }
             }, 500);
 

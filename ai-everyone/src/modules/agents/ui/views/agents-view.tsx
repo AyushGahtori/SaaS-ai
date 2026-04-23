@@ -252,15 +252,53 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
+      let closeCheckRunning = false;
+
+      const verifyConnectionState = async () => {
+        const verifyHeaders = await getAuthHeaders();
+        const stateResponse = await fetch("/api/agents", {
+          method: "GET",
+          headers: verifyHeaders,
+        });
+        if (!stateResponse.ok) return false;
+        const stateData = (await stateResponse.json()) as AgentStateResponse;
+
+        if (target.bundleId) {
+          return (stateData.connectedBundleIds || []).includes(target.bundleId);
+        }
+        if (target.agentId) {
+          return (
+            (stateData.accessibleAgentIds || []).includes(target.agentId) ||
+            (stateData.installedAgentIds || []).includes(target.agentId)
+          );
+        }
+        return false;
+      };
+
       const timeout = window.setTimeout(() => {
         cleanup();
         reject(new Error("Authorization timed out. Please try again."));
       }, 180000);
 
       const interval = window.setInterval(() => {
-        if (popup.closed && !settled) {
-          cleanup();
-          reject(new Error("Authorization window was closed before completion."));
+        if (popup.closed && !settled && !closeCheckRunning) {
+          closeCheckRunning = true;
+          void (async () => {
+            try {
+              const connected = await verifyConnectionState();
+              if (connected) {
+                settled = true;
+                cleanup();
+                resolve();
+                return;
+              }
+              cleanup();
+              reject(new Error("Authorization window was closed before completion."));
+            } catch {
+              cleanup();
+              reject(new Error("Authorization window was closed before completion."));
+            }
+          })();
         }
       }, 500);
 
