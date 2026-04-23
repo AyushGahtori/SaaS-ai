@@ -48,6 +48,7 @@ const AGENT_ROUTES = {
   "zoom-agent": "/zoom/action",
   "travel-halper-agent": "/travelhalper/action",
   "devika-engineer-agent": "/devika/action",
+  "data-analyst-agent": "/dataanalyst/action",
 };
 
 // ---------------------------------------------------------------------------
@@ -130,6 +131,7 @@ exports.runAgentTask = onDocumentCreated(
         "zoom-agent": process.env.ZOOM_AGENT_URL,
         "travel-halper-agent": process.env.TRAVEL_HALPER_AGENT_URL,
         "devika-engineer-agent": process.env.DEVIKA_ENGINEER_AGENT_URL,
+        "data-analyst-agent": process.env.DATA_ANALYST_AGENT_URL,
       };
 
       const agentServerUrl =

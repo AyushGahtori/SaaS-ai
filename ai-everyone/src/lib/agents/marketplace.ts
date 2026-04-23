@@ -316,6 +316,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 719,
     },
+    "data-analyst-agent": {
+        iconUrl: makeMonogramIcon("Data", "#2f5f72", "#4f8aa5"),
+        installCount: 1700,
+        rating: 4.8,
+        createdAt: "2026-04-23T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 721,
+    },
     "building-construction-agent": {
         iconUrl: makeMonogramIcon("Build", "#5f6b78", "#7c8a99"),
         installCount: 1900,

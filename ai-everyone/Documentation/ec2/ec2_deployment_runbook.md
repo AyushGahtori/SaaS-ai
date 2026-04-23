@@ -33,6 +33,7 @@ Main web app routing env (in `ai-everyone/.env`):
 - `LMS_AGENT_URL`
 - `TRAVEL_HALPER_AGENT_URL`
 - `DEVIKA_ENGINEER_AGENT_URL`
+- `DATA_ANALYST_AGENT_URL`
 
 ## Provider Env (as needed)
 
@@ -78,7 +79,7 @@ sudo ./deploy.sh
 
 ```bash
 # Service state
-for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent strata-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent dia-helper-agent shopgenie-agent career-switch-agent dashboard-designer-agent smart-gtm-agent seo-agent startup-fundraising-agent ats-agent lms-agent travel-halper-agent devika-engineer-agent; do
+for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent strata-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent dia-helper-agent shopgenie-agent career-switch-agent dashboard-designer-agent smart-gtm-agent seo-agent startup-fundraising-agent ats-agent lms-agent travel-halper-agent devika-engineer-agent data-analyst-agent; do
   systemctl is-active "$s"
 done
 
@@ -96,6 +97,7 @@ curl "${AGENT_PUBLIC_BASE_URL}/ats/health"
 curl "${AGENT_PUBLIC_BASE_URL}/lms/health"
 curl "${AGENT_PUBLIC_BASE_URL}/travelhalper/health"
 curl "${AGENT_PUBLIC_BASE_URL}/devika/health"
+curl "${AGENT_PUBLIC_BASE_URL}/dataanalyst/health"
 
 # OAuth route readiness (400 without handoff is expected)
 curl -i "${AGENT_PUBLIC_BASE_URL}/linkedin/auth/login"

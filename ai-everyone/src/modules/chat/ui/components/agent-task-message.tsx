@@ -31,6 +31,7 @@ import { BuildingConstructionResultCard } from "./agent-renderers/building-const
 import { LMSResultCard } from "./agent-renderers/lms-result-card";
 import { TravelHalperResultCard } from "./agent-renderers/travel-halper-result-card";
 import { DevikaEngineerResultCard } from "./agent-renderers/devika-engineer-result-card";
+import { DataAnalystResultCard } from "./agent-renderers/data-analyst-result-card";
 import { InterpretedAgentGuidance } from "./agent-renderers/interpreted-agent-guidance";
 import { GenericAgentResultCard } from "./agent-renderers/generic-agent-result-card";
 
@@ -60,6 +61,7 @@ const AGENT_NAMES: Record<string, string> = {
     "building-construction-agent": "Building Construction Agent",
     "travel-halper-agent": "Travel Halper Agent",
     "devika-engineer-agent": "Devika Engineer Agent",
+    "data-analyst-agent": "Data Analyst Agent",
 };
 
 interface GmailRow {
@@ -889,6 +891,14 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
 
         if (typeof resultType === "string" && resultType.startsWith("devika_")) {
             return <DevikaEngineerResultCard result={result} />;
+        }
+
+        if (
+            resultType === "data_monitor_result" ||
+            resultType === "data_autonomous_result" ||
+            resultType === "data_analyst_capabilities"
+        ) {
+            return <DataAnalystResultCard result={result} />;
         }
 
         const nestedPayload =
