@@ -46,6 +46,7 @@ Detached runtime contract for all EC2 agents.
 - `GET /travelhalper/health`
 - `GET /devika/health`
 - `GET /dataanalyst/health`
+- `GET /cybersoc/health`
 
 ## Action Routes
 
@@ -81,6 +82,7 @@ Detached runtime contract for all EC2 agents.
 - `POST /travelhalper/action`
 - `POST /devika/action`
 - `POST /dataanalyst/action`
+- `POST /cybersoc/action`
 
 ## OAuth Ownership (Detached)
 
@@ -144,7 +146,7 @@ Stored fields:
 
 - OAuth: `teams-agent`, `google-agent`, `notion-agent`, `canva-agent`, `discord-agent`, `dropbox-agent`, `github-agent`, `gitlab-agent`, `jira-agent`, `linkedin-agent`, `zoom-agent`
 - API key: `freshdesk-agent`, `greenhouse-agent`
-- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`, `lms-agent`, `travel-halper-agent`, `devika-engineer-agent`, `data-analyst-agent`
+- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`, `lms-agent`, `travel-halper-agent`, `devika-engineer-agent`, `data-analyst-agent`, `cyber-soc-agent`
 
 ## JS-Parity Notes
 
@@ -175,4 +177,8 @@ curl -X POST "${AGENT_PUBLIC_BASE_URL}/devika/action" \
 curl -X POST "${AGENT_PUBLIC_BASE_URL}/dataanalyst/action" \
   -H "Content-Type: application/json" \
   -d '{"taskId":"smoke-data-1","userId":"smoke-user","agentId":"data-analyst-agent","action":"monitor","label":"revenue","data":[100,102,98,105,5000,101,99]}'
+
+curl -X POST "${AGENT_PUBLIC_BASE_URL}/cybersoc/action" \
+  -H "Content-Type: application/json" \
+  -d '{"taskId":"smoke-cyber-1","userId":"smoke-user","agentId":"cyber-soc-agent","action":"analyze_log","log":"Failed login attempts from 192.168.1.11"}'
 ```

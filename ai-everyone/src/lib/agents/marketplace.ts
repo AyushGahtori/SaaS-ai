@@ -324,6 +324,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 721,
     },
+    "cyber-soc-agent": {
+        iconUrl: makeMonogramIcon("SOC", "#2b4258", "#3f6a93"),
+        installCount: 1550,
+        rating: 4.8,
+        createdAt: "2026-04-23T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 723,
+    },
     "building-construction-agent": {
         iconUrl: makeMonogramIcon("Build", "#5f6b78", "#7c8a99"),
         installCount: 1900,

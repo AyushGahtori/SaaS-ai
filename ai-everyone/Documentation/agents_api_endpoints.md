@@ -234,3 +234,66 @@ Canonical endpoint contract for `data-analyst-agent`.
   "data": [2.1, 2.0, 2.2, 2.1, 5.9, 2.0]
 }
 ```
+
+---
+
+# Cyber SOC Agent API Endpoints
+
+Canonical endpoint contract for `cyber-soc-agent`.
+
+## Public Routes (via Nginx)
+
+- `POST /cybersoc/action`
+- `GET /cybersoc/health`
+- `GET /cybersoc/history`
+- `GET /cybersoc/dashboard`
+- `GET /cybersoc/logs/realtime`
+- `GET /cybersoc/logs/channels`
+
+## Supported Actions
+
+- `analyze_log`
+- `fetch_windows_logs`
+- `analyze_windows_logs`
+- `get_history`
+- `list_windows_channels`
+- `dashboard_overview`
+- `list_capabilities`
+
+## Sample: Analyze Security Log
+
+```json
+{
+  "taskId": "cyber-1",
+  "userId": "<uid>",
+  "agentId": "cyber-soc-agent",
+  "action": "analyze_log",
+  "log": "[1] 2026-04-14 10:15:32 INFO User login successful user: navin ip: 192.168.1.10\n[2] 2026-04-14 10:17:45 WARN Failed login attempt user: admin ip: 192.168.1.11"
+}
+```
+
+## Sample: Fetch Windows Logs
+
+```json
+{
+  "taskId": "cyber-2",
+  "userId": "<uid>",
+  "agentId": "cyber-soc-agent",
+  "action": "fetch_windows_logs",
+  "limit": 10,
+  "channels": ["Security", "System"]
+}
+```
+
+## Sample: Analyze Windows Logs
+
+```json
+{
+  "taskId": "cyber-3",
+  "userId": "<uid>",
+  "agentId": "cyber-soc-agent",
+  "action": "analyze_windows_logs",
+  "limit": 10,
+  "channels": ["Security", "System", "Application"]
+}
+```

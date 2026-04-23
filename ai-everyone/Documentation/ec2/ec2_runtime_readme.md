@@ -48,6 +48,7 @@ This runtime is detached from the main web app.
 | `travel-halper-agent` | 8040 | `/travelhalper/action` | `/travelhalper/health` |
 | `devika-engineer-agent` | 8041 | `/devika/action` | `/devika/health` |
 | `data-analyst-agent` | 8042 | `/dataanalyst/action` | `/dataanalyst/health` |
+| `cyber-soc-agent` | 8043 | `/cybersoc/action` | `/cybersoc/health` |
 
 ## Base URL Policy
 

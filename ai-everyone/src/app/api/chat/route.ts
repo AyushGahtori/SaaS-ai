@@ -585,6 +585,17 @@ For the data-analyst-agent:
 - Use data-analyst-agent for anomaly detection, data-quality checks, numeric trend sanity checks, and goal-driven analysis workflows.
 - If the user asks for anomaly detection without numeric data, ask a concise clarification requesting a numeric series.
 
+For the cyber-soc-agent:
+- analyze_log: extract required "log" (or map user prompt to log text), optional "forceRefresh".
+- fetch_windows_logs: extract optional "limit" (1-200), optional "channels" (Security, System, Application), optional "forceRefresh".
+- analyze_windows_logs: extract optional "limit", optional "channels", optional "forceRefresh".
+- get_history: no additional parameters needed.
+- list_windows_channels: no additional parameters needed.
+- dashboard_overview: no additional parameters needed.
+- list_capabilities: no additional parameters needed.
+- Use cyber-soc-agent for SOC triage, threat detection from logs, IOC and MITRE-oriented analysis, Windows Event Log review, and dashboard/history snapshots.
+- If user asks for log analysis but provides no log content, ask a concise clarification requesting raw or summarized security log text.
+
 If an agent is needed, output ONLY:
 <AGENT_INTENT>
 {

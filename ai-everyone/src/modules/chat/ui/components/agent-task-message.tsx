@@ -32,6 +32,7 @@ import { LMSResultCard } from "./agent-renderers/lms-result-card";
 import { TravelHalperResultCard } from "./agent-renderers/travel-halper-result-card";
 import { DevikaEngineerResultCard } from "./agent-renderers/devika-engineer-result-card";
 import { DataAnalystResultCard } from "./agent-renderers/data-analyst-result-card";
+import { CyberSocResultCard } from "./agent-renderers/cyber-soc-result-card";
 import { InterpretedAgentGuidance } from "./agent-renderers/interpreted-agent-guidance";
 import { GenericAgentResultCard } from "./agent-renderers/generic-agent-result-card";
 
@@ -62,6 +63,7 @@ const AGENT_NAMES: Record<string, string> = {
     "travel-halper-agent": "Travel Halper Agent",
     "devika-engineer-agent": "Devika Engineer Agent",
     "data-analyst-agent": "Data Analyst Agent",
+    "cyber-soc-agent": "Cyber AI SOC Agent",
 };
 
 interface GmailRow {
@@ -899,6 +901,10 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             resultType === "data_analyst_capabilities"
         ) {
             return <DataAnalystResultCard result={result} />;
+        }
+
+        if (typeof resultType === "string" && resultType.startsWith("cyber_soc_")) {
+            return <CyberSocResultCard result={result} />;
         }
 
         const nestedPayload =

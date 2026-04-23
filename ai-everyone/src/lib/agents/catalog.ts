@@ -579,6 +579,30 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         requiresConnection: false,
     },
     {
+        id: "cyber-soc-agent",
+        name: "Cyber AI SOC Agent",
+        description:
+            "Analyze security logs, fetch and inspect Windows Event Logs, correlate IOCs with VirusTotal, and generate SOC dashboard-style threat insights.",
+        actions: [
+            "analyze_log",
+            "fetch_windows_logs",
+            "analyze_windows_logs",
+            "get_history",
+            "list_windows_channels",
+            "dashboard_overview",
+            "list_capabilities",
+        ],
+        examplePrompts: [
+            "Analyze these SOC logs and detect multi-stage attack behavior",
+            "Fetch last 10 Security and System Windows logs, then analyze them",
+            "Show cyber SOC dashboard overview and recent analysis history",
+        ],
+        provider: "internal",
+        category: "security",
+        tags: ["soc", "cybersecurity", "windows-logs", "ioc", "threat-analysis", "mitre"],
+        requiresConnection: false,
+    },
+    {
         id: "building-construction-agent",
         name: "Building Construction Agent",
         description:

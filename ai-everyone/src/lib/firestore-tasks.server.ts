@@ -64,6 +64,7 @@ const AGENT_ROUTES: Record<string, string> = {
     "travel-halper-agent": "/travelhalper/action",
     "devika-engineer-agent": "/devika/action",
     "data-analyst-agent": "/dataanalyst/action",
+    "cyber-soc-agent": "/cybersoc/action",
 };
 
 async function persistInterpretedFailure(params: {
@@ -290,6 +291,7 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "travel-halper-agent": process.env.TRAVEL_HALPER_AGENT_URL,
         "devika-engineer-agent": process.env.DEVIKA_ENGINEER_AGENT_URL,
         "data-analyst-agent": process.env.DATA_ANALYST_AGENT_URL,
+        "cyber-soc-agent": process.env.CYBER_SOC_AGENT_URL,
     };
     const agentServerUrl =
         resolveAgentServerUrl(ENV_AGENT_URL_MAP[task.agentId]);
