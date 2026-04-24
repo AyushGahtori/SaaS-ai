@@ -1,11 +1,69 @@
 import { NextRequest } from "next/server";
 import { getAgentBundle, getAgentCatalogEntry } from "@/lib/agents/catalog";
+import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 import {
     installAgentIds,
     saveProviderConnection,
 } from "@/lib/agents/user-access.server";
 
 const CALLBACK_PATH = "/api/agents/oauth/callback";
+const EC2_STATE_PREFIX = "ec2.";
+
+const AGENT_BASE_URLS_BY_SLUG: Record<string, string | undefined> = {
+    google: process.env.GOOGLE_AGENT_URL,
+    teams: process.env.TEAMS_AGENT_URL,
+    notion: process.env.NOTION_AGENT_URL,
+    canva: process.env.CANVA_AGENT_URL,
+    discord: process.env.DISCORD_AGENT_URL,
+    dropbox: process.env.DROPBOX_AGENT_URL,
+    github: process.env.GITHUB_AGENT_URL,
+    gitlab: process.env.GITLAB_AGENT_URL,
+    jira: process.env.JIRA_AGENT_URL,
+    linkedin: process.env.LINKEDIN_AGENT_URL,
+    zoom: process.env.ZOOM_AGENT_URL,
+};
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function getEc2BridgePayload(stateParam: string | null): { agentSlug?: string } | null {
+    if (!stateParam?.startsWith(EC2_STATE_PREFIX)) return null;
+
+    const [, payloadSegment] = stateParam.split(".");
+    if (!payloadSegment) return null;
+
+    try {
+        return JSON.parse(Buffer.from(payloadSegment, "base64url").toString("utf8")) as {
+            agentSlug?: string;
+        };
+    } catch {
+        return null;
+    }
+}
+
+function getEc2CallbackRedirect(
+    stateParam: string | null,
+    code: string | null,
+    oauthError: string | null
+): string | null {
+    const payload = getEc2BridgePayload(stateParam);
+    const agentSlug = payload?.agentSlug;
+    if (!agentSlug) return null;
+
+    const baseUrl = resolveAgentServerUrl(AGENT_BASE_URLS_BY_SLUG[agentSlug]).replace(/\/$/, "");
+    const params = new URLSearchParams();
+    params.set("state", stateParam || "");
+    if (code) params.set("code", code);
+    if (oauthError) params.set("error", oauthError);
+
+    return `${baseUrl}/${agentSlug}/auth/callback?${params.toString()}`;
+}
 
 function getRedirectUri(req: NextRequest): string {
     const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
@@ -30,13 +88,18 @@ function htmlResult(
 
     const color = success ? "#16a34a" : "#ef4444";
     const heading = success ? "Connection complete" : "Connection failed";
+    const helper = success
+        ? "This window will close automatically."
+        : "This window stayed open so you can see the provider error. Close it and try again after fixing the setup.";
+    const closeScript = success ? "setTimeout(function () { window.close(); }, 1200);" : "";
+    const safeMessage = escapeHtml(message);
 
     return new Response(
         `<html><body style="background:#0a0a0a;color:#f5f5f5;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
             <div style="max-width:420px;text-align:center;padding:24px;border:1px solid rgba(255,255,255,0.12);border-radius:18px;background:rgba(255,255,255,0.03)">
                 <h2 style="margin:0 0 12px;color:${color}">${heading}</h2>
-                <p style="margin:0 0 12px;color:#d4d4d8">${message}</p>
-                <p style="margin:0;color:#71717a">This window will close automatically.</p>
+                <p style="margin:0 0 12px;color:#d4d4d8;white-space:pre-wrap;word-break:break-word">${safeMessage}</p>
+                <p style="margin:0;color:#71717a">${helper}</p>
             </div>
             <script>
                 (function () {
@@ -45,7 +108,7 @@ function htmlResult(
                             window.opener.postMessage(${payload}, window.location.origin);
                         }
                     } catch (_) {}
-                    setTimeout(function () { window.close(); }, 1200);
+                    ${closeScript}
                 })();
             </script>
         </body></html>`,
@@ -62,6 +125,11 @@ export async function GET(req: NextRequest) {
         const oauthError = req.nextUrl.searchParams.get("error");
         const stateParam = req.nextUrl.searchParams.get("state");
         const redirectUri = getRedirectUri(req);
+        const ec2Redirect = getEc2CallbackRedirect(stateParam, code, oauthError);
+
+        if (ec2Redirect) {
+            return Response.redirect(ec2Redirect, 302);
+        }
 
         if (oauthError) {
             return htmlResult(false, oauthError);
