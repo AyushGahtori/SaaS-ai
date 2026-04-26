@@ -112,7 +112,10 @@ export function buildEc2OauthLaunch(
     target: { bundleId?: string; agentId?: string }
 ): { authUrl: string; popupOrigin: string } {
     const resolved = resolveOauthTarget(target);
-    const baseUrl = resolveAgentServerUrl(OAUTH_AGENT_BASE_URLS[resolved.authAgentId]);
+    const baseUrl = resolveAgentServerUrl(
+        OAUTH_AGENT_BASE_URLS[resolved.authAgentId],
+        resolved.authAgentId
+    );
 
     const handoff = signPayload({
         uid,

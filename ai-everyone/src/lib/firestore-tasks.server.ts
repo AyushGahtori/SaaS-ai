@@ -294,7 +294,7 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "data-analyst-agent": process.env.DATA_ANALYST_AGENT_URL,
     };
     const agentServerUrl =
-        resolveAgentServerUrl(ENV_AGENT_URL_MAP[task.agentId]);
+        resolveAgentServerUrl(ENV_AGENT_URL_MAP[task.agentId], task.agentId);
     const agentUrl = `${agentServerUrl}${agentRoute}`;
     const executionAuth = await getAgentExecutionAuth(task.userId, task.agentId);
 

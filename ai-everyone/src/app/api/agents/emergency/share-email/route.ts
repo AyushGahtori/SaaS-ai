@@ -127,7 +127,10 @@ export async function POST(req: NextRequest) {
         }
 
         const authPayload = await getAgentExecutionAuth(verifiedUser.uid, GOOGLE_AGENT_ID);
-        const googleBaseUrl = resolveAgentServerUrl(process.env.GOOGLE_AGENT_URL);
+        const googleBaseUrl = resolveAgentServerUrl(
+            process.env.GOOGLE_AGENT_URL,
+            GOOGLE_AGENT_ID
+        );
 
         const gmailInstruction = `Send email to ${to}\nSubject: ${subject}\nBody: ${emailBody}`;
 

@@ -43,7 +43,10 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const agentBaseUrl = resolveAgentServerUrl(process.env.EMERGENCY_RESPONSE_AGENT_URL);
+        const agentBaseUrl = resolveAgentServerUrl(
+            process.env.EMERGENCY_RESPONSE_AGENT_URL,
+            EMERGENCY_AGENT_ID
+        );
 
         const response = await fetch(`${agentBaseUrl}/emergency/action`, {
             method: "POST",

@@ -52,7 +52,10 @@ export async function POST(req: NextRequest) {
         editInstruction: body.editInstruction?.trim() || undefined,
     };
 
-    const baseUrl = resolveAgentServerUrl(process.env.DIA_HELPER_AGENT_URL);
+    const baseUrl = resolveAgentServerUrl(
+        process.env.DIA_HELPER_AGENT_URL,
+        "dia-helper-agent"
+    );
     const url = `${baseUrl}/diahelper/action`;
 
     try {
