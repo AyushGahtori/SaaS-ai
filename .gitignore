@@ -44,6 +44,9 @@ next-env.d.ts
 
 /serviceAccountKey.json
 
+# Generated graph/cache output
+/graphify-out/
+
 # Nested infrastructure repo (managed separately)
 /ai-everyone/EC2/
 
