@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 
 export async function POST() {
-    const agentServerUrl = resolveAgentServerUrl();
+    const agentServerUrl = resolveAgentServerUrl(
+        process.env.TEAMS_AGENT_URL,
+        "teams-agent"
+    );
     const agentUrl = `${agentServerUrl}/auth/poll`;
 
     try {

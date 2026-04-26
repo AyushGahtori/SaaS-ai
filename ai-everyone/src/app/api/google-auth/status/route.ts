@@ -9,7 +9,10 @@
 import { NextResponse } from "next/server";
 import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 
-const GOOGLE_AGENT_URL = resolveAgentServerUrl(process.env.GOOGLE_AGENT_URL);
+const GOOGLE_AGENT_URL = resolveAgentServerUrl(
+    process.env.GOOGLE_AGENT_URL,
+    "google-agent"
+);
 
 export async function GET() {
     try {

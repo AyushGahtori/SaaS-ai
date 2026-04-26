@@ -24,9 +24,21 @@ function resolveAgentServerUrl() {
 }
 
 const resolvedAgentServerUrl = resolveAgentServerUrl();
+const publicApiBase =
+  normalizeBaseUrl(process.env.NEXT_PUBLIC_API_BASE) ||
+  normalizeBaseUrl(process.env.AGENT_SERVER_URL);
 
 const nextConfig = {
   outputFileTracingRoot: appRoot,
+  env: {
+    NEXT_PUBLIC_API_BASE: publicApiBase,
+    NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF:
+      process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF ||
+      process.env.VERCEL_GIT_COMMIT_REF ||
+      process.env.NEXT_PUBLIC_LOCAL_BRANCH ||
+      process.env.LOCAL_BRANCH ||
+      "",
+  },
   turbopack: {
     root: appRoot,
   },

@@ -56,7 +56,11 @@ function getEc2CallbackRedirect(
     const agentSlug = payload?.agentSlug;
     if (!agentSlug) return null;
 
-    const baseUrl = resolveAgentServerUrl(AGENT_BASE_URLS_BY_SLUG[agentSlug]).replace(/\/$/, "");
+    const agentId = `${agentSlug}-agent`;
+    const baseUrl = resolveAgentServerUrl(
+        AGENT_BASE_URLS_BY_SLUG[agentSlug],
+        agentId
+    ).replace(/\/$/, "");
     const params = new URLSearchParams();
     params.set("state", stateParam || "");
     if (code) params.set("code", code);

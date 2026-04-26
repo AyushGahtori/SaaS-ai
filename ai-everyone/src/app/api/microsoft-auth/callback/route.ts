@@ -9,7 +9,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAgentServerUrl } from "@/lib/agent-server-url";
 
-const TEAMS_AGENT_URL = resolveAgentServerUrl(process.env.TEAMS_AGENT_URL);
+const TEAMS_AGENT_URL = resolveAgentServerUrl(
+    process.env.TEAMS_AGENT_URL,
+    "teams-agent"
+);
 
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get("code");

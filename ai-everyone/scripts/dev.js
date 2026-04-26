@@ -51,6 +51,19 @@ if (isDockerLinux && isLinuxGnu) {
 }
 
 const args = [nextBin, "dev", "-H", "0.0.0.0"];
+const childEnv = { ...process.env };
+
+if (!childEnv.NEXT_PUBLIC_LOCAL_BRANCH) {
+  const branchResult = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  });
+  const branch = branchResult.status === 0 ? branchResult.stdout.trim() : "";
+  if (branch) {
+    childEnv.NEXT_PUBLIC_LOCAL_BRANCH = branch;
+    childEnv.LOCAL_BRANCH = childEnv.LOCAL_BRANCH || branch;
+  }
+}
 
 if (isDockerLinux) {
   args.push("--webpack");
@@ -59,7 +72,7 @@ if (isDockerLinux) {
 const child = spawn(process.execPath, args, {
   cwd: projectRoot,
   stdio: "inherit",
-  env: process.env,
+  env: childEnv,
 });
 
 child.on("exit", (code, signal) => {
