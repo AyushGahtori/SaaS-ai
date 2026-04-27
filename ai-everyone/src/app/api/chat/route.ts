@@ -1857,6 +1857,21 @@ export async function POST(req: NextRequest) {
                                 agentInput,
                             });
 
+                            const agentName =
+                                getAgentCatalogEntry(effectiveIntent.agent_required)?.name ||
+                                effectiveIntent.agent_required;
+                            const content =
+                                `Delegating to ${agentName}.\n\n` +
+                                `Action: ${effectiveIntent.action}` +
+                                (effectiveIntent.reasoning
+                                    ? `\n\nReasoning: ${effectiveIntent.reasoning}`
+                                    : "");
+
+                            if (!streamedText.trim()) {
+                                streamedText = content;
+                                sendEvent("text", { content });
+                            }
+
                             try {
                                 // In serverless runtimes, fire-and-forget can be terminated before execution.
                                 // Awaiting guarantees the task is actually dispatched to the EC2 agent runtime.
@@ -1881,16 +1896,6 @@ export async function POST(req: NextRequest) {
                                 typeof executedTaskData.agentOutput === "object"
                                     ? (executedTaskData.agentOutput as Record<string, unknown>)
                                     : undefined;
-
-                            const agentName =
-                                getAgentCatalogEntry(effectiveIntent.agent_required)?.name ||
-                                effectiveIntent.agent_required;
-                            const content =
-                                `Delegating to ${agentName}.\n\n` +
-                                `Action: ${effectiveIntent.action}` +
-                                (effectiveIntent.reasoning
-                                    ? `\n\nReasoning: ${effectiveIntent.reasoning}`
-                                    : "");
 
                             sendEvent("agent_task", {
                                 type: "agent_task",
