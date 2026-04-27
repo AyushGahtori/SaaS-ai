@@ -608,3 +608,167 @@ export function resolveDeterministicAgentIntent(userMessage: string): Determinis
 
     return null;
 }
+
+// ---------------------------------------------------------------------------
+// Follow-up email resolution from recent agent context
+// ---------------------------------------------------------------------------
+
+interface RecentAgentContext {
+    agent_outputs: Record<string, unknown>;
+    recent_tasks: Array<Record<string, unknown>>;
+    pending_task?: Record<string, unknown>;
+}
+
+interface CachedEmail {
+    id: string;
+    from: string;
+    subject: string;
+    date?: string;
+    snippet?: string;
+    [key: string]: unknown;
+}
+
+const ORDINALS: Record<string, number> = {
+    first: 0, "1st": 0, one: 0, "number 1": 0, "#1": 0,
+    second: 1, "2nd": 1, two: 1, "number 2": 1, "#2": 1,
+    third: 2, "3rd": 2, three: 2, "number 3": 2, "#3": 2,
+    fourth: 3, "4th": 3, four: 3, "number 4": 3, "#4": 3,
+    fifth: 4, "5th": 4, five: 4, "number 5": 4, "#5": 4,
+    sixth: 5, "6th": 5, six: 5,
+    seventh: 6, "7th": 6, seven: 6,
+    eighth: 7, "8th": 7, eight: 7,
+    ninth: 8, "9th": 8, nine: 8,
+    tenth: 9, "10th": 9, ten: 9,
+    last: -1, latest: -1, "most recent": -1,
+    top: 0, bottom: -1,
+};
+
+function extractCachedEmails(context: RecentAgentContext | null): CachedEmail[] {
+    if (!context) return [];
+    const gmailOutput = (context.agent_outputs as Record<string, Record<string, unknown>>)?.gmail;
+    if (gmailOutput && Array.isArray(gmailOutput.emails)) {
+        return gmailOutput.emails.filter(
+            (e: unknown): e is CachedEmail =>
+                typeof e === "object" && e !== null && typeof (e as Record<string, unknown>).id === "string"
+        );
+    }
+    // Fall back to recent_tasks
+    for (const task of context.recent_tasks || []) {
+        const output = task.output as Record<string, unknown> | undefined;
+        if (output && Array.isArray(output.emails)) {
+            return output.emails.filter(
+                (e: unknown): e is CachedEmail =>
+                    typeof e === "object" && e !== null && typeof (e as Record<string, unknown>).id === "string"
+            );
+        }
+    }
+    return [];
+}
+
+function resolveOrdinalIndex(text: string): number | null {
+    const lower = text.toLowerCase();
+    for (const [key, idx] of Object.entries(ORDINALS)) {
+        // Match standalone ordinal words with word boundaries
+        const pattern = new RegExp(`\\b${key.replace(/[#]/g, "\\$&")}\\b`);
+        if (pattern.test(lower)) return idx;
+    }
+    // Match bare digit at word boundary: "summarize 1", "read 3"
+    const digitMatch = lower.match(/\b(?:summarize|summarise|read|open|show)\s+(\d{1,2})\b/);
+    if (digitMatch) {
+        const n = Number.parseInt(digitMatch[1], 10);
+        if (n >= 1 && n <= 20) return n - 1;
+    }
+    return null;
+}
+
+function fuzzyMatchEmail(text: string, emails: CachedEmail[]): CachedEmail | null {
+    const lower = text.toLowerCase();
+    for (const email of emails) {
+        const sender = (email.from || "").toLowerCase();
+        const subject = (email.subject || "").toLowerCase();
+        // Check if user mentions a sender name/fragment
+        const senderName = sender.replace(/<[^>]+>/, "").trim();
+        const senderFragments = senderName.split(/[\s,]+/).filter((f) => f.length > 2);
+        for (const fragment of senderFragments) {
+            if (lower.includes(fragment) && fragment !== "the" && fragment !== "from") {
+                return email;
+            }
+        }
+        // Check if user mentions a subject fragment (3+ chars)
+        const subjectWords = subject.split(/\s+/).filter((w) => w.length > 3);
+        const matchedWords = subjectWords.filter((w) => lower.includes(w));
+        if (matchedWords.length >= 2 || (subjectWords.length === 1 && matchedWords.length === 1)) {
+            return email;
+        }
+    }
+    return null;
+}
+
+function isEmailFollowUpReference(text: string): boolean {
+    const lower = text.toLowerCase();
+    const followUpPatterns = [
+        /\b(summarize|summarise|summary|read|open|show|this|that)\b.*\b(one|mail|email|message|it)\b/,
+        /\b(first|second|third|fourth|fifth|last|top|bottom|1st|2nd|3rd|4th|5th)\b.*\b(one|mail|email|message)?\b/,
+        /\b(summarize|summarise|read|open)\s+(the\s+)?(first|second|third|last|1st|2nd|3rd|#?\d)\b/,
+        /\b(summarize|summarise|read|open)\s+(this|that|it)\b/,
+        /\b(from this|from the list|from above|from these)\b/,
+        /\bthis one\b/,
+        /\bthat one\b/,
+    ];
+    return followUpPatterns.some((p) => p.test(lower));
+}
+
+export function resolveEmailFollowUp(
+    userMessage: string,
+    recentAgentContext: RecentAgentContext | null
+): DeterministicRouteResult | null {
+    if (!recentAgentContext) return null;
+    const text = compactWhitespace(userMessage);
+    const lower = text.toLowerCase();
+    if (!text) return null;
+
+    // Only trigger if the message looks like an email follow-up reference
+    if (!isEmailFollowUpReference(text)) return null;
+
+    const cachedEmails = extractCachedEmails(recentAgentContext);
+    if (cachedEmails.length === 0) return null;
+
+    let resolvedEmail: CachedEmail | null = null;
+
+    // 1. Try ordinal index resolution
+    const ordinalIdx = resolveOrdinalIndex(text);
+    if (ordinalIdx !== null) {
+        if (ordinalIdx === -1) {
+            // "last" means the last in the displayed list
+            resolvedEmail = cachedEmails[cachedEmails.length - 1] ?? null;
+        } else if (ordinalIdx >= 0 && ordinalIdx < cachedEmails.length) {
+            resolvedEmail = cachedEmails[ordinalIdx] ?? null;
+        }
+    }
+
+    // 2. Try fuzzy sender/subject match
+    if (!resolvedEmail) {
+        resolvedEmail = fuzzyMatchEmail(text, cachedEmails);
+    }
+
+    // 3. Default to first email for contextual "this one", "that one"
+    if (!resolvedEmail && /\b(this|that)\s+(one|mail|email|message)\b/.test(lower)) {
+        resolvedEmail = cachedEmails[0] ?? null;
+    }
+
+    if (!resolvedEmail) return null;
+
+    return {
+        source: "deterministic",
+        intent: {
+            agent_required: "google-agent",
+            action: "read_email",
+            parameters: {
+                agent_type: "gmail",
+                parameters: text,
+                message_id: resolvedEmail.id,
+            },
+            reasoning: `Resolved email follow-up reference to message_id ${resolvedEmail.id} (${resolvedEmail.subject}).`,
+        },
+    };
+}

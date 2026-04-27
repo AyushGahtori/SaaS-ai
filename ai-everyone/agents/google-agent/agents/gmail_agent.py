@@ -341,18 +341,27 @@ class GmailAgent(BaseAgent):
         user_message: str,
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        params = await self.extract_parameters(
-            user_message=user_message,
-            schema_description="""
-- message_id: exact Gmail message id if known
-- query: Gmail search query or description of the message to read
-            """,
-            example_output='{"message_id": null, "query": "from:alice budget"}',
-            context=context,
+        # Check for a pre-resolved message_id from orchestrator deterministic routing
+        pre_resolved_id = self._clean_text_value(
+            str((context or {}).get("pre_resolved_message_id", ""))
         )
 
-        message_id = self._clean_text_value(str(params.get("message_id", "")))
-        query = self._clean_text_value(str(params.get("query", "")))
+        if pre_resolved_id:
+            message_id = pre_resolved_id
+            query = user_message
+        else:
+            params = await self.extract_parameters(
+                user_message=user_message,
+                schema_description="""
+- message_id: exact Gmail message id if known
+- query: Gmail search query or description of the message to read
+                """,
+                example_output='{"message_id": null, "query": "from:alice budget"}',
+                context=context,
+            )
+
+            message_id = self._clean_text_value(str(params.get("message_id", "")))
+            query = self._clean_text_value(str(params.get("query", "")))
 
         if not message_id:
             cached_match = await self._find_cached_message_match(query=query or user_message, context=context)

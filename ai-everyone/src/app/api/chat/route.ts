@@ -54,6 +54,7 @@ import {
     normalizeGoogleExecutionPayload as normalizeOrchestratedGoogleExecutionPayload,
     parseModelAgentIntent,
     resolveDeterministicAgentIntent,
+    resolveEmailFollowUp,
 } from "@/lib/agents/orchestrator";
 const GOOGLE_AGENT_TYPES = new Set(["calendar", "gmail", "meet", "drive", "tasks", "web_search"]);
 
@@ -1804,7 +1805,8 @@ export async function POST(req: NextRequest) {
         const recentAgentPrompt = formatRecentAgentContextForPrompt(recentAgentContext);
         const deterministicRoute = shouldForceDirectAttachmentResponse
             ? null
-            : resolveDeterministicAgentIntent(lastUserMessage);
+            : resolveDeterministicAgentIntent(lastUserMessage)
+              ?? resolveEmailFollowUp(lastUserMessage, recentAgentContext);
         const systemPrompt = shouldForceDirectAttachmentResponse
             ? buildDirectAttachmentPrompt(personaContext)
             : [
