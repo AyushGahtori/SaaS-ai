@@ -25,6 +25,7 @@ import {
     updateBloomJournalEntry,
 } from "@/modules/bloom-ai/services/journal-service";
 import { updateBloomSettings as saveBloomSettings } from "@/modules/bloom-ai/services/settings-service";
+import { BloomApiError } from "@/modules/bloom-ai/api/client";
 import type { UserFacingError } from "@/lib/errors/user-facing-errors";
 import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 import type {
@@ -137,6 +138,15 @@ export function useBloomWorkspace() {
                 });
                 applyConversation(response.conversation);
             } catch (err) {
+                if (err instanceof BloomApiError && err.status === 429) {
+                    setError({
+                        title: "Usage Limit Reached",
+                        message: "You have reached your AI message limit. Please upgrade to continue.",
+                        provider: "api",
+                    });
+                    return;
+                }
+
                 const parsed = normalizeUserFacingError(err, {
                     surface: "bloom",
                     fallbackMessage: "Bloom AI could not reply.",

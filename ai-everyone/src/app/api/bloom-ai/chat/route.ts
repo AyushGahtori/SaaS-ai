@@ -9,6 +9,7 @@ import {
 } from "@/modules/bloom-ai/lib/server";
 import { generateBloomReply, resolveBloomModel } from "@/modules/bloom-ai/lib/gemini";
 import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
+import { commitUsageSlot, reserveUsageSlot, UsageLimitError } from "@/lib/usage-limit";
 
 export async function POST(req: NextRequest) {
     const verifiedUser = await verifyFirebaseRequest(req);
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest) {
                 { status: 500 }
             );
         }
+        await reserveUsageSlot(verifiedUser.uid);
 
         const settings = await getBloomSettings(verifiedUser.uid);
         const { conversation, messages } = await loadConversationForPrompt(
@@ -61,6 +63,7 @@ export async function POST(req: NextRequest) {
             ],
             context,
         });
+        await commitUsageSlot(verifiedUser.uid);
 
         await upsertConversationMetadata(verifiedUser.uid, conversationId, {
             modelId: activeModel,
@@ -76,6 +79,15 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ conversation: updatedConversation });
     } catch (error) {
+        // Intercept our custom Bouncer error!
+        if (error instanceof UsageLimitError) {
+            return NextResponse.json(
+                { error: "You have reached your AI message limit. Please upgrade to continue." },
+                { status: 429 }
+            );
+        }
+
+        // Otherwise, handle standard errors as usual
         console.error("[Bloom Chat]", error);
         const mapped = normalizeUserFacingError(error, {
             surface: "bloom",
@@ -87,3 +99,4 @@ export async function POST(req: NextRequest) {
         );
     }
 }
+
