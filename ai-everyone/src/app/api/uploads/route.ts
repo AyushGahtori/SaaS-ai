@@ -95,6 +95,14 @@ export async function POST(req: NextRequest) {
     } catch (error) {
         const message =
             error instanceof Error ? error.message : "Failed to store uploaded file.";
+        console.error("[uploads] persistUploadedDoc failed", {
+            message,
+            source,
+            name,
+            mimeType,
+            size,
+            uid: verifiedUser.uid,
+        });
         const isStorageProvisioningIssue =
             message.toLowerCase().includes("bucket") &&
             (message.toLowerCase().includes("not provisioned") ||

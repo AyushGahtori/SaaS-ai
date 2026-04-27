@@ -265,6 +265,10 @@ function mapGeminiError(
         lower.includes("googlegenai") ||
         lower.includes("generatecontent");
 
+    if (!geminiSignal && surface !== "chat" && surface !== "bloom") {
+        return null;
+    }
+
     if (!geminiSignal && ![400, 403, 404, 429, 500, 503, 504].includes(status || -1)) {
         return null;
     }
