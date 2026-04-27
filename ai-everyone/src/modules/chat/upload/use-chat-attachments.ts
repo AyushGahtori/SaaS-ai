@@ -46,10 +46,12 @@ function shouldFallbackToLocalAttachment(error: unknown): boolean {
     if (
         typeof error === "object" &&
         error !== null &&
-        "status" in error &&
-        (error as { status?: unknown }).status === 413
+        "status" in error
     ) {
-        return true;
+        const status = (error as { status?: unknown }).status;
+        if (status === 413 || status === 500 || status === 502 || status === 503 || status === 504) {
+            return true;
+        }
     }
 
     const message = error instanceof Error ? error.message.toLowerCase() : "";
@@ -61,12 +63,16 @@ function shouldFallbackToLocalAttachment(error: unknown): boolean {
         message.includes("load failed") ||
         message.includes("bucket") ||
         message.includes("timed out") ||
+        message.includes("500") ||
+        message.includes("502") ||
         message.includes("503") ||
+        message.includes("504") ||
         message.includes("413") ||
         message.includes("payload too large") ||
         message.includes("request entity too large") ||
         message.includes("body exceeded") ||
-        message.includes("function_payload_too_large")
+        message.includes("function_payload_too_large") ||
+        message.includes("storage failure")
     );
 }
 
