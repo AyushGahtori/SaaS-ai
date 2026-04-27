@@ -11,6 +11,7 @@ Run with:
 import os
 import logging
 import time
+from typing import Any, Dict
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -110,6 +111,9 @@ class GoogleActionRequest(BaseModel):
     agent_type: str  # "gmail", "calendar", "meet", "tasks", "drive", "web_search", "notes", "contacts"
     action: str
     parameters: str | None = None
+    conversation_context: Dict[str, Any] | None = None
+    llm_provider: str | None = None
+    model: str | None = None
     
     # Optional fields from Orchestrator task execution
     taskId: str | None = None
@@ -222,15 +226,27 @@ async def google_action(data: GoogleActionRequest):
         )
 
         user_message = f"{normalized_action} {data.parameters or ''}".strip()
+        conversation_context = data.conversation_context or {}
+        agent_context: Dict[str, Any] = {
+            "direct": True,
+            "taskId": data.taskId,
+            "chatId": data.chatId,
+            "forced_action": normalized_action,
+        }
+        if isinstance(conversation_context.get("agent_outputs"), dict):
+            agent_context["agent_outputs"] = conversation_context["agent_outputs"]
+        if isinstance(conversation_context.get("pending_task"), dict):
+            agent_context["pending_task"] = conversation_context["pending_task"]
+        if isinstance(conversation_context.get("recent_tasks"), list):
+            agent_context["recent_tasks"] = conversation_context["recent_tasks"]
+        if data.llm_provider:
+            agent_context["llm_provider"] = data.llm_provider
+        if data.model:
+            agent_context["model"] = data.model
         
         result = await agent.handle(
             user_message=user_message,
-            context={
-                "direct": True,
-                "taskId": data.taskId,
-                "chatId": data.chatId,
-                "forced_action": normalized_action,
-            },
+            context=agent_context,
         )
 
         # If the agent returned action_required with auth_url, signal google_auth
@@ -244,12 +260,19 @@ async def google_action(data: GoogleActionRequest):
                 execution_time_ms=(time.time() - start) * 1000,
             )
         
+        result_payload = result.get("data", result)
+        if isinstance(result_payload, dict):
+            if result.get("pending_task"):
+                result_payload["pending_task"] = result["pending_task"]
+            if result.get("clear_pending_task"):
+                result_payload["clear_pending_task"] = result["clear_pending_task"]
+
         return GoogleActionResponse(
             status=result.get("status", "success"),
             type=f"google_{data.agent_type}",
             agent_type=data.agent_type,
             action=normalized_action,
-            result=result.get("data", result),
+            result=result_payload,
             summary=result.get("summary"),
             execution_time_ms=(time.time() - start) * 1000,
             error=result.get("error")

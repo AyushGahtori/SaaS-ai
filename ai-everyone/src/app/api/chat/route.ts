@@ -49,6 +49,12 @@ import {
 } from "@/lib/uploads/attachment-policy";
 import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 import { commitUsageSlot, reserveUsageSlot, UsageLimitError } from "@/lib/usage-limit";
+import {
+    getGoogleIntentLimitViolation as getOrchestratedGoogleIntentLimitViolation,
+    normalizeGoogleExecutionPayload as normalizeOrchestratedGoogleExecutionPayload,
+    parseModelAgentIntent,
+    resolveDeterministicAgentIntent,
+} from "@/lib/agents/orchestrator";
 const GOOGLE_AGENT_TYPES = new Set(["calendar", "gmail", "meet", "drive", "tasks", "web_search"]);
 
 interface ChatRequestMessage {
@@ -100,6 +106,12 @@ interface AgentInstallSuggestionMeta {
     kind: "agent" | "bundle";
 }
 
+interface RecentAgentContext {
+    agent_outputs: Record<string, unknown>;
+    recent_tasks: Array<Record<string, unknown>>;
+    pending_task?: Record<string, unknown>;
+}
+
 const GEMINI_MODEL_ALIASES: Record<string, string> = {
     "gemini-3-pro": process.env.GEMINI_MODEL_PRO || "gemini-3-pro",
     "gemini-3-flash": process.env.GEMINI_MODEL_FLASH || "gemini-3-flash",
@@ -112,6 +124,169 @@ const GEMINI_MODEL_ALIASES: Record<string, string> = {
     "gemini-3.1-flash-lite-preview":
         process.env.GEMINI_MODEL_FLASH_LITE || "gemini-3.1-flash-lite-preview",
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+    return isRecord(value) ? value : {};
+}
+
+function asString(value: unknown): string {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function getTimestampMillis(value: unknown): number {
+    if (value && typeof value === "object" && "toMillis" in value) {
+        const toMillis = (value as { toMillis?: () => number }).toMillis;
+        if (typeof toMillis === "function") {
+            const millis = Number(toMillis.call(value));
+            return Number.isFinite(millis) ? millis : 0;
+        }
+    }
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+        const parsed = Date.parse(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+}
+
+function compactAgentOutputForPrompt(output: Record<string, unknown>): Record<string, unknown> {
+    const result = asRecord(output.result);
+    const emails = Array.isArray(result.emails) ? result.emails.slice(0, 8) : undefined;
+    const files = Array.isArray(result.files) ? result.files.slice(0, 8) : undefined;
+
+    return {
+        type: asString(output.type) || undefined,
+        action: asString(output.action) || undefined,
+        status: asString(output.status) || undefined,
+        summary: asString(output.summary) || asString(output.error) || undefined,
+        ...(emails ? { emails } : {}),
+        ...(files ? { files } : {}),
+    };
+}
+
+function extractPendingTaskFromOutput(output: Record<string, unknown>): Record<string, unknown> | null {
+    const directResult = asRecord(output.result);
+    if (isRecord(directResult.pending_task)) {
+        return directResult.pending_task;
+    }
+
+    const originalResult = asRecord(output.originalResult);
+    const originalNestedResult = asRecord(originalResult.result);
+    if (isRecord(originalNestedResult.pending_task)) {
+        return originalNestedResult.pending_task;
+    }
+
+    return null;
+}
+
+async function loadRecentAgentContext(
+    uid: string,
+    chatId: string | undefined
+): Promise<RecentAgentContext | null> {
+    if (!chatId) return null;
+
+    try {
+        const snapshot = await adminDb
+            .collection("agentTasks")
+            .where("chatId", "==", chatId)
+            .limit(20)
+            .get();
+
+        const tasks = snapshot.docs
+            .map((doc) => asRecord(doc.data()))
+            .filter((task) => task.userId === uid)
+            .sort((a, b) => getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt))
+            .slice(0, 8);
+
+        if (tasks.length === 0) return null;
+
+        const context: RecentAgentContext = {
+            agent_outputs: {},
+            recent_tasks: [],
+        };
+
+        for (const task of tasks) {
+            const agentId = asString(task.agentId);
+            const status = asString(task.status);
+            const agentInput = asRecord(task.agentInput);
+            const output = asRecord(task.agentOutput);
+            if (!agentId || Object.keys(output).length === 0) continue;
+
+            context.recent_tasks.push({
+                agentId,
+                status,
+                action: asString(agentInput.action) || asString(output.action) || undefined,
+                output: compactAgentOutputForPrompt(output),
+            });
+
+            const pendingTask = extractPendingTaskFromOutput(output);
+            if (!context.pending_task && pendingTask) {
+                context.pending_task = pendingTask;
+            }
+
+            if (agentId !== "google-agent") continue;
+
+            const outputType = asString(output.type);
+            const result = asRecord(output.result);
+            const agentType =
+                asString(output.agent_type) ||
+                asString(agentInput.agent_type) ||
+                (outputType === "google_gmail"
+                    ? "gmail"
+                    : outputType === "google_drive"
+                        ? "drive"
+                        : "");
+
+            if (agentType === "gmail") {
+                const emails = Array.isArray(result.emails) ? result.emails.slice(0, 20) : [];
+                context.agent_outputs.gmail = {
+                    summary: asString(output.summary),
+                    action: asString(output.action) || asString(agentInput.action),
+                    emails,
+                    last_result: result,
+                };
+            }
+
+            if (agentType === "drive") {
+                const files = Array.isArray(result.files) ? result.files.slice(0, 20) : [];
+                context.agent_outputs.drive = {
+                    summary: asString(output.summary),
+                    action: asString(output.action) || asString(agentInput.action),
+                    files,
+                    last_result: result,
+                };
+            }
+        }
+
+        if (
+            Object.keys(context.agent_outputs).length === 0 &&
+            context.recent_tasks.length === 0 &&
+            !context.pending_task
+        ) {
+            return null;
+        }
+
+        return context;
+    } catch (error) {
+        console.error("[AgentContext] failed to load recent agent context:", error);
+        return null;
+    }
+}
+
+function formatRecentAgentContextForPrompt(context: RecentAgentContext | null): string {
+    if (!context) return "";
+
+    return [
+        "## Recent Agent Context",
+        "Use this only to resolve follow-up references such as \"this email\", \"that file\", \"same person\", or missing details from the immediately previous agent task.",
+        "Do not invent data that is not present in this context.",
+        JSON.stringify(context, null, 2),
+    ].join("\n");
+}
 
 function normalizeName(value: string): string {
     return value.toLowerCase().replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
@@ -1612,10 +1787,11 @@ export async function POST(req: NextRequest) {
             });
         }
 
-        const [installedAgentIds, accessibleAgentIds, personaContext] = await Promise.all([
+        const [installedAgentIds, accessibleAgentIds, personaContext, recentAgentContext] = await Promise.all([
             getInstalledAgentIds(uid),
             getAccessibleAgentIds(uid),
             buildPersonaContext(uid, lastUserMessage),
+            loadRecentAgentContext(uid, chatId),
         ]);
 
         if (lastUserMessage) {
@@ -1625,9 +1801,17 @@ export async function POST(req: NextRequest) {
         const shouldForceDirectAttachmentResponse =
             usingGemini &&
             (effectiveAttachments.length > 0 || normalizedFailedAttachments.length > 0);
+        const recentAgentPrompt = formatRecentAgentContextForPrompt(recentAgentContext);
+        const deterministicRoute = shouldForceDirectAttachmentResponse
+            ? null
+            : resolveDeterministicAgentIntent(lastUserMessage);
         const systemPrompt = shouldForceDirectAttachmentResponse
             ? buildDirectAttachmentPrompt(personaContext)
-            : [buildOrchestrationPrompt(installedAgentIds, accessibleAgentIds), personaContext]
+            : [
+                buildOrchestrationPrompt(installedAgentIds, accessibleAgentIds),
+                recentAgentPrompt,
+                personaContext,
+            ]
                 .filter(Boolean)
                 .join("\n\n");
 
@@ -1717,6 +1901,11 @@ export async function POST(req: NextRequest) {
 
                         let attachmentFailuresForResponse = [...normalizedFailedAttachments];
 
+                        const dispatchAgentIntent = async (
+                            rawIntent: AgentIntent,
+                            source: "deterministic" | "llm"
+                        ): Promise<boolean | undefined> => {
+                            if (!chatId) return false;
                         const assistantContent = usingGemini
                             ? await (async () => {
                                 const result = await streamGeminiChat(
@@ -1764,12 +1953,11 @@ export async function POST(req: NextRequest) {
                             return;
                         }
 
-                        if (parseResult && chatId) {
-                            const effectiveIntent = normalizeGoogleExecutionPayload(
-                                parseResult.intent,
+                            const effectiveIntent = normalizeOrchestratedGoogleExecutionPayload(
+                                rawIntent,
                                 lastUserMessage
                             );
-                            const googleLimitMessage = getGoogleIntentLimitViolation(
+                            const googleLimitMessage = getOrchestratedGoogleIntentLimitViolation(
                                 effectiveIntent,
                                 lastUserMessage
                             );
@@ -1779,7 +1967,7 @@ export async function POST(req: NextRequest) {
                                 }
                                 sendEvent("done", { type: "chat", content: googleLimitMessage });
                                 safeClose();
-                                return;
+                                return true;
                             }
 
                             if (!installedAgentIds.includes(effectiveIntent.agent_required)) {
@@ -1803,7 +1991,7 @@ export async function POST(req: NextRequest) {
                                         : {}),
                                 });
                                 safeClose();
-                                return;
+                                return true;
                             }
 
                             if (!accessibleAgentIds.includes(effectiveIntent.agent_required)) {
@@ -1827,13 +2015,19 @@ export async function POST(req: NextRequest) {
                                         : {}),
                                 });
                                 safeClose();
-                                return;
+                                return true;
                             }
 
                             const agentInput: Record<string, unknown> = {
                                 action: effectiveIntent.action,
                                 ...effectiveIntent.parameters,
+                                llm_provider: usingGemini ? "gemini" : "ollama",
+                                model,
                             };
+
+                            if (recentAgentContext) {
+                                agentInput.conversation_context = recentAgentContext;
+                            }
 
                             if (
                                 isStrataUploadIntent(effectiveIntent) &&
@@ -1850,11 +2044,16 @@ export async function POST(req: NextRequest) {
                                 }));
                             }
 
+                            const parentLLMRequest: Record<string, unknown> = {
+                                ...(effectiveIntent as unknown as Record<string, unknown>),
+                                routing_source: source,
+                            };
+
                             const task = await createAgentTask({
                                 userId: uid,
                                 chatId,
                                 agentId: effectiveIntent.agent_required,
-                                parentLLMRequest: effectiveIntent as unknown as Record<string, unknown>,
+                                parentLLMRequest,
                                 agentInput,
                             });
 
@@ -1915,7 +2114,71 @@ export async function POST(req: NextRequest) {
                                 content,
                             });
                             safeClose();
+                            return true;
+                        };
+
+                        if (deterministicRoute) {
+                            await commitUsageSlot(uid);
+                            const handled = await dispatchAgentIntent(
+                                deterministicRoute.intent as AgentIntent,
+                                deterministicRoute.source
+                            );
+                            if (handled) return;
+                        }
+
+                        const assistantContent = usingGemini
+                            ? await (async () => {
+                                const result = await streamGeminiChat(
+                                    geminiApiKey,
+                                    model,
+                                    systemPrompt,
+                                    messages.map((message) => ({
+                                        role: message.role === "agent" ? "assistant" : message.role,
+                                        content: message.content,
+                                    })),
+                                    effectiveAttachments,
+                                    uid,
+                                    handleDelta,
+                                    upstreamAbortController.signal
+                                );
+                                if (result.failedAttachments.length > 0) {
+                                    attachmentFailuresForResponse = [
+                                        ...attachmentFailuresForResponse,
+                                        ...result.failedAttachments,
+                                    ];
+                                }
+                                return result.content;
+                            })()
+                            : await streamOllamaChat(
+                                ollamaBaseUrls,
+                                model,
+                                messagesForModel,
+                                handleDelta,
+                                upstreamAbortController.signal
+                            );
+                        await commitUsageSlot(uid);
+
+                        const parsedIntentOrError = parseModelAgentIntent(assistantContent);
+                        const parseResult =
+                            shouldForceDirectAttachmentResponse &&
+                                parsedIntentOrError &&
+                                !("error" in parsedIntentOrError) &&
+                                !isStrataUploadIntent(parsedIntentOrError.intent)
+                                ? null
+                                : parsedIntentOrError;
+                        if (parseResult && "error" in parseResult) {
+                            const fallback = parseResult.fallback;
+                            if (!streamedText.trim()) {
+                                sendEvent("text", { content: fallback });
+                            }
+                            sendEvent("done", { type: "chat", content: fallback });
+                            safeClose();
                             return;
+                        }
+
+                        if (parseResult && chatId) {
+                            const handled = await dispatchAgentIntent(parseResult.intent as AgentIntent, "llm");
+                            if (handled) return;
                         }
 
                         const cleanContent = assistantContent
