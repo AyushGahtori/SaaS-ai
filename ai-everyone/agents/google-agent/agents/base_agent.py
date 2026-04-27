@@ -46,7 +46,11 @@ class BaseAgent(ABC):
         """Resolve model with cloud/local hybrid routing and safe fallbacks."""
         context = context or {}
 
-        direct_model = context.get("ollama_model") or context.get("model")
+        direct_model = context.get("ollama_model")
+        if not direct_model:
+            model_hint = context.get("model")
+            if isinstance(model_hint, str) and not model_hint.strip().lower().startswith("gemini"):
+                direct_model = model_hint
         if isinstance(direct_model, str) and direct_model.strip():
             return direct_model.strip()
 

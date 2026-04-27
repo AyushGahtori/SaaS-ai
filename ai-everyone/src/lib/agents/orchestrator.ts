@@ -240,7 +240,7 @@ function inferGoogleAgentType(intent: AgentIntent): string {
     if (GOOGLE_AGENT_TYPES.has(actionLower)) return actionLower;
 
     const paramsText = String(intent.parameters.parameters || intent.parameters.query || "").toLowerCase();
-    if (/\b(gmail|emails?|mails?|messages?|mail|inbox)\b/.test(paramsText)) return "gmail";
+    if (/\b(gmail|gamil|gmial|emails?|emials?|mails?|mailes?|messages?|mail|inbox)\b/.test(paramsText)) return "gmail";
     if (/\b(drive|file|files|docs?|documents?)\b/.test(paramsText)) return "drive";
     if (/\b(calendar|event|schedule|agenda)\b/.test(paramsText)) return "calendar";
     if (/\b(meet|meeting|video call)\b/.test(paramsText)) return "meet";
@@ -259,10 +259,10 @@ function inferGmailAction(message: string): string {
     if (/\b(send|compose|mail|email)\b/.test(lower) && /\b(to|again|this person|that person|him|her|them|@)\b/.test(lower)) {
         return "send_email";
     }
-    if (/\b(summarize|summarise|summary)\b/.test(lower) && hasNumericList) {
+    if (/\b(summarize|summarise|summary|summery)\b/.test(lower) && hasNumericList) {
         return "summarize_inbox";
     }
-    if (/\b(summarize|summarise|summary|read|open)\b/.test(lower) && !hasNumericList) {
+    if (/\b(summarize|summarise|summary|summery|read|open)\b/.test(lower) && !hasNumericList) {
         return "read_email";
     }
     return "list_emails";
@@ -346,14 +346,14 @@ export function parseModelAgentIntent(content: string): ParseResult {
 export function getNumericRequestCount(text: string): number | null {
     const lower = text.toLowerCase();
 
-    if (/\b(all|every)\s+(emails?|mails?|files?|documents?|docs?|messages?)\b/.test(lower)) {
+    if (/\b(all|every)\s+(emails?|emials?|mails?|mailes?|files?|documents?|docs?|messages?)\b/.test(lower)) {
         return 999;
     }
 
     const patterns = [
-        /\b(?:last|latest|recent|show|list|retrieve|get|fetch|read)\s+(\d{1,4})\s+(?:emails?|mails?|files?|documents?|docs?|messages?)\b/,
-        /\b(\d{1,4})\s+(?:latest\s+|recent\s+|last\s+)?(?:emails?|mails?|files?|documents?|docs?|messages?)\b/,
-        /\b(?:top|first)\s+(\d{1,4})\s+(?:emails?|mails?|files?|documents?|docs?|messages?)\b/,
+        /\b(?:last|latest|recent|show|list|retrieve|retrive|retreive|get|fetch|read)\s+(\d{1,4})\s+(?:emails?|emials?|mails?|mailes?|files?|documents?|docs?|messages?)\b/,
+        /\b(\d{1,4})\s+(?:latest\s+|recent\s+|last\s+)?(?:emails?|emials?|mails?|mailes?|files?|documents?|docs?|messages?)\b/,
+        /\b(?:top|first)\s+(\d{1,4})\s+(?:emails?|emials?|mails?|mailes?|files?|documents?|docs?|messages?)\b/,
     ];
 
     for (const pattern of patterns) {
@@ -485,7 +485,7 @@ export function resolveDeterministicAgentIntent(userMessage: string): Determinis
     const lower = text.toLowerCase();
     if (!text) return null;
 
-    const mentionsGmail = /\b(gmail|email|emails|mail|mails|inbox|message|messages)\b/.test(lower);
+    const mentionsGmail = /\b(gmail|gamil|gmial|email|emails|emial|emials|mail|mails|maile|mailes|inbox|message|messages)\b/.test(lower);
     if (mentionsGmail) {
         return {
             source: "deterministic",
@@ -707,9 +707,10 @@ function fuzzyMatchEmail(text: string, emails: CachedEmail[]): CachedEmail | nul
 function isEmailFollowUpReference(text: string): boolean {
     const lower = text.toLowerCase();
     const followUpPatterns = [
-        /\b(summarize|summarise|summary|read|open|show|this|that)\b.*\b(one|mail|email|message|it)\b/,
-        /\b(first|second|third|fourth|fifth|last|top|bottom|1st|2nd|3rd|4th|5th)\b.*\b(one|mail|email|message)?\b/,
-        /\b(summarize|summarise|read|open)\s+(the\s+)?(first|second|third|last|1st|2nd|3rd|#?\d)\b/,
+        /\b(summarize|summarise|summary|summery|read|open|show|this|that)\b.*\b(one|mail|email|message|it|male)\b/,
+        /\b(first|second|third|fourth|fifth|last|top|bottom|1st|2nd|3rd|4th|5th)\b.*\b(one|mail|email|message|male)\b/,
+        /\b(summarize|summarise|summery|read|open)\s+(the\s+)?(first|second|third|last|1st|2nd|3rd|#?\d)\b/,
+        /^(the\s+)?(first|second|third|fourth|fifth|last|1st|2nd|3rd|4th|5th|#?\d)\s*$/,
         /\b(summarize|summarise|read|open)\s+(this|that|it)\b/,
         /\b(from this|from the list|from above|from these)\b/,
         /\bthis one\b/,
@@ -752,7 +753,7 @@ export function resolveEmailFollowUp(
     }
 
     // 3. Default to first email for contextual "this one", "that one"
-    if (!resolvedEmail && /\b(this|that)\s+(one|mail|email|message)\b/.test(lower)) {
+    if (!resolvedEmail && /\b(this|that)\s+(one|mail|email|message|male)\b/.test(lower)) {
         resolvedEmail = cachedEmails[0] ?? null;
     }
 

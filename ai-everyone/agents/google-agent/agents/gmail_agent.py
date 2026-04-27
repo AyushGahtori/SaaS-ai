@@ -1088,17 +1088,24 @@ class GmailAgent(BaseAgent):
                 "this mail",
                 "this email",
                 "this message",
+                "this one",
                 "that mail",
                 "that email",
                 "that message",
+                "that one",
                 "last mail",
                 "last email",
                 "latest mail",
                 "latest email",
                 "first mail",
                 "first email",
+                "first one",
+                "first male",
+                "1st mail",
+                "1st email",
                 "same mail",
                 "same email",
+                "same one",
             ]
         )
 
@@ -1128,16 +1135,31 @@ class GmailAgent(BaseAgent):
 
         lower = (query or "").lower()
         last_selected_id = self._clean_text_value(str(cache.get("last_selected_id", "")))
-        if last_selected_id:
-            for email in emails:
-                if str(email.get("id", "")) == last_selected_id:
-                    return email
+
+        ordinal_patterns = [
+            (0, [r"\b(first|1st|#1|number 1)\b"]),
+            (1, [r"\b(second|2nd|#2|number 2)\b"]),
+            (2, [r"\b(third|3rd|#3|number 3)\b"]),
+            (3, [r"\b(fourth|4th|#4|number 4)\b"]),
+            (4, [r"\b(fifth|5th|#5|number 5)\b"]),
+        ]
+        for index, patterns in ordinal_patterns:
+            if index < len(emails) and any(re.search(pattern, lower) for pattern in patterns):
+                return emails[index]
 
         if "last email" in lower or "last mail" in lower:
             # The cache is newest-first, so "last/latest" means the first row the user just saw.
             return emails[0]
 
-        if "first email" in lower or "first mail" in lower or self._is_contextual_email_reference(query):
+        if last_selected_id and any(
+            marker in lower
+            for marker in ["same", "this", "that", "it", "again", "reply", "respond"]
+        ):
+            for email in emails:
+                if str(email.get("id", "")) == last_selected_id:
+                    return email
+
+        if self._is_contextual_email_reference(query):
             return emails[0]
 
         return None
