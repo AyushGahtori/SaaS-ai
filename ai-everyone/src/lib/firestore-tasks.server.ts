@@ -24,7 +24,16 @@ import {
     type AgentExecutionContract,
 } from "@/lib/agent-error";
 
-const AGENT_HTTP_TIMEOUT_MS = Number(process.env.AGENT_HTTP_TIMEOUT_MS || 45000);
+const DEFAULT_AGENT_HTTP_TIMEOUT_MS = Number(process.env.AGENT_HTTP_TIMEOUT_MS || 45000);
+const AGENT_HTTP_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
+    "seo-agent": Number(process.env.SEO_AGENT_HTTP_TIMEOUT_MS || 120000),
+};
+
+function getAgentHttpTimeoutMs(agentId: string): number {
+    const override = AGENT_HTTP_TIMEOUT_OVERRIDES_MS[agentId];
+    const timeout = Number.isFinite(override) && override > 0 ? override : DEFAULT_AGENT_HTTP_TIMEOUT_MS;
+    return timeout;
+}
 
 // ---------------------------------------------------------------------------
 // Agent routing map â€” maps agentId to its API endpoint path.
@@ -302,7 +311,8 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
 
     try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), AGENT_HTTP_TIMEOUT_MS);
+        const agentTimeoutMs = getAgentHttpTimeoutMs(task.agentId);
+        const timeout = setTimeout(() => controller.abort(), agentTimeoutMs);
         let response: Response;
         try {
             response = await fetch(agentUrl, {
@@ -380,12 +390,15 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
             errorMessage.includes("ECONNREFUSED") ||
             errorMessage.includes("fetch failed") ||
             errorMessage.toLowerCase().includes("abort");
+        const isAbortError = errorMessage.toLowerCase().includes("abort");
 
         await persistInterpretedFailure({
             taskRef,
             task,
-            rawError: isConnectionError
-                ? `Cannot connect to agent server at ${agentServerUrl}. Is the agent running and healthy?`
+            rawError: isAbortError
+                ? `Agent request timed out after ${getAgentHttpTimeoutMs(task.agentId)}ms while waiting for ${task.agentId}.`
+                : isConnectionError
+                    ? `Cannot connect to agent server at ${agentServerUrl}. Is the agent running and healthy?`
                 : `Agent execution error: ${errorMessage}`,
             incrementRetry: true,
         });
