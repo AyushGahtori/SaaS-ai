@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -62,11 +63,27 @@ class GeminiSettings:
         os.getenv("GEMINI_MODEL_FLASH")
         or os.getenv("GEMINI_MODEL")
         or os.getenv("GEMINI_MODEL_PRO")
-        or "gemini-2.5-flash"
+        or "gemini-3-flash-preview"
     ).strip()
+    fallback_models: tuple[str, ...] = ()
 
 
 SETTINGS = GeminiSettings()
+SETTINGS.fallback_models = tuple(
+    model
+    for model in _dedupe(
+        [
+            SETTINGS.model,
+            (os.getenv("GEMINI_MODEL_FLASH") or "").strip(),
+            (os.getenv("GEMINI_MODEL") or "").strip(),
+            (os.getenv("GEMINI_MODEL_PRO") or "").strip(),
+            "gemini-3-flash-preview",
+            "gemini-3.1-pro-preview",
+            "gemini-3.1-flash-lite-preview",
+        ]
+    )
+    if model
+)
 
 
 def _clean(value: str | None) -> str:
@@ -639,37 +656,73 @@ def _gemini_prompt(schema_name: str, query: str, mode: str, title: str | None, a
     )
 
 
+def _is_transient_gemini_status(status_code: int) -> bool:
+    return status_code in {408, 409, 429, 500, 502, 503, 504}
+
+
 async def _call_gemini_json(prompt: str) -> tuple[dict[str, Any] | None, str | None]:
     if not SETTINGS.api_key:
         return None, "LLM enrichment is unavailable because GEMINI_API_KEY is not configured."
-    try:
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{SETTINGS.model}:generateContent"
-        payload = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(f"{endpoint}?key={SETTINGS.api_key}", json=payload)
-            resp.raise_for_status()
-        data = resp.json()
-        candidates = data.get("candidates") or []
-        if not candidates:
-            return None, "LLM enrichment returned no candidates, so the SEO agent used its deterministic fallback."
-        parts = (((candidates[0] or {}).get("content") or {}).get("parts")) or []
-        text = "\n".join(str(part.get("text") or "") for part in parts if isinstance(part, dict))
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            return None, "LLM enrichment returned an unexpected format, so the SEO agent used its deterministic fallback."
-        parsed = json.loads(text[start : end + 1])
-        if not isinstance(parsed, dict):
-            return None, "LLM enrichment returned an unexpected payload shape, so the SEO agent used its deterministic fallback."
-        return parsed, None
-    except httpx.HTTPStatusError as exc:  # pragma: no cover - external dependency
-        logger.warning("Gemini analysis failed: %s", exc)
-        if exc.response.status_code == 403:
-            return None, "LLM enrichment is currently unavailable because the configured Gemini key was rejected with 403."
-        return None, f"LLM enrichment is currently unavailable ({exc.response.status_code}), so the SEO agent used its deterministic fallback."
-    except Exception as exc:  # pragma: no cover - external dependency
-        logger.warning("Gemini analysis failed: %s", exc)
+    payload = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
+    last_status: int | None = None
+    last_error: Exception | None = None
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for model in SETTINGS.fallback_models or (SETTINGS.model,):
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            for attempt in range(3):
+                try:
+                    resp = await client.post(f"{endpoint}?key={SETTINGS.api_key}", json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    candidates = data.get("candidates") or []
+                    if not candidates:
+                        return None, "LLM enrichment returned no candidates, so the SEO agent used its deterministic fallback."
+                    parts = (((candidates[0] or {}).get("content") or {}).get("parts")) or []
+                    text = "\n".join(str(part.get("text") or "") for part in parts if isinstance(part, dict))
+                    start = text.find("{")
+                    end = text.rfind("}")
+                    if start == -1 or end == -1 or end <= start:
+                        return None, "LLM enrichment returned an unexpected format, so the SEO agent used its deterministic fallback."
+                    parsed = json.loads(text[start : end + 1])
+                    if not isinstance(parsed, dict):
+                        return None, "LLM enrichment returned an unexpected payload shape, so the SEO agent used its deterministic fallback."
+                    return parsed, None
+                except httpx.HTTPStatusError as exc:  # pragma: no cover - external dependency
+                    last_error = exc
+                    last_status = exc.response.status_code
+                    logger.warning(
+                        "Gemini analysis failed for model %s (attempt %s/3): %s",
+                        model,
+                        attempt + 1,
+                        exc,
+                    )
+                    if last_status == 403:
+                        return None, "LLM enrichment is currently unavailable because the configured Gemini key was rejected with 403."
+                    if _is_transient_gemini_status(last_status) and attempt < 2:
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
+                    if _is_transient_gemini_status(last_status):
+                        break
+                    return None, f"LLM enrichment is currently unavailable ({last_status}), so the SEO agent used its deterministic fallback."
+                except Exception as exc:  # pragma: no cover - external dependency
+                    last_error = exc
+                    logger.warning(
+                        "Gemini analysis failed for model %s (attempt %s/3): %s",
+                        model,
+                        attempt + 1,
+                        exc,
+                    )
+                    if attempt < 2:
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
+                    break
+
+    if last_status is not None:
+        return None, f"LLM enrichment is currently unavailable ({last_status}), so the SEO agent used its deterministic fallback."
+    if last_error is not None:
         return None, "LLM enrichment is currently unavailable, so the SEO agent used its deterministic fallback."
+    return None, "LLM enrichment is currently unavailable, so the SEO agent used its deterministic fallback."
 
 
 def _sanitize_action(action: str | None) -> str:
