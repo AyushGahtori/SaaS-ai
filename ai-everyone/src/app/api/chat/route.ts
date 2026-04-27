@@ -1775,7 +1775,7 @@ export async function POST(req: NextRequest) {
                         const dispatchAgentIntent = async (
                             rawIntent: AgentIntent,
                             source: "deterministic" | "llm"
-                        ): Promise<boolean> => {
+                        ): Promise<boolean | undefined> => {
                             if (!chatId) return false;
 
                             const effectiveIntent = normalizeOrchestratedGoogleExecutionPayload(
