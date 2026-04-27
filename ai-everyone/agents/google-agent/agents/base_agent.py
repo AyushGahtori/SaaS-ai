@@ -24,9 +24,9 @@ GEMINI_MODEL_MAP = {
     "gemini-3-pro": os.getenv("GEMINI_MODEL_PRO", "gemini-2.5-pro"),
     "gemini-3-flash": os.getenv("GEMINI_MODEL_FLASH", "gemini-2.5-flash"),
     "gemini-3.1-flash-lite": os.getenv("GEMINI_MODEL_FLASH_LITE", "gemini-2.5-flash-lite"),
-    "gemini-3-flash-preview": os.getenv("GEMINI_MODEL_FLASH", "gemini-2.5-flash"),
-    "gemini-3.1-pro-preview": os.getenv("GEMINI_MODEL_PRO", "gemini-2.5-pro"),
-    "gemini-3.1-flash-lite-preview": os.getenv("GEMINI_MODEL_FLASH_LITE", "gemini-2.5-flash-lite"),
+    "gemini-3-flash-preview": os.getenv("GEMINI_MODEL_FLASH", "gemini-3-flash-preview"),
+    "gemini-3.1-pro-preview": os.getenv("GEMINI_MODEL_PRO", "gemini-3.1-pro-preview"),
+    "gemini-3.1-flash-lite-preview": os.getenv("GEMINI_MODEL_FLASH_LITE", "gemini-3.1-flash-lite-preview"),
 }
 
 
