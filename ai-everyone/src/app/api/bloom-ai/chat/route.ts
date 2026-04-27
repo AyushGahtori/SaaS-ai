@@ -9,7 +9,7 @@ import {
 } from "@/modules/bloom-ai/lib/server";
 import { generateBloomReply, resolveBloomModel } from "@/modules/bloom-ai/lib/gemini";
 import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
-import { enforceUsageLimit } from "@/lib/usage-limit";
+import { commitUsageSlot, reserveUsageSlot, UsageLimitError } from "@/lib/usage-limit";
 
 export async function POST(req: NextRequest) {
     const verifiedUser = await verifyFirebaseRequest(req);
@@ -38,8 +38,7 @@ export async function POST(req: NextRequest) {
                 { status: 500 }
             );
         }
-        // Check if the user has reached their AI limit BEFORE generating a reply
-        await enforceUsageLimit(verifiedUser.uid);
+        await reserveUsageSlot(verifiedUser.uid);
 
         const settings = await getBloomSettings(verifiedUser.uid);
         const { conversation, messages } = await loadConversationForPrompt(
@@ -64,6 +63,7 @@ export async function POST(req: NextRequest) {
             ],
             context,
         });
+        await commitUsageSlot(verifiedUser.uid);
 
         await upsertConversationMetadata(verifiedUser.uid, conversationId, {
             modelId: activeModel,
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ conversation: updatedConversation });
     } catch (error) {
         // Intercept our custom Bouncer error!
-        if (error instanceof Error && error.message === "LIMIT_REACHED") {
+        if (error instanceof UsageLimitError) {
             return NextResponse.json(
                 { error: "You have reached your AI message limit. Please upgrade to continue." },
                 { status: 429 }
