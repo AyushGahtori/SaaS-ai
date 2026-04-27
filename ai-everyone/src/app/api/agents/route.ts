@@ -6,7 +6,9 @@ import {
     getConnectedBundleIds,
     getInstalledAgentIds,
     getProviderConnection,
+    getTrialUsedAgentIds,
     installAgentIds,
+    markAgentTrialUsed,
     uninstallAgentIds,
 } from "@/lib/agents/user-access.server";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
@@ -33,10 +35,11 @@ export async function GET(req: NextRequest) {
         ] as const)
     );
 
-    const [installedAgentIds, accessibleAgentIds, connectedBundleIds] = await Promise.all([
+    const [installedAgentIds, accessibleAgentIds, connectedBundleIds, trialUsedAgentIds] = await Promise.all([
         getInstalledAgentIds(verifiedUser.uid),
         getAccessibleAgentIds(verifiedUser.uid),
         getConnectedBundleIds(verifiedUser.uid),
+        getTrialUsedAgentIds(verifiedUser.uid),
     ]);
 
     return NextResponse.json({
@@ -45,6 +48,7 @@ export async function GET(req: NextRequest) {
         installedAgentIds,
         accessibleAgentIds,
         connectedBundleIds,
+        trialUsedAgentIds,
         connections: Object.fromEntries(
             providerConnections.map(([provider, connection]) => [
                 provider,
@@ -99,6 +103,20 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ success: true, uninstalledAgentIds: bundle.childAgentIds });
             }
 
+            if (action === "use_trial") {
+                const trial = await markAgentTrialUsed(verifiedUser.uid, bundle.id);
+                if (trial.alreadyUsed) {
+                    return NextResponse.json(
+                        {
+                            error: "This free trial prompt has already been used.",
+                            trialUsedAgentIds: trial.trialUsedAgentIds,
+                        },
+                        { status: 409 }
+                    );
+                }
+                return NextResponse.json({ success: true, trialUsedAgentIds: trial.trialUsedAgentIds });
+            }
+
             return NextResponse.json({ error: "Unsupported action." }, { status: 400 });
         }
 
@@ -135,6 +153,20 @@ export async function POST(req: NextRequest) {
                 await clearProviderConnection(verifiedUser.uid, agent.provider);
             }
             return NextResponse.json({ success: true, uninstalledAgentIds: [agent.id] });
+        }
+
+        if (action === "use_trial") {
+            const trial = await markAgentTrialUsed(verifiedUser.uid, agent.id);
+            if (trial.alreadyUsed) {
+                return NextResponse.json(
+                    {
+                        error: "This free trial prompt has already been used.",
+                        trialUsedAgentIds: trial.trialUsedAgentIds,
+                    },
+                    { status: 409 }
+                );
+            }
+            return NextResponse.json({ success: true, trialUsedAgentIds: trial.trialUsedAgentIds });
         }
 
         return NextResponse.json({ error: "Unsupported action." }, { status: 400 });
