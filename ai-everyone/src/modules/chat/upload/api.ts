@@ -9,6 +9,7 @@ export const DRIVE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/drive.readonl
 export const DRIVE_AUTH_REQUIRED_CODE = "DRIVE_AUTH_REQUIRED";
 
 type CodedError = Error & { code?: string };
+type HttpError = Error & { status?: number };
 
 function createDriveAuthRequiredError(
     message = "Drive sign-in is required for chat uploads."
@@ -201,13 +202,29 @@ export async function persistUploadedDoc(input: {
         },
         body: JSON.stringify(input),
     });
-    const payload = (await response.json().catch(() => ({}))) as {
+    const rawText = await response.text();
+    let payload: {
         uploadedDocId?: string;
         expiresAt?: string;
         error?: string;
-    };
+    } = {};
+
+    if (rawText.trim()) {
+        try {
+            payload = JSON.parse(rawText) as typeof payload;
+        } catch {
+            payload = {};
+        }
+    }
+
     if (!response.ok) {
-        throw new Error(payload.error || "Failed to store uploaded document.");
+        const error = new Error(
+            payload.error ||
+                rawText.trim() ||
+                `Failed to store uploaded document (status ${response.status}).`
+        ) as HttpError;
+        error.status = response.status;
+        throw error;
     }
     if (!payload.uploadedDocId || !payload.expiresAt) {
         throw new Error("Upload API returned an invalid payload.");
