@@ -137,12 +137,25 @@ export function useBloomWorkspace() {
                 });
                 applyConversation(response.conversation);
             } catch (err) {
+                // Intercept the custom Limit message from our Bouncer
+                const rawMsg = err instanceof Error ? err.message : String(err);
+                if (rawMsg.includes("reached your AI message limit")) {
+                    setError({
+                        title: "Usage Limit Reached",
+                        message: "You have reached your AI message limit. Please upgrade to continue.",
+                        provider: "api"
+                    });
+                    return; // Stop here so it doesn't show a generic error
+                }
+
+                // Otherwise, parse standard errors normally
                 const parsed = normalizeUserFacingError(err, {
                     surface: "bloom",
                     fallbackMessage: "Bloom AI could not reply.",
                 });
                 setError(parsed);
             } finally {
+
                 setIsSending(false);
             }
         },

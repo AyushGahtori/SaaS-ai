@@ -48,7 +48,7 @@ import {
     validateTotalAttachmentSize,
 } from "@/lib/uploads/attachment-policy";
 import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
-
+import { enforceUsageLimit } from "@/lib/usage-limit";
 const GOOGLE_AGENT_TYPES = new Set(["calendar", "gmail", "meet", "drive", "tasks", "web_search"]);
 
 interface ChatRequestMessage {
@@ -1152,8 +1152,7 @@ async function streamOllamaChat(
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(
-                    `Ollama at ${baseUrl} returned status ${response.status}. ${
-                        errorText || "No details available."
+                    `Ollama at ${baseUrl} returned status ${response.status}. ${errorText || "No details available."
                     }`
                 );
             }
@@ -1393,6 +1392,8 @@ export async function POST(req: NextRequest) {
         }
 
         const uid = verifiedUser.uid;
+        // Check limit BEFORE doing any heavy AI work or streaming
+        await enforceUsageLimit(uid);
         cleanupExpiredUploadedDocs(uid).catch((error) => {
             console.error("[UploadedDocsCleanup] failed:", error);
         });
@@ -1752,7 +1753,7 @@ export async function POST(req: NextRequest) {
                                     : task.status;
                             const finalTaskResult =
                                 executedTaskData?.agentOutput &&
-                                typeof executedTaskData.agentOutput === "object"
+                                    typeof executedTaskData.agentOutput === "object"
                                     ? (executedTaskData.agentOutput as Record<string, unknown>)
                                     : undefined;
 
@@ -1842,6 +1843,14 @@ export async function POST(req: NextRequest) {
             },
         });
     } catch (error) {
+        // Intercept our custom Bouncer error!
+        if (error instanceof Error && error.message === "LIMIT_REACHED") {
+            return NextResponse.json(
+                { error: "You have reached your AI message limit. Please upgrade to continue." },
+                { status: 429 }
+            );
+        }
+
         console.error("[Chat API Error]", error);
         const message = normalizeUserFacingError(error, {
             surface: "chat",
