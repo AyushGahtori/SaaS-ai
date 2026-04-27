@@ -56,7 +56,6 @@ import {
     resolveDeterministicAgentIntent,
     resolveEmailFollowUp,
 } from "@/lib/agents/orchestrator";
-const GOOGLE_AGENT_TYPES = new Set(["calendar", "gmail", "meet", "drive", "tasks", "web_search"]);
 
 interface ChatRequestMessage {
     role: string;
@@ -87,11 +86,6 @@ interface AgentIntent {
     action: string;
     parameters: Record<string, unknown>;
     reasoning?: string;
-}
-
-interface ParsedIntentResult {
-    intent: AgentIntent;
-    conversationalText: string;
 }
 
 interface AgentInstallSuggestionMeta {
@@ -912,214 +906,10 @@ If an agent is needed, output ONLY:
 </AGENT_INTENT>`;
 }
 
-function normalizeAgentIntent(parsed: Record<string, unknown>): AgentIntent | null {
-    const action = typeof parsed.action === "string" ? parsed.action.trim() : "";
-    if (!action) return null;
-
-    const intent: AgentIntent = {
-        agent_required: String(parsed.agent_required || "").trim(),
-        action,
-        parameters: {},
-        reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : undefined,
-    };
-
-    if (typeof parsed.parameters === "string") {
-        intent.parameters = { parameters: parsed.parameters };
-    } else if (typeof parsed.parameters === "object" && parsed.parameters !== null) {
-        intent.parameters = { ...(parsed.parameters as Record<string, unknown>) };
-    } else if (typeof parsed.parameters !== "undefined" && parsed.parameters !== null) {
-        intent.parameters = { parameters: String(parsed.parameters) };
-    }
-
-    if (typeof parsed.agent_type === "string" && !intent.parameters.agent_type) {
-        intent.parameters.agent_type = parsed.agent_type;
-    }
-
-    return intent;
-}
-
-function fuzzyMatchAgent(rawAgent: string) {
-    return AGENT_CATALOG.find((agent) => {
-        const id = agent.id.toLowerCase();
-        const name = agent.name.toLowerCase();
-        return (
-            rawAgent === id ||
-            rawAgent === id.replace("-", "_") ||
-            rawAgent.includes(id.replace("-", "")) ||
-            name.includes(rawAgent)
-        );
-    });
-}
-
-function normalizeGoogleIntent(intent: AgentIntent): AgentIntent {
-    if (intent.agent_required !== "google-agent") return intent;
-
-    const normalized: AgentIntent = {
-        ...intent,
-        parameters: { ...intent.parameters },
-    };
-
-    const currentAgentType =
-        typeof normalized.parameters.agent_type === "string"
-            ? normalized.parameters.agent_type.toLowerCase().trim()
-            : "";
-
-    if (GOOGLE_AGENT_TYPES.has(currentAgentType)) {
-        normalized.parameters.agent_type = currentAgentType;
-        return normalized;
-    }
-
-    const actionLower = normalized.action.toLowerCase().trim();
-    if (GOOGLE_AGENT_TYPES.has(actionLower)) {
-        normalized.parameters.agent_type = actionLower;
-        return normalized;
-    }
-
-    const paramsText = String(normalized.parameters.parameters || "").toLowerCase();
-    if (/\b(gmail|email|mail|inbox)\b/.test(paramsText)) normalized.parameters.agent_type = "gmail";
-    else if (/\b(drive|file|files|docs?|documents?)\b/.test(paramsText)) normalized.parameters.agent_type = "drive";
-    else if (/\b(calendar|event|schedule|agenda)\b/.test(paramsText)) normalized.parameters.agent_type = "calendar";
-    else if (/\b(meet|meeting|video call)\b/.test(paramsText)) normalized.parameters.agent_type = "meet";
-    else if (/\b(task|tasks|todo|to-do|remind)\b/.test(paramsText)) normalized.parameters.agent_type = "tasks";
-    else if (/\b(search|web|internet|lookup|look up)\b/.test(paramsText)) normalized.parameters.agent_type = "web_search";
-
-    return normalized;
-}
-
 function isStrataUploadIntent(intent: AgentIntent): boolean {
     if (intent.agent_required !== "strata-agent") return false;
     const action = intent.action.toLowerCase().trim();
     return action === "upload_report" || action === "analyze_report";
-}
-
-function tryParseAgentIntent(content: string): ParsedIntentResult | { error: true; fallback: string } | null {
-    const tagMatch = content.match(/<AGENT_INTENT>([\s\S]*?)<\/AGENT_INTENT>/);
-
-    if (!tagMatch) {
-        return null;
-    }
-
-    const jsonStr = tagMatch[1].trim();
-    const conversationalText = content.replace(/<AGENT_INTENT>[\s\S]*?<\/AGENT_INTENT>/, "").trim();
-
-    try {
-        const parsed = JSON.parse(jsonStr);
-        if (typeof parsed !== "object" || parsed === null) {
-            return { error: true, fallback: "I could not understand that agent request. Please try again." };
-        }
-
-        const normalizedIntent = normalizeAgentIntent(parsed as Record<string, unknown>);
-        if (!normalizedIntent) {
-            return { error: true, fallback: "I could not understand that agent request. Please try again." };
-        }
-
-        const matchedAgent = fuzzyMatchAgent(String(normalizedIntent.agent_required || "").toLowerCase());
-        if (!matchedAgent) {
-            return { error: true, fallback: "I could not match that request to a supported agent." };
-        }
-
-        normalizedIntent.agent_required = matchedAgent.id;
-        const finalIntent = normalizeGoogleIntent(normalizedIntent);
-
-        if (
-            finalIntent.agent_required === "google-agent" &&
-            (typeof finalIntent.parameters.agent_type !== "string" ||
-                !GOOGLE_AGENT_TYPES.has(finalIntent.parameters.agent_type.toLowerCase().trim()))
-        ) {
-            return {
-                error: true,
-                fallback:
-                    "I could not determine which Google service to use. Please mention Gmail, Drive, Calendar, Meet, Tasks, or Web Search.",
-            };
-        }
-
-        return { intent: finalIntent, conversationalText };
-    } catch {
-        return { error: true, fallback: "I generated an invalid agent payload. Please try again." };
-    }
-}
-
-function getNumericRequestCount(text: string): number | null {
-    const lower = text.toLowerCase();
-
-    if (/\b(all|every)\s+(emails?|mails?|files?|documents?|docs?)\b/.test(lower)) {
-        return 999;
-    }
-
-    const directMatch = lower.match(/\b(\d{1,4})\s+(latest\s+|recent\s+|last\s+)?(emails?|mails?|files?|documents?|docs?)\b/);
-    if (directMatch) {
-        return Number.parseInt(directMatch[1], 10);
-    }
-
-    return null;
-}
-
-function getGoogleIntentLimitViolation(intent: AgentIntent, userMessage: string): string | null {
-    if (intent.agent_required !== "google-agent") return null;
-
-    const rawAgentType = intent.parameters.agent_type;
-    const agentType = typeof rawAgentType === "string" ? rawAgentType.toLowerCase() : "";
-    if (agentType !== "gmail" && agentType !== "drive") return null;
-
-    const requestedCount = getNumericRequestCount(userMessage) ?? getNumericRequestCount(String(intent.parameters.parameters || ""));
-    if (requestedCount && requestedCount > 20) {
-        const itemLabel = agentType === "gmail" ? "emails" : "files";
-        return `I currently cannot display more than 20 ${itemLabel} at once. Please ask for 20 or fewer.`;
-    }
-
-    return null;
-}
-
-function normalizeGoogleLimitValue(value: unknown): string | null {
-    if (typeof value === "string" && value.trim()) return value.trim();
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) return String(Math.floor(value));
-    return null;
-}
-
-function normalizeGoogleExecutionPayload(intent: AgentIntent, userMessage: string): AgentIntent {
-    if (intent.agent_required !== "google-agent") return intent;
-
-    const normalized: AgentIntent = {
-        ...intent,
-        parameters: { ...intent.parameters },
-    };
-
-    const rawAgentType = normalized.parameters.agent_type;
-    const agentType = typeof rawAgentType === "string" ? rawAgentType.toLowerCase().trim() : "";
-    if (agentType !== "gmail" && agentType !== "drive") {
-        return normalized;
-    }
-
-    const requestedCount =
-        getNumericRequestCount(userMessage) ??
-        getNumericRequestCount(String(normalized.parameters.parameters || ""));
-
-    const existingLimit =
-        normalizeGoogleLimitValue(normalized.parameters.limit) ||
-        normalizeGoogleLimitValue(normalized.parameters.count) ||
-        normalizeGoogleLimitValue(normalized.parameters.maxResults) ||
-        normalizeGoogleLimitValue(normalized.parameters.pageSize);
-
-    const resolvedLimit =
-        existingLimit ||
-        (typeof requestedCount === "number" && requestedCount > 0 ? String(requestedCount) : null);
-
-    if (resolvedLimit) {
-        normalized.parameters.limit = resolvedLimit;
-        normalized.parameters.count = resolvedLimit;
-        normalized.parameters.maxResults = resolvedLimit;
-        normalized.parameters.pageSize = resolvedLimit;
-    }
-
-    const existingDetails =
-        typeof normalized.parameters.parameters === "string" && normalized.parameters.parameters.trim()
-            ? normalized.parameters.parameters.trim()
-            : "";
-    if (!existingDetails) {
-        normalized.parameters.parameters = userMessage;
-    }
-
-    return normalized;
 }
 
 function resolveGeminiModel(model: string): string {
@@ -1753,13 +1543,6 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        if (usingGemini && !geminiApiKey) {
-            return NextResponse.json(
-                { error: "GEMINI_API_KEY is not configured on the server." },
-                { status: 500 }
-            );
-        }
-
         // Avoid re-triggering agent tasks when user only sends an acknowledgement.
         if (isAcknowledgementOnlyMessage(lastUserMessage)) {
             const encoder = new TextEncoder();
@@ -1805,8 +1588,14 @@ export async function POST(req: NextRequest) {
         const recentAgentPrompt = formatRecentAgentContextForPrompt(recentAgentContext);
         const deterministicRoute = shouldForceDirectAttachmentResponse
             ? null
-            : resolveDeterministicAgentIntent(lastUserMessage)
-              ?? resolveEmailFollowUp(lastUserMessage, recentAgentContext);
+            : resolveEmailFollowUp(lastUserMessage, recentAgentContext)
+              ?? resolveDeterministicAgentIntent(lastUserMessage);
+        if (usingGemini && !geminiApiKey && !deterministicRoute) {
+            return NextResponse.json(
+                { error: "GEMINI_API_KEY is not configured on the server." },
+                { status: 500 }
+            );
+        }
         const systemPrompt = shouldForceDirectAttachmentResponse
             ? buildDirectAttachmentPrompt(personaContext)
             : [
@@ -1908,52 +1697,6 @@ export async function POST(req: NextRequest) {
                             source: "deterministic" | "llm"
                         ): Promise<boolean | undefined> => {
                             if (!chatId) return false;
-                        const assistantContent = usingGemini
-                            ? await (async () => {
-                                const result = await streamGeminiChat(
-                                    geminiApiKey,
-                                    model,
-                                    systemPrompt,
-                                    conversationMessagesForModel,
-                                    effectiveAttachments,
-                                    uid,
-                                    handleDelta,
-                                    upstreamAbortController.signal
-                                );
-                                if (result.failedAttachments.length > 0) {
-                                    attachmentFailuresForResponse = [
-                                        ...attachmentFailuresForResponse,
-                                        ...result.failedAttachments,
-                                    ];
-                                }
-                                return result.content;
-                            })()
-                            : await streamOllamaChat(
-                                ollamaBaseUrls,
-                                model,
-                                messagesForModel,
-                                handleDelta,
-                                upstreamAbortController.signal
-                            );
-                        await commitUsageSlot(uid);
-
-                        const parsedIntentOrError = tryParseAgentIntent(assistantContent);
-                        const parseResult =
-                            shouldForceDirectAttachmentResponse &&
-                                parsedIntentOrError &&
-                                !("error" in parsedIntentOrError) &&
-                                !isStrataUploadIntent(parsedIntentOrError.intent)
-                                ? null
-                                : parsedIntentOrError;
-                        if (parseResult && "error" in parseResult) {
-                            const fallback = parseResult.fallback;
-                            if (!streamedText.trim()) {
-                                sendEvent("text", { content: fallback });
-                            }
-                            sendEvent("done", { type: "chat", content: fallback });
-                            safeClose();
-                            return;
-                        }
 
                             const effectiveIntent = normalizeOrchestratedGoogleExecutionPayload(
                                 rawIntent,
