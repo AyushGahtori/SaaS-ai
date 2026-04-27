@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI, type Part } from "@google/genai";
 import { createAgentTask, executeAgentTask } from "@/lib/firestore-tasks.server";
+import { adminDb } from "@/lib/firebase-admin";
 import { isTriggerMessage, isPersonalContextQuery } from "@/lib/memory/trigger-detector";
 import { extractMemories } from "@/lib/memory/extractor";
 import { processExtractedMemories } from "@/lib/memory/deduper";
@@ -527,6 +528,10 @@ For the seo-agent:
 - audit: extract "url" when available, otherwise extract "title" and "content".
 - optimize_article: extract optional "url", optional "title", optional "content", and optional "topic".
 - Use seo-agent for keyword research, SEO content briefs, article audits, content optimization, and SERP-driven writing guidance.
+- If the user provides only a topic or keyword and no real article body or URL, use generate_brief and do NOT use audit.
+- Use audit only when the user provides a real URL or actual article text to review.
+- Use optimize_article only when the user wants to improve existing content and provides a real URL or actual draft text.
+- Placeholder text like "[paste draft]" or "[paste URL]" does not count as real article input.
 - If the user asks for SEO help but provides neither a topic, a URL, nor article content, ask a concise clarification.
 
 For the dashboard-designer-agent:
@@ -1495,10 +1500,12 @@ export async function POST(req: NextRequest) {
 
         const messagesForModel = [
             { role: "system", content: systemPrompt },
-            ...messages.map((message) => ({
-                role: message.role === "agent" ? "assistant" : message.role,
-                content: message.content,
-            })),
+            ...messages
+                .filter((message) => message.role !== "agent")
+                .map((message) => ({
+                    role: message.role,
+                    content: message.content,
+                })),
         ];
 
         const encoder = new TextEncoder();
@@ -1732,6 +1739,23 @@ export async function POST(req: NextRequest) {
                                 console.error("[executeAgentTask] execution error:", err);
                             }
 
+                            const executedTaskSnap = await adminDb
+                                .collection("agentTasks")
+                                .doc(task.taskId)
+                                .get();
+                            const executedTaskData = executedTaskSnap.exists
+                                ? executedTaskSnap.data()
+                                : null;
+                            const finalTaskStatus =
+                                typeof executedTaskData?.status === "string"
+                                    ? executedTaskData.status
+                                    : task.status;
+                            const finalTaskResult =
+                                executedTaskData?.agentOutput &&
+                                typeof executedTaskData.agentOutput === "object"
+                                    ? (executedTaskData.agentOutput as Record<string, unknown>)
+                                    : undefined;
+
                             const agentName =
                                 getAgentCatalogEntry(effectiveIntent.agent_required)?.name ||
                                 effectiveIntent.agent_required;
@@ -1746,14 +1770,16 @@ export async function POST(req: NextRequest) {
                                 type: "agent_task",
                                 taskId: task.taskId,
                                 agentId: effectiveIntent.agent_required,
-                                status: "queued",
+                                status: finalTaskStatus,
+                                ...(finalTaskResult ? { result: finalTaskResult } : {}),
                                 content,
                             });
                             sendEvent("done", {
                                 type: "agent_task",
                                 taskId: task.taskId,
                                 agentId: effectiveIntent.agent_required,
-                                status: "queued",
+                                status: finalTaskStatus,
+                                ...(finalTaskResult ? { result: finalTaskResult } : {}),
                                 content,
                             });
                             safeClose();

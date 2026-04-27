@@ -47,6 +47,7 @@ interface StreamPayload {
     taskId?: string;
     agentId?: string;
     status?: string;
+    result?: Record<string, unknown>;
     meta?: Record<string, unknown>;
 }
 
@@ -642,6 +643,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         ...prev,
                         [resolvedPayload.taskId!]: {
                             status: resolvedPayload.status || "queued",
+                            result: resolvedPayload.result,
                         },
                     }));
 

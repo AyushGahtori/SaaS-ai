@@ -102,8 +102,18 @@ function getGuidanceFromTaskResult(
     if (!result) return null;
     if (rawStatus !== "needs_input" && rawStatus !== "failed") return null;
 
+    const nestedResult =
+        typeof result.result === "object" && result.result !== null
+            ? (result.result as Record<string, unknown>)
+            : undefined;
+    const nestedMissingFields = Array.isArray(nestedResult?.missing_fields)
+        ? nestedResult.missing_fields.map((value) => String(value)).filter(Boolean)
+        : [];
+
     const suggestedInputs = Array.isArray(result?.suggestedInputs)
         ? result.suggestedInputs.map((value) => String(value)).filter(Boolean)
+        : nestedMissingFields.length > 0
+            ? nestedMissingFields
         : undefined;
 
     const suggestedActionFromResult =

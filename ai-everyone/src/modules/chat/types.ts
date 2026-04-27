@@ -79,6 +79,7 @@ export interface ChatResponseAgentTask {
     agentId: string;
     status: string;
     content: string; // User-facing message about the task
+    result?: Record<string, unknown>;
 }
 
 /** Union of possible response types from the /api/chat route. */
