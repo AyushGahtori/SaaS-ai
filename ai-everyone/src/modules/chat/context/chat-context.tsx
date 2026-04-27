@@ -16,7 +16,11 @@ import React, {
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { CHAT_MODELS, isLocalOllamaModel } from "@/lib/model-capabilities";
+import {
+    CHAT_MODELS,
+    DEFAULT_CHAT_MODEL_ID,
+    isLocalOllamaModel,
+} from "@/lib/model-capabilities";
 
 import type {
     Chat,
@@ -71,12 +75,17 @@ interface ChatContextValue {
         content: string,
         isVoice?: boolean,
         attachments?: ChatAttachment[],
-        failedAttachments?: ChatFailedAttachment[]
+        failedAttachments?: ChatFailedAttachment[],
+        options?: {
+            forceNewChat?: boolean;
+            modelOverride?: string;
+        }
     ) => Promise<{ type: string; content?: string; taskId?: string } | undefined>;
     stopGeneration: () => void;
     removeChatById: (chatId: string) => Promise<void>;
     renameChat: (chatId: string, newTitle: string) => Promise<void>;
     setSelectedModel: (model: string) => void;
+    sendAgentTrialPrompt: (prompt: string) => Promise<{ type: string; content?: string; taskId?: string } | undefined>;
     setIsVoiceActive: (active: boolean) => void;
     setPendingVoiceResponse: (text: string | null) => void;
     clearError: () => void;
@@ -96,8 +105,6 @@ const AVAILABLE_MODELS = CHAT_MODELS.map((model) => ({
     id: model.id,
     label: model.label,
 }));
-const DEFAULT_CHAT_MODEL_ID = "gemini-3-flash-preview";
-
 const LOCAL_OLLAMA_URL_STORAGE_KEY = "pian.local_ollama_url";
 const DEFAULT_LOCAL_OLLAMA_URLS = [
     "http://127.0.0.1:11434",
@@ -253,8 +260,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [chats, setChats] = useState<Chat[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [isStopping, setIsStopping] = useState(false);
+    const [generationStateByChatId, setGenerationStateByChatId] = useState<
+        Record<string, { isGenerating: boolean; isStopping: boolean }>
+    >({});
     const [isLoadingChats, setIsLoadingChats] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [taskStatuses, setTaskStatuses] = useState<
@@ -269,9 +277,71 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [isVoiceActive, setIsVoiceActive] = useState(false);
     const [pendingVoiceResponse, setPendingVoiceResponse] = useState<string | null>(null);
 
-    const abortRef = useRef(false);
-    const requestAbortControllerRef = useRef<AbortController | null>(null);
+    const activeChatIdRef = useRef<string | null>(activeChatId);
+    const messagesRef = useRef<ChatMessage[]>(messages);
+    const messagesByChatRef = useRef<Record<string, ChatMessage[]>>({});
+    const generationStateRef = useRef<
+        Record<string, { isGenerating: boolean; isStopping: boolean }>
+    >({});
+    const abortByChatRef = useRef<Record<string, boolean>>({});
+    const requestAbortControllersRef = useRef<Record<string, AbortController>>({});
     const taskListenersRef = useRef<Record<string, () => void>>({});
+
+    useEffect(() => {
+        activeChatIdRef.current = activeChatId;
+    }, [activeChatId]);
+
+    useEffect(() => {
+        messagesRef.current = messages;
+        if (activeChatId) {
+            messagesByChatRef.current[activeChatId] = messages;
+        }
+    }, [activeChatId, messages]);
+
+    useEffect(() => {
+        generationStateRef.current = generationStateByChatId;
+    }, [generationStateByChatId]);
+
+    const activeGenerationState = activeChatId
+        ? generationStateByChatId[activeChatId]
+        : undefined;
+    const isGenerating = Boolean(activeGenerationState?.isGenerating);
+    const isStopping = Boolean(activeGenerationState?.isStopping);
+
+    const setChatGenerationState = useCallback(
+        (
+            chatId: string,
+            state: { isGenerating: boolean; isStopping: boolean } | null
+        ) => {
+            setGenerationStateByChatId((prev) => {
+                const next = { ...prev };
+                if (state) {
+                    next[chatId] = state;
+                } else {
+                    delete next[chatId];
+                }
+                generationStateRef.current = next;
+                return next;
+            });
+        },
+        []
+    );
+
+    const updateMessagesForChat = useCallback(
+        (chatId: string, updater: (current: ChatMessage[]) => ChatMessage[]) => {
+            const current =
+                messagesByChatRef.current[chatId] ??
+                (activeChatIdRef.current === chatId ? messagesRef.current : []);
+            const next = updater(current);
+            messagesByChatRef.current[chatId] = next;
+            if (activeChatIdRef.current === chatId) {
+                messagesRef.current = next;
+                setMessages(next);
+            }
+            return next;
+        },
+        []
+    );
 
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, (user: User | null) => {
@@ -282,8 +352,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         return () => {
-            abortRef.current = true;
-            requestAbortControllerRef.current?.abort();
+            Object.keys(requestAbortControllersRef.current).forEach((chatId) => {
+                abortByChatRef.current[chatId] = true;
+            });
+            Object.values(requestAbortControllersRef.current).forEach((controller) => {
+                try {
+                    controller.abort(new DOMException("Chat provider unmounted.", "AbortError"));
+                } catch {
+                    controller.abort();
+                }
+            });
             Object.values(taskListenersRef.current).forEach((unsub) => unsub());
         };
     }, []);
@@ -310,9 +388,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setChats([]);
         setActiveChatId(null);
         setMessages([]);
+        messagesByChatRef.current = {};
+        abortByChatRef.current = {};
+        requestAbortControllersRef.current = {};
+        setGenerationStateByChatId({});
     }, [uid, loadChats]);
 
     const createNewChat = useCallback(() => {
+        activeChatIdRef.current = null;
+        messagesRef.current = [];
         setActiveChatId(null);
         setMessages([]);
         setError(null);
@@ -321,15 +405,32 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const selectChat = useCallback(
         async (chatId: string) => {
             if (!uid) return;
+            activeChatIdRef.current = chatId;
             setActiveChatId(chatId);
             setError(null);
+            const cachedBeforeFetch = messagesByChatRef.current[chatId] ?? [];
+            messagesRef.current = cachedBeforeFetch;
+            setMessages(cachedBeforeFetch);
 
             try {
                 const fetched = await getMessages(uid, chatId);
-                setMessages(fetched);
+                if (activeChatIdRef.current !== chatId) return;
+
+                const cached = messagesByChatRef.current[chatId];
+                const nextMessages =
+                    generationStateRef.current[chatId]?.isGenerating && cached?.length
+                        ? cached
+                        : fetched;
+
+                messagesByChatRef.current[chatId] = nextMessages;
+                messagesRef.current = nextMessages;
+                setMessages(nextMessages);
             } catch (err) {
                 console.error("[selectChat]", err);
-                setMessages([]);
+                if (activeChatIdRef.current === chatId) {
+                    messagesRef.current = [];
+                    setMessages([]);
+                }
             }
         },
         [uid]
@@ -365,37 +466,55 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     const stopGeneration = useCallback(() => {
-        if (!isGenerating) return;
-        abortRef.current = true;
-        setIsStopping(true);
-        requestAbortControllerRef.current?.abort();
-    }, [isGenerating]);
+        const chatId = activeChatIdRef.current;
+        if (!chatId || !generationStateRef.current[chatId]?.isGenerating) return;
+
+        abortByChatRef.current[chatId] = true;
+        setChatGenerationState(chatId, { isGenerating: true, isStopping: true });
+        try {
+            requestAbortControllersRef.current[chatId]?.abort(
+                new DOMException("User stopped generation.", "AbortError")
+            );
+        } catch (error) {
+            console.warn("[stopGeneration] abort failed", error);
+        }
+    }, [setChatGenerationState]);
 
     const sendMessage = useCallback(
         async (
             content: string,
             isVoice?: boolean,
             attachments: ChatAttachment[] = [],
-            failedAttachments: ChatFailedAttachment[] = []
+            failedAttachments: ChatFailedAttachment[] = [],
+            options: {
+                forceNewChat?: boolean;
+                modelOverride?: string;
+            } = {}
         ): Promise<{ type: string; content?: string; taskId?: string } | undefined> => {
             if (!uid || !content.trim()) return undefined;
 
-            setIsGenerating(true);
-            setIsStopping(false);
             setError(null);
-            abortRef.current = false;
 
-            let currentChatId = activeChatId;
+            const requestModel = options.modelOverride ?? selectedModel;
+            let currentChatId = options.forceNewChat ? null : activeChatIdRef.current;
             let tempAssistantId = "";
             let resolvedChatId: string | null = null;
             let localOllamaError: Error | null = null;
 
             try {
+                if (options.forceNewChat) {
+                    activeChatIdRef.current = null;
+                    messagesRef.current = [];
+                    setActiveChatId(null);
+                    setMessages([]);
+                }
+
                 if (!currentChatId) {
                     const title =
                         content.length > 40 ? content.slice(0, 40) + "…" : content;
                     const newChat = await createChat(uid, title);
                     currentChatId = newChat.id;
+                    activeChatIdRef.current = currentChatId;
                     setActiveChatId(currentChatId);
                     setChats((prev) => [newChat, ...prev]);
                 }
@@ -405,6 +524,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 }
                 resolvedChatId = currentChatId;
                 const resolvedChatIdValue = resolvedChatId;
+                abortByChatRef.current[resolvedChatIdValue] = false;
+                setChatGenerationState(resolvedChatIdValue, {
+                    isGenerating: true,
+                    isStopping: false,
+                });
 
                 const userMsg = await createMessage(
                     uid,
@@ -416,20 +540,30 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     isVoice,
                     attachments
                 );
-                setMessages((prev) => [...prev, userMsg]);
+                const historySource = options.forceNewChat
+                    ? []
+                    : messagesByChatRef.current[resolvedChatIdValue] ??
+                      (activeChatIdRef.current === resolvedChatIdValue
+                          ? messagesRef.current
+                          : []);
+                updateMessagesForChat(resolvedChatIdValue, (prev) =>
+                    options.forceNewChat ? [userMsg] : [...prev, userMsg]
+                );
 
                 const historyForApi = [
-                    ...messages.map((message) => ({
+                    ...historySource.map((message) => ({
                         role: message.role,
                         content: message.content,
                         isVoice: message.isVoice,
+                        taskId: message.taskId,
+                        agentId: message.agentId,
                     })),
                     { role: "user" as const, content, isVoice },
                 ];
 
                 tempAssistantId = `temp_${Date.now()}`;
-                setMessages((prev) => [
-                    ...prev,
+                updateMessagesForChat(resolvedChatIdValue, (prev) => [
+                    ...(options.forceNewChat ? [userMsg] : prev),
                     {
                         id: tempAssistantId,
                         chatId: resolvedChatIdValue,
@@ -440,9 +574,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 ]);
 
                 const controller = new AbortController();
-                requestAbortControllerRef.current = controller;
+                requestAbortControllersRef.current[resolvedChatIdValue] = controller;
 
-                const isLocalModelSelected = isLocalOllamaModel(selectedModel);
+                const isLocalModelSelected = isLocalOllamaModel(requestModel);
                 if (isLocalModelSelected) {
                     if (attachments.length > 0) {
                         throw new Error(
@@ -453,14 +587,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     try {
                         let streamedAssistantContent = "";
                         const localContent = await tryStreamLocalOllama(
-                            selectedModel,
+                            requestModel,
                             historyForApi.map((message) => ({
                                 role: message.role,
                                 content: message.content,
                             })),
                             (delta) => {
                                 streamedAssistantContent += delta;
-                                setMessages((prev) =>
+                                updateMessagesForChat(resolvedChatIdValue, (prev) =>
                                     prev.map((message) =>
                                         message.id === tempAssistantId
                                             ? { ...message, content: streamedAssistantContent }
@@ -471,7 +605,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                             controller.signal
                         );
 
-                        if (abortRef.current) return;
+                        if (abortByChatRef.current[resolvedChatIdValue]) return;
 
                         const assistantContent =
                             localContent || "No response received from local Ollama.";
@@ -486,10 +620,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                             [],
                             {
                                 runtime: "browser_local_ollama",
-                                model: selectedModel,
+                                model: requestModel,
                             }
                         );
-                        setMessages((prev) =>
+                        updateMessagesForChat(resolvedChatIdValue, (prev) =>
                             prev.map((message) =>
                                 message.id === tempAssistantId ? assistantMsg : message
                             )
@@ -497,7 +631,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         await updateChat(uid, resolvedChatIdValue, {});
                         return { type: "chat", content: assistantContent };
                     } catch (error) {
-                        if (isAbortError(error) || abortRef.current) {
+                        if (isAbortError(error) || abortByChatRef.current[resolvedChatIdValue]) {
                             throw error;
                         }
                         localOllamaError =
@@ -526,7 +660,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     body: JSON.stringify({
                         messages: historyForApi,
                         chatId: resolvedChatIdValue,
-                        model: selectedModel,
+                        model: requestModel,
                         attachments,
                         failedAttachments,
                     }),
@@ -556,7 +690,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
                     if (eventName === "text") {
                         streamedAssistantContent += payload.content || "";
-                        setMessages((prev) =>
+                        updateMessagesForChat(resolvedChatIdValue, (prev) =>
                             prev.map((message) =>
                                 message.id === tempAssistantId
                                     ? { ...message, content: streamedAssistantContent }
@@ -611,7 +745,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     }
                 }
 
-                if (abortRef.current) return;
+                if (abortByChatRef.current[resolvedChatIdValue]) return;
 
                 const resolvedPayload: StreamPayload =
                     agentTaskPayload ??
@@ -634,7 +768,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         resolvedPayload.agentId,
                         isVoice
                     );
-                    setMessages((prev) => [
+                    updateMessagesForChat(resolvedChatIdValue, (prev) => [
                         ...prev.filter((message) => message.id !== tempAssistantId),
                         agentMsg,
                     ]);
@@ -665,7 +799,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                             ? resolvedPayload.meta
                             : undefined
                     );
-                    setMessages((prev) =>
+                    updateMessagesForChat(resolvedChatIdValue, (prev) =>
                         prev.map((message) =>
                             message.id === tempAssistantId ? assistantMsg : message
                         )
@@ -680,15 +814,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 const aborted =
                     (err instanceof DOMException && err.name === "AbortError") ||
                     (err instanceof Error && err.name === "AbortError") ||
-                    abortRef.current;
+                    Boolean(resolvedChatId && abortByChatRef.current[resolvedChatId]);
 
                 if (aborted) {
                     // Keep partial response if any text already streamed; otherwise remove placeholder.
-                    setMessages((prev) =>
-                        prev.filter((message) =>
-                            message.id === tempAssistantId ? Boolean(message.content?.trim()) : true
-                        )
-                    );
+                    if (resolvedChatId) {
+                        updateMessagesForChat(resolvedChatId, (prev) =>
+                            prev.filter((message) =>
+                                message.id === tempAssistantId
+                                    ? Boolean(message.content?.trim())
+                                    : true
+                            )
+                        );
+                    }
                     return { type: "aborted" };
                 }
 
@@ -708,7 +846,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                             undefined,
                             isVoice
                         );
-                        setMessages((prev) =>
+                        updateMessagesForChat(resolvedChatId, (prev) =>
                             prev.map((message) =>
                                 message.id === tempAssistantId ? assistantMsg : message
                             )
@@ -716,41 +854,72 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         return { type: "chat", content: parsedError.message };
                     }
 
-                    setMessages((prev) =>
-                        prev.filter((message) => message.id !== tempAssistantId)
-                    );
+                    if (resolvedChatId) {
+                        updateMessagesForChat(resolvedChatId, (prev) =>
+                            prev.filter((message) => message.id !== tempAssistantId)
+                        );
+                    }
                 }
 
                 if (localOllamaError) {
                     const localFallback = normalizeUserFacingError(localOllamaError, {
                         surface: "chat",
                     });
-                    setError(
-                        `${parsedError.message}\n\nLocal Ollama attempt also failed: ${localFallback.message}`
-                    );
-                } else {
+                    if (!resolvedChatId || activeChatIdRef.current === resolvedChatId) {
+                        setError(
+                            `${parsedError.message}\n\nLocal Ollama attempt also failed: ${localFallback.message}`
+                        );
+                    }
+                } else if (!resolvedChatId || activeChatIdRef.current === resolvedChatId) {
                     setError(parsedError.message);
                 }
                 return undefined;
             } finally {
-                requestAbortControllerRef.current = null;
-                abortRef.current = false;
-                setIsGenerating(false);
-                setIsStopping(false);
+                if (resolvedChatId) {
+                    delete requestAbortControllersRef.current[resolvedChatId];
+                    abortByChatRef.current[resolvedChatId] = false;
+                    setChatGenerationState(resolvedChatId, null);
+                }
             }
         },
-        [uid, activeChatId, messages, watchTask, selectedModel]
+        [uid, watchTask, selectedModel, setChatGenerationState, updateMessagesForChat]
+    );
+
+    const sendAgentTrialPrompt = useCallback(
+        async (prompt: string) => {
+            setSelectedModel(DEFAULT_CHAT_MODEL_ID);
+            createNewChat();
+            return sendMessage(prompt, false, [], [], {
+                forceNewChat: true,
+                modelOverride: DEFAULT_CHAT_MODEL_ID,
+            });
+        },
+        [createNewChat, sendMessage]
     );
 
     const removeChatById = useCallback(
         async (chatId: string) => {
             if (!uid) return;
             try {
+                abortByChatRef.current[chatId] = true;
+                try {
+                    requestAbortControllersRef.current[chatId]?.abort(
+                        new DOMException("Chat deleted.", "AbortError")
+                    );
+                } catch {
+                    requestAbortControllersRef.current[chatId]?.abort();
+                }
                 await deleteMessages(uid, chatId);
                 await deleteChatDoc(uid, chatId);
                 setChats((prev) => prev.filter((chat) => chat.id !== chatId));
+                delete messagesByChatRef.current[chatId];
+                delete requestAbortControllersRef.current[chatId];
+                delete abortByChatRef.current[chatId];
+                setChatGenerationState(chatId, null);
 
                 if (activeChatId === chatId) {
+                    activeChatIdRef.current = null;
+                    messagesRef.current = [];
                     setActiveChatId(null);
                     setMessages([]);
                 }
@@ -758,7 +927,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 console.error("[deleteChat]", err);
             }
         },
-        [uid, activeChatId]
+        [uid, activeChatId, setChatGenerationState]
     );
 
     const renameChat = useCallback(
@@ -799,6 +968,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         removeChatById,
         renameChat,
         setSelectedModel,
+        sendAgentTrialPrompt,
         setIsVoiceActive,
         setPendingVoiceResponse,
         clearError,

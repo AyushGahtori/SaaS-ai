@@ -60,6 +60,9 @@ const GOOGLE_AGENT_TYPES = new Set(["calendar", "gmail", "meet", "drive", "tasks
 interface ChatRequestMessage {
     role: string;
     content: string;
+    taskId?: string;
+    agentId?: string;
+    isVoice?: boolean;
 }
 
 interface ChatAttachment {
@@ -448,6 +451,132 @@ function normalizeFailedAttachments(raw: unknown): ChatFailedAttachment[] {
         .filter((item): item is ChatFailedAttachment => Boolean(item));
 }
 
+function compactText(value: unknown, maxLength = 900): string | null {
+    if (typeof value !== "string") return null;
+    const normalized = value.replace(/\s+/g, " ").trim();
+    if (!normalized) return null;
+    return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3)}...` : normalized;
+}
+
+function getRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === "object" && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : null;
+}
+
+function getStringList(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value.map((item) => String(item).trim()).filter(Boolean);
+}
+
+function mergeStringLists(...lists: string[][]): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const list of lists) {
+        for (const item of list) {
+            const key = item.toLowerCase();
+            if (!key || seen.has(key) || key === "specific_identifier") continue;
+            seen.add(key);
+            out.push(item);
+        }
+    }
+    return out;
+}
+
+function summarizeAgentResultForModel(
+    agentId: string,
+    status: string,
+    result?: Record<string, unknown> | null,
+    fallbackContent?: string
+): string {
+    const nestedResult = getRecord(result?.result);
+    const uiPayload = getRecord(result?.ui_payload);
+    const recommendedActions = getStringList(result?.recommended_next_actions);
+    const suggestedInputs = mergeStringLists(
+        getStringList(result?.suggestedInputs),
+        getStringList(result?.suggested_inputs),
+        getStringList(uiPayload?.suggestedInputs),
+        getStringList(nestedResult?.suggestedInputs),
+        getStringList(nestedResult?.suggested_inputs),
+        getStringList(nestedResult?.missing_fields)
+    );
+
+    const agentSaid =
+        compactText(result?.message) ||
+        compactText(result?.summary) ||
+        compactText(result?.error) ||
+        compactText(fallbackContent) ||
+        "The agent returned a status update.";
+
+    const lines = [
+        `Previous agent task context:`,
+        `Agent: ${agentId}`,
+        `Status: ${status}`,
+        `Agent said: ${agentSaid}`,
+    ];
+
+    if (suggestedInputs.length > 0) {
+        lines.push(`Needed inputs: ${suggestedInputs.join(", ")}`);
+    }
+
+    if (recommendedActions.length > 0) {
+        lines.push(`Recommended next action: ${recommendedActions.slice(0, 2).join(" | ")}`);
+    }
+
+    return lines.join("\n");
+}
+
+async function buildConversationMessagesForModel(
+    uid: string,
+    messages: ChatRequestMessage[]
+): Promise<Array<{ role: string; content: string }>> {
+    return Promise.all(
+        messages.map(async (message) => {
+            if (message.role !== "agent") {
+                return {
+                    role: message.role,
+                    content: message.content,
+                };
+            }
+
+            if (!message.taskId) {
+                return {
+                    role: "assistant",
+                    content: `Previous agent task context:\n${message.content}`,
+                };
+            }
+
+            try {
+                const snap = await adminDb.collection("agentTasks").doc(message.taskId).get();
+                const data = snap.exists ? snap.data() : null;
+                const belongsToUser = data?.userId === uid;
+                const status = typeof data?.status === "string" ? data.status : "unknown";
+                const agentId =
+                    typeof data?.agentId === "string"
+                        ? data.agentId
+                        : message.agentId || "unknown-agent";
+                const result = getRecord(data?.agentOutput);
+
+                return {
+                    role: "assistant",
+                    content: belongsToUser
+                        ? summarizeAgentResultForModel(agentId, status, result, message.content)
+                        : `Previous agent task context:\n${message.content}`,
+                };
+            } catch (error) {
+                console.warn("[buildConversationMessagesForModel] failed to load task", {
+                    taskId: message.taskId,
+                    error,
+                });
+                return {
+                    role: "assistant",
+                    content: `Previous agent task context:\n${message.content}`,
+                };
+            }
+        })
+    );
+}
+
 function validateRequestAttachmentPolicy(attachments: ChatAttachment[]): void {
     validateAttachmentCount(attachments.length);
 
@@ -540,6 +669,9 @@ ${bundleDescriptions || "No bundles are registered."}
 5. The JSON inside <AGENT_INTENT> must be valid and parseable: no comments, no trailing commas.
 6. For potential medical emergencies (chest pain, breathing issues, severe injury), prefer the emergency-response-agent first.
 7. Never return multiple agent IDs in one response. Choose only one agent at a time.
+8. Do not block on optional details. If the user has given enough information to attempt the task, delegate to the agent and let the agent return needs_input if a truly required field is missing.
+9. When the previous agent task context says status=needs_input and the latest user supplies the requested detail(s), merge the latest message with the earlier user request and emit the same agent intent again immediately.
+10. If the user asks what detail is missing, answer from the previous agent task context. Never ask for or invent generic placeholder field names.
 
 ## Agent Formatting Rules
 For the teams-agent:
@@ -659,6 +791,7 @@ For the travel-halper-agent:
 - send_plan_email: extract optional "prompt", optional "threadId", required "receiverEmail", optional "senderEmail", and optional "subject".
 - Use travel-halper-agent for trip planning, flight and hotel discovery, itinerary drafting, and emailing finalized travel plans.
 - If the user asks to email the travel plan but does not provide recipient email, ask a concise clarification for the receiver email.
+- If the user is answering Travel Halper follow-up questions, build "prompt" from the full conversation so prior destination/date/budget details are not lost.
 
 For the strata-agent:
 - open_workspace: extract optional "symbol", optional "month", optional "months"
@@ -1682,14 +1815,10 @@ export async function POST(req: NextRequest) {
                 .filter(Boolean)
                 .join("\n\n");
 
+        const conversationMessagesForModel = await buildConversationMessagesForModel(uid, messages);
         const messagesForModel = [
             { role: "system", content: systemPrompt },
-            ...messages
-                .filter((message) => message.role !== "agent")
-                .map((message) => ({
-                    role: message.role,
-                    content: message.content,
-                })),
+            ...conversationMessagesForModel,
         ];
 
         const encoder = new TextEncoder();
@@ -1777,6 +1906,52 @@ export async function POST(req: NextRequest) {
                             source: "deterministic" | "llm"
                         ): Promise<boolean> => {
                             if (!chatId) return false;
+                        const assistantContent = usingGemini
+                            ? await (async () => {
+                                const result = await streamGeminiChat(
+                                    geminiApiKey,
+                                    model,
+                                    systemPrompt,
+                                    conversationMessagesForModel,
+                                    effectiveAttachments,
+                                    uid,
+                                    handleDelta,
+                                    upstreamAbortController.signal
+                                );
+                                if (result.failedAttachments.length > 0) {
+                                    attachmentFailuresForResponse = [
+                                        ...attachmentFailuresForResponse,
+                                        ...result.failedAttachments,
+                                    ];
+                                }
+                                return result.content;
+                            })()
+                            : await streamOllamaChat(
+                                ollamaBaseUrls,
+                                model,
+                                messagesForModel,
+                                handleDelta,
+                                upstreamAbortController.signal
+                            );
+                        await commitUsageSlot(uid);
+
+                        const parsedIntentOrError = tryParseAgentIntent(assistantContent);
+                        const parseResult =
+                            shouldForceDirectAttachmentResponse &&
+                                parsedIntentOrError &&
+                                !("error" in parsedIntentOrError) &&
+                                !isStrataUploadIntent(parsedIntentOrError.intent)
+                                ? null
+                                : parsedIntentOrError;
+                        if (parseResult && "error" in parseResult) {
+                            const fallback = parseResult.fallback;
+                            if (!streamedText.trim()) {
+                                sendEvent("text", { content: fallback });
+                            }
+                            sendEvent("done", { type: "chat", content: fallback });
+                            safeClose();
+                            return;
+                        }
 
                             const effectiveIntent = normalizeOrchestratedGoogleExecutionPayload(
                                 rawIntent,
@@ -1882,6 +2057,21 @@ export async function POST(req: NextRequest) {
                                 agentInput,
                             });
 
+                            const agentName =
+                                getAgentCatalogEntry(effectiveIntent.agent_required)?.name ||
+                                effectiveIntent.agent_required;
+                            const content =
+                                `Delegating to ${agentName}.\n\n` +
+                                `Action: ${effectiveIntent.action}` +
+                                (effectiveIntent.reasoning
+                                    ? `\n\nReasoning: ${effectiveIntent.reasoning}`
+                                    : "");
+
+                            if (!streamedText.trim()) {
+                                streamedText = content;
+                                sendEvent("text", { content });
+                            }
+
                             try {
                                 // In serverless runtimes, fire-and-forget can be terminated before execution.
                                 // Awaiting guarantees the task is actually dispatched to the EC2 agent runtime.
@@ -1906,16 +2096,6 @@ export async function POST(req: NextRequest) {
                                     typeof executedTaskData.agentOutput === "object"
                                     ? (executedTaskData.agentOutput as Record<string, unknown>)
                                     : undefined;
-
-                            const agentName =
-                                getAgentCatalogEntry(effectiveIntent.agent_required)?.name ||
-                                effectiveIntent.agent_required;
-                            const content =
-                                `Delegating to ${agentName}.\n\n` +
-                                `Action: ${effectiveIntent.action}` +
-                                (effectiveIntent.reasoning
-                                    ? `\n\nReasoning: ${effectiveIntent.reasoning}`
-                                    : "");
 
                             sendEvent("agent_task", {
                                 type: "agent_task",

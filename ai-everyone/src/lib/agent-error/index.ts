@@ -29,6 +29,29 @@ export interface AgentErrorInterpretation {
     code?: string;
 }
 
+function toStringList(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value.map((item) => String(item).trim()).filter(Boolean);
+}
+
+function uniqueNonPlaceholderInputs(values: string[]): string[] {
+    const seen = new Set<string>();
+    const placeholders = new Set([
+        "specific_identifier",
+        "identifier",
+        "unknown",
+        "missing",
+        "value",
+    ]);
+
+    return values.filter((value) => {
+        const normalized = value.toLowerCase().trim();
+        if (!normalized || placeholders.has(normalized) || seen.has(normalized)) return false;
+        seen.add(normalized);
+        return true;
+    });
+}
+
 function extractMissingFieldsFromAgentResult(agentInput?: Record<string, unknown>): string[] {
     if (!agentInput || typeof agentInput !== "object") return [];
     const resultCandidate = agentInput._agentResult;
@@ -38,9 +61,19 @@ function extractMissingFieldsFromAgentResult(agentInput?: Record<string, unknown
         resultRecord.result && typeof resultRecord.result === "object"
             ? (resultRecord.result as Record<string, unknown>)
             : null;
-    const missing = nestedResult?.missing_fields;
-    if (!Array.isArray(missing)) return [];
-    return missing.map((value) => String(value).trim()).filter(Boolean);
+    const uiPayload =
+        resultRecord.ui_payload && typeof resultRecord.ui_payload === "object"
+            ? (resultRecord.ui_payload as Record<string, unknown>)
+            : null;
+
+    return uniqueNonPlaceholderInputs([
+        ...toStringList(resultRecord.suggestedInputs),
+        ...toStringList(resultRecord.suggested_inputs),
+        ...toStringList(uiPayload?.suggestedInputs),
+        ...toStringList(nestedResult?.suggestedInputs),
+        ...toStringList(nestedResult?.suggested_inputs),
+        ...toStringList(nestedResult?.missing_fields),
+    ]);
 }
 
 function toOutput(
@@ -65,10 +98,16 @@ function toOutput(
         const missingLine =
             missingFields.length > 0
                 ? `Missing detail(s): ${missingFields.join(", ")}.`
-                : "One critical detail is still missing.";
+                : "The agent did not name the missing field clearly.";
+        const actionLabel =
+            typeof agentInput?.action === "string" && agentInput.action.trim()
+                ? ` for "${agentInput.action.trim()}"`
+                : "";
         const fallback = isDriveLike
             ? `Hey, the agent could not complete this yet because the target Drive file is still unclear. ${missingLine} Please share the exact file name (for example class 10th.pdf). If you want, I can list the next Drive batch right now so you can pick it quickly.`
-            : `Hey, the agent could not complete this request yet. ${missingLine} Please share one specific value (for example name/id/date/path), and I will retry immediately.`;
+            : missingFields.length > 0
+                ? `I can retry the agent${actionLabel}, but I need: ${missingFields.join(", ")}. Share those detail(s) and I will run it again.`
+                : `The agent could not finish this attempt${actionLabel}, and it did not return a clear missing field. Please share the exact target or goal in one sentence, and I will retry with that context.`;
 
         return {
             status: "needs_input",
@@ -78,13 +117,15 @@ function toOutput(
             rootCause: "Unknown failure.",
             suggestedAction: isDriveLike
                 ? "Please provide the exact file name. Or ask me to list recent Drive files and then choose one."
-                : "Provide one specific missing detail so I can retry.",
+                : missingFields.length > 0
+                    ? `Provide: ${missingFields.join(", ")}.`
+                    : "Restate the exact target or goal so I can retry with the right context.",
             suggestedInputs:
                 missingFields.length > 0
                     ? missingFields
                     : isDriveLike
                         ? ["file_name"]
-                        : ["specific_identifier"],
+                        : undefined,
             interpreted: true,
             code: "UNCLASSIFIED",
         };

@@ -5,6 +5,8 @@ export interface ChatModelDefinition {
     supportsFileUpload: boolean;
 }
 
+export const DEFAULT_CHAT_MODEL_ID = "gemini-3-flash-preview";
+
 export const CHAT_MODELS: ChatModelDefinition[] = [
     {
         id: "qwen3.5:397b-cloud",

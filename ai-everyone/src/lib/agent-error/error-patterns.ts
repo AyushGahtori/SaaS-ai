@@ -135,6 +135,10 @@ export function interpretErrorWithPatterns(
             /econnrefused/i,
             /fetch failed/i,
             /timed out/i,
+            /request timed out/i,
+            /while waiting for/i,
+            /cannot connect to agent server/i,
+            /abort/i,
             /connection reset/i,
             /name or service not known/i,
         ])
@@ -142,10 +146,21 @@ export function interpretErrorWithPatterns(
         return {
             status: "failed",
             userMessage:
-                "I could not reach the agent service right now. Please try again in a moment.",
-            rootCause: "Service or network connectivity issue.",
-            suggestedAction: "Retry shortly. If this keeps happening, check service health.",
-            code: "SERVICE_UNREACHABLE",
+                lower.includes("timed out") || lower.includes("abort")
+                    ? "The agent took too long to finish this request. Please try again in a moment."
+                    : "I could not reach the agent service right now. Please try again in a moment.",
+            rootCause:
+                lower.includes("timed out") || lower.includes("abort")
+                    ? "Agent request exceeded the allowed execution time."
+                    : "Service or network connectivity issue.",
+            suggestedAction:
+                lower.includes("timed out") || lower.includes("abort")
+                    ? "Retry shortly. If this keeps happening, increase the agent timeout or reduce request latency."
+                    : "Retry shortly. If this keeps happening, check service health.",
+            code:
+                lower.includes("timed out") || lower.includes("abort")
+                    ? "AGENT_TIMEOUT"
+                    : "SERVICE_UNREACHABLE",
         };
     }
 

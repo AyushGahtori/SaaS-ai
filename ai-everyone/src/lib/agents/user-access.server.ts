@@ -40,6 +40,50 @@ export async function getConnectedBundleIds(uid: string): Promise<string[]> {
     return Array.isArray(data?.connectedBundles) ? (data?.connectedBundles as string[]) : [];
 }
 
+export async function getTrialUsedAgentIds(uid: string): Promise<string[]> {
+    const snapshot = await userDoc(uid).get();
+    if (!snapshot.exists) return [];
+    const data = snapshot.data();
+    return Array.isArray(data?.trialUsedAgents) ? (data?.trialUsedAgents as string[]) : [];
+}
+
+export async function markAgentTrialUsed(uid: string, agentId: string): Promise<{
+    alreadyUsed: boolean;
+    trialUsedAgentIds: string[];
+}> {
+    const ref = userDoc(uid);
+
+    return adminDb.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(ref);
+        const data = snapshot.exists ? snapshot.data() : {};
+        const existing = Array.isArray(data?.trialUsedAgents)
+            ? (data?.trialUsedAgents as string[])
+            : [];
+
+        if (existing.includes(agentId)) {
+            return {
+                alreadyUsed: true,
+                trialUsedAgentIds: existing,
+            };
+        }
+
+        transaction.set(
+            ref,
+            {
+                lastSeenAt: FieldValue.serverTimestamp(),
+                trialUsedAgents: FieldValue.arrayUnion(agentId),
+                updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+        );
+
+        return {
+            alreadyUsed: false,
+            trialUsedAgentIds: [...existing, agentId],
+        };
+    });
+}
+
 export async function installAgentIds(uid: string, agentIds: string[]): Promise<void> {
     if (agentIds.length === 0) return;
     await ensureUserDoc(uid);
