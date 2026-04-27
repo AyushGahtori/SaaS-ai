@@ -74,7 +74,7 @@ export async function interpretErrorWithLlm(
         const userMessage =
             typeof parsed.userMessage === "string" && parsed.userMessage.trim()
                 ? parsed.userMessage.trim()
-                : "I couldn't complete this yet because one key detail is still missing. Please share one specific value (for example file name, email, symbol, or date), and I will retry immediately.";
+                : "I couldn't complete this yet because the agent did not return enough detail about the target. Please restate the exact target or goal, and I will retry immediately.";
         const rootCause =
             typeof parsed.rootCause === "string" && parsed.rootCause.trim()
                 ? parsed.rootCause.trim()

@@ -109,12 +109,21 @@ function getGuidanceFromTaskResult(
     const nestedMissingFields = Array.isArray(nestedResult?.missing_fields)
         ? nestedResult.missing_fields.map((value) => String(value)).filter(Boolean)
         : [];
+    const nestedSuggestedInputs = Array.isArray(nestedResult?.suggestedInputs)
+        ? nestedResult.suggestedInputs.map((value) => String(value)).filter(Boolean)
+        : [];
+    const uiPayload =
+        typeof result.ui_payload === "object" && result.ui_payload !== null
+            ? (result.ui_payload as Record<string, unknown>)
+            : undefined;
+    const uiSuggestedInputs = Array.isArray(uiPayload?.suggestedInputs)
+        ? uiPayload.suggestedInputs.map((value) => String(value)).filter(Boolean)
+        : [];
 
     const suggestedInputs = Array.isArray(result?.suggestedInputs)
         ? result.suggestedInputs.map((value) => String(value)).filter(Boolean)
-        : nestedMissingFields.length > 0
-            ? nestedMissingFields
-        : undefined;
+        : [...uiSuggestedInputs, ...nestedSuggestedInputs, ...nestedMissingFields]
+            .filter((value, index, list) => value !== "specific_identifier" && list.indexOf(value) === index);
 
     const suggestedActionFromResult =
         typeof result?.suggestedAction === "string" && result.suggestedAction.trim()
@@ -127,10 +136,16 @@ function getGuidanceFromTaskResult(
             .filter(Boolean)
         : [];
 
-    const summary =
-        (typeof result?.summary === "string" && result.summary.trim()) ||
+    const needsInputSummary =
         (typeof result?.message === "string" && result.message.trim()) ||
         (typeof result?.error === "string" && result.error.trim()) ||
+        (typeof result?.summary === "string" && result.summary.trim());
+    const failureSummary =
+        (typeof result?.summary === "string" && result.summary.trim()) ||
+        (typeof result?.error === "string" && result.error.trim()) ||
+        (typeof result?.message === "string" && result.message.trim());
+    const summary =
+        (rawStatus === "needs_input" ? needsInputSummary : failureSummary) ||
         (rawStatus === "needs_input"
             ? "I need one more specific detail to continue."
             : "I couldn't complete this request yet.");
@@ -141,8 +156,8 @@ function getGuidanceFromTaskResult(
         (suggestedInputs && suggestedInputs.length > 0
             ? `Please provide: ${suggestedInputs.join(", ")}.`
             : rawStatus === "needs_input"
-                ? "Please share one specific detail and I'll retry immediately."
-                : "Please share one additional detail so I can retry right away.");
+                ? "Please answer the missing-detail question above and I will retry immediately."
+                : "Please share the exact target or goal so I can retry right away.");
 
     return {
         summary,
@@ -153,14 +168,19 @@ function getGuidanceFromTaskResult(
 
 function getNeedsInputSummary(result?: Record<string, unknown>): string | null {
     if (!result) return null;
-    const summary = result.summary;
-    if (typeof summary === "string" && summary.trim()) {
-        return summary.trim();
-    }
-
     const message = result.message;
     if (typeof message === "string" && message.trim()) {
         return message.trim();
+    }
+
+    const error = result.error;
+    if (typeof error === "string" && error.trim()) {
+        return error.trim();
+    }
+
+    const summary = result.summary;
+    if (typeof summary === "string" && summary.trim()) {
+        return summary.trim();
     }
 
     const payload =
