@@ -58,7 +58,13 @@ export interface ChatMessage {
 
 /** Payload sent from the frontend to the /api/chat route. */
 export interface ChatRequestPayload {
-    messages: { role: MessageRole; content: string; isVoice?: boolean }[];
+    messages: {
+        role: MessageRole;
+        content: string;
+        isVoice?: boolean;
+        taskId?: string;
+        agentId?: string;
+    }[];
     chatId?: string;
     userId?: string;
     model?: string;

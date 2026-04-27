@@ -365,12 +365,10 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
                 finishedAt: null,
             });
         } else if (result.status === "needs_input") {
-            await persistInterpretedFailure({
-                taskRef,
-                task,
-                rawError: extractRawErrorMessage(result),
-                originalResult: result,
-                incrementRetry: false,
+            await taskRef.update({
+                status: result.status,
+                agentOutput: result,
+                finishedAt: null,
             });
         } else {
             await persistInterpretedFailure({

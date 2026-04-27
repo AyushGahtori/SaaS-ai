@@ -423,6 +423,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         role: message.role,
                         content: message.content,
                         isVoice: message.isVoice,
+                        taskId: message.taskId,
+                        agentId: message.agentId,
                     })),
                     { role: "user" as const, content, isVoice },
                 ];
