@@ -58,6 +58,8 @@ class GmailAgent(BaseAgent):
 
     async def handle(self, user_message: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """Determine action and execute Gmail operation."""
+        context = context or {}
+        self._hydrate_email_cache_from_context(context)
         pending_task = self._get_pending_task(context)
         forced_action = self.normalize_action(str((context or {}).get("forced_action", "")))
 
@@ -829,6 +831,11 @@ class GmailAgent(BaseAgent):
         user_message: str,
         agent_outputs: Dict[str, Any],
     ) -> Dict[str, Any]:
+        if not params.get("to"):
+            contextual_sender = self._get_contextual_sender_email(user_message)
+            if contextual_sender:
+                params["to"] = contextual_sender
+
         meet_data = agent_outputs.get("meet") or {}
         meet_link = meet_data.get("meet_link")
         if not meet_link:
@@ -985,6 +992,28 @@ class GmailAgent(BaseAgent):
         cache = self._get_email_cache()
         return list(cache.get("emails", []))
 
+    def _hydrate_email_cache_from_context(self, context: Optional[Dict[str, Any]]) -> None:
+        """Rebuild short-term Gmail memory from the orchestrator's persisted task context."""
+        if not context:
+            return
+
+        collected: List[Dict[str, Any]] = []
+        agent_outputs = context.get("agent_outputs") or {}
+        if isinstance(agent_outputs, dict):
+            gmail_output = agent_outputs.get("gmail") or {}
+            if isinstance(gmail_output, dict) and isinstance(gmail_output.get("emails"), list):
+                collected.extend([item for item in gmail_output["emails"] if isinstance(item, dict)])
+
+        for task in context.get("recent_tasks") or []:
+            if not isinstance(task, dict):
+                continue
+            output = task.get("output") or {}
+            if isinstance(output, dict) and isinstance(output.get("emails"), list):
+                collected.extend([item for item in output["emails"] if isinstance(item, dict)])
+
+        if collected:
+            self._update_email_cache(collected)
+
     def _update_email_cache(self, emails: Optional[List[Dict[str, Any]]]) -> None:
         if not emails:
             return
@@ -1042,6 +1071,80 @@ class GmailAgent(BaseAgent):
         cache["updated_at"] = time.time()
         self._RAM_EMAIL_CACHE[self._cache_key()] = cache
 
+    def _is_contextual_email_reference(self, query: str) -> bool:
+        lower = (query or "").lower()
+        return any(
+            marker in lower
+            for marker in [
+                "this mail",
+                "this email",
+                "this message",
+                "that mail",
+                "that email",
+                "that message",
+                "last mail",
+                "last email",
+                "latest mail",
+                "latest email",
+                "first mail",
+                "first email",
+                "same mail",
+                "same email",
+            ]
+        )
+
+    def _is_contextual_person_reference(self, query: str) -> bool:
+        lower = (query or "").lower()
+        return any(
+            marker in lower
+            for marker in [
+                "this person",
+                "that person",
+                "same person",
+                "this sender",
+                "that sender",
+                "sender",
+                "him",
+                "her",
+                "them",
+                "again",
+            ]
+        )
+
+    def _get_contextual_cached_message(self, query: str = "") -> Optional[Dict[str, Any]]:
+        cache = self._get_email_cache()
+        emails = list(cache.get("emails", []))
+        if not emails:
+            return None
+
+        lower = (query or "").lower()
+        last_selected_id = self._clean_text_value(str(cache.get("last_selected_id", "")))
+        if last_selected_id:
+            for email in emails:
+                if str(email.get("id", "")) == last_selected_id:
+                    return email
+
+        if "last email" in lower or "last mail" in lower:
+            # The cache is newest-first, so "last/latest" means the first row the user just saw.
+            return emails[0]
+
+        if "first email" in lower or "first mail" in lower or self._is_contextual_email_reference(query):
+            return emails[0]
+
+        return None
+
+    def _get_contextual_sender_email(self, query: str = "") -> str:
+        if not self._is_contextual_person_reference(query):
+            return ""
+
+        email = self._get_contextual_cached_message(query)
+        if not email:
+            return ""
+
+        sender = str(email.get("from", ""))
+        addresses = self._extract_email_addresses(sender)
+        return addresses[0] if addresses else ""
+
     async def _find_cached_message_match(
         self,
         query: str,
@@ -1051,6 +1154,11 @@ class GmailAgent(BaseAgent):
         emails = list(cache.get("emails", []))
         if not emails:
             return None
+
+        contextual_match = self._get_contextual_cached_message(query)
+        if contextual_match:
+            self._set_last_selected_email(str(contextual_match.get("id", "")))
+            return contextual_match
 
         memory_rows = []
         valid_ids: List[str] = []
