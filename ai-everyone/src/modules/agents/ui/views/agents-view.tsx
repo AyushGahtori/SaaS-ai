@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import {
@@ -14,11 +15,13 @@ import { AgentsFeaturedSection } from "../components/agents-featured-section";
 import { AgentsTrendingSection } from "../components/agents-trending-section";
 import { AgentsGrid } from "../components/agents-grid";
 import { Bot, Loader2 } from "lucide-react";
+import { useChatContext } from "@/modules/chat/context/chat-context";
 
 interface AgentStateResponse {
   installedAgentIds: string[];
   accessibleAgentIds: string[];
   connectedBundleIds: string[];
+  trialUsedAgentIds: string[];
   connections: Record<string, boolean>;
 }
 
@@ -79,12 +82,15 @@ async function getAuthHeaders() {
 }
 
 export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
+  const router = useRouter();
+  const { sendAgentTrialPrompt } = useChatContext();
   const [allAgents, setAllAgents] = useState<Agent[]>(() => initialCatalog?.allAgents ?? []);
   const [featuredAgents, setFeaturedAgents] = useState<Agent[]>(() => initialCatalog?.featuredAgents ?? []);
   const [trendingAgents, setTrendingAgents] = useState<Agent[]>(() => initialCatalog?.trendingAgents ?? []);
   const [installedIds, setInstalledIds] = useState<string[]>([]);
   const [accessibleIds, setAccessibleIds] = useState<string[]>([]);
   const [connectedBundleIds, setConnectedBundleIds] = useState<string[]>([]);
+  const [trialUsedIds, setTrialUsedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeChip, setActiveChip] = useState<AgentFilterChip>("all");
   const [loading, setLoading] = useState(() => !initialCatalog);
@@ -107,6 +113,7 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
     setInstalledIds(data.installedAgentIds ?? []);
     setAccessibleIds(data.accessibleAgentIds ?? []);
     setConnectedBundleIds(data.connectedBundleIds ?? []);
+    setTrialUsedIds(data.trialUsedAgentIds ?? []);
   }, []);
 
   const loadMarketplace = useCallback(async () => {
@@ -413,6 +420,44 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
     [allAgents, runAgentMutation]
   );
 
+  const handleUseTrial = useCallback(
+    async (agentId: string, prompt: string) => {
+      const item = allAgents.find((agent) => agent.id === agentId);
+      if (!item || !prompt.trim()) return;
+
+      setError(null);
+
+      try {
+        const headers = await getAuthHeaders();
+        const response = await fetch("/api/agents", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            action: "use_trial",
+            targetId: item.id,
+            targetType: item.kind,
+          }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (Array.isArray(data.trialUsedAgentIds)) {
+          setTrialUsedIds(data.trialUsedAgentIds);
+        }
+
+        if (!response.ok) {
+          throw new Error(data.error || "This free trial prompt has already been used.");
+        }
+
+        router.push("/");
+        await sendAgentTrialPrompt(prompt);
+      } catch (err) {
+        console.error("[AgentsView] trial prompt error:", err);
+        setError(err instanceof Error ? err.message : "Failed to start the trial prompt.");
+      }
+    },
+    [allAgents, router, sendAgentTrialPrompt]
+  );
+
   const ownedIds = useMemo(
     () => Array.from(new Set([...installedIds, ...connectedBundleIds])),
     [connectedBundleIds, installedIds]
@@ -493,16 +538,20 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
             <AgentsGrid
               agents={allAgents}
               installedAgentIds={ownedIds}
+              trialUsedAgentIds={trialUsedIds}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
+              onUseTrial={handleUseTrial}
             />
           </>
         ) : activeChip === "all" ? (
           <AgentsGrid
             agents={searchedAgents}
             installedAgentIds={ownedIds}
+            trialUsedAgentIds={trialUsedIds}
             onInstall={handleInstall}
             onUninstall={handleUninstall}
+            onUseTrial={handleUseTrial}
           />
         ) : groupedBrowseSections.length > 0 ? (
           <div className="space-y-8">
@@ -512,8 +561,10 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
                 title={section.title}
                 agents={section.agents}
                 installedAgentIds={ownedIds}
+                trialUsedAgentIds={trialUsedIds}
                 onInstall={handleInstall}
                 onUninstall={handleUninstall}
+                onUseTrial={handleUseTrial}
               />
             ))}
           </div>
@@ -522,8 +573,10 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
             title={`${CHIP_LABELS[activeChip]} Agents`}
             agents={chipMatchedAgents}
             installedAgentIds={ownedIds}
+            trialUsedAgentIds={trialUsedIds}
             onInstall={handleInstall}
             onUninstall={handleUninstall}
+            onUseTrial={handleUseTrial}
           />
         )}
       </div>
