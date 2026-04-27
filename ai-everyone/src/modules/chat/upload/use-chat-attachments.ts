@@ -24,6 +24,8 @@ import {
 import { useDriveUploadAuth } from "@/modules/chat/upload/use-drive-upload-auth";
 import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 
+const MAX_VERCEL_PERSIST_UPLOAD_BYTES = 3 * 1024 * 1024;
+
 function createAttachmentId(prefix: string, name: string): string {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${name}`;
 }
@@ -41,6 +43,15 @@ function inferExtensionFromMimeType(mimeType: string): string {
 }
 
 function shouldFallbackToLocalAttachment(error: unknown): boolean {
+    if (
+        typeof error === "object" &&
+        error !== null &&
+        "status" in error &&
+        (error as { status?: unknown }).status === 413
+    ) {
+        return true;
+    }
+
     const message = error instanceof Error ? error.message.toLowerCase() : "";
     if (!message) return false;
 
@@ -50,8 +61,28 @@ function shouldFallbackToLocalAttachment(error: unknown): boolean {
         message.includes("load failed") ||
         message.includes("bucket") ||
         message.includes("timed out") ||
-        message.includes("503")
+        message.includes("503") ||
+        message.includes("413") ||
+        message.includes("payload too large") ||
+        message.includes("request entity too large") ||
+        message.includes("body exceeded") ||
+        message.includes("function_payload_too_large")
     );
+}
+
+function shouldSkipCloudPersistence(size: number): boolean {
+    return size > MAX_VERCEL_PERSIST_UPLOAD_BYTES;
+}
+
+function toLocalReadyAttachment(
+    attachment: ChatUploadAttachment
+): ChatUploadAttachment {
+    return {
+        ...attachment,
+        uploadState: "ready",
+        uploadError: undefined,
+        uploadedDocId: undefined,
+    };
 }
 
 export function useChatAttachments(selectedModel: string) {
@@ -180,6 +211,11 @@ export function useChatAttachments(selectedModel: string) {
                 queuedThisBatch += 1;
                 queuedBytes += file.size;
 
+                if (shouldSkipCloudPersistence(file.size)) {
+                    updateAttachment(attachmentId, toLocalReadyAttachment);
+                    continue;
+                }
+
                 const persisted = await persistUploadedDoc({
                     source: "computer",
                     name: fileName,
@@ -205,19 +241,12 @@ export function useChatAttachments(selectedModel: string) {
                         const exists = prev.some((item) => item.id === attachmentId);
                         if (exists) {
                             return prev.map((item) =>
-                                item.id === attachmentId
-                                    ? {
-                                        ...item,
-                                        uploadState: "ready",
-                                        uploadError: undefined,
-                                        uploadedDocId: undefined,
-                                    }
-                                    : item
+                                item.id === attachmentId ? toLocalReadyAttachment(item) : item
                             );
                         }
                         return [
                             ...prev,
-                            {
+                            toLocalReadyAttachment({
                                 id: attachmentId,
                                 source: "computer",
                                 name: fileName,
@@ -225,7 +254,7 @@ export function useChatAttachments(selectedModel: string) {
                                 size: file.size,
                                 dataBase64: safeDataUrl,
                                 uploadState: "ready",
-                            },
+                            }),
                         ];
                     });
                     continue;
@@ -320,6 +349,7 @@ export function useChatAttachments(selectedModel: string) {
     };
 
     const addDriveAttachment = async (file: DrivePickerFile) => {
+        let attachmentId: string | null = null;
         try {
             const driveAccessToken = await requireDriveAccessToken();
             const downloaded = await downloadDriveFileAsDataUrl(driveAccessToken, file);
@@ -331,7 +361,7 @@ export function useChatAttachments(selectedModel: string) {
                 0
             );
 
-            const attachmentId = createAttachmentId("drive", file.name);
+            attachmentId = createAttachmentId("drive", file.name);
             const initialAttachment: ChatUploadAttachment = {
                 id: attachmentId,
                 source: "computer",
@@ -343,6 +373,11 @@ export function useChatAttachments(selectedModel: string) {
             };
             setAttachments((prev) => [...prev, initialAttachment]);
             setIsDriveDialogOpen(false);
+
+            if (shouldSkipCloudPersistence(downloaded.size)) {
+                updateAttachment(attachmentId, toLocalReadyAttachment);
+                return;
+            }
 
             const persisted = await persistUploadedDoc({
                 source: "computer",
@@ -365,6 +400,15 @@ export function useChatAttachments(selectedModel: string) {
                 setAttachError(null);
                 return;
             }
+
+            if (shouldFallbackToLocalAttachment(error)) {
+                if (attachmentId) {
+                    updateAttachment(attachmentId, toLocalReadyAttachment);
+                    return;
+                }
+                return;
+            }
+
             const message =
                 normalizeUserFacingError(error, {
                     surface: "upload",

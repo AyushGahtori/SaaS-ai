@@ -367,6 +367,15 @@ function mapApiStatus(surface: ErrorSurface, status: number | null): UserFacingE
         });
     }
 
+    if (status === 413) {
+        return buildError(surface, {
+            code: "http/413",
+            provider: "api",
+            message:
+                "This file is too large for the current cloud upload path. Please try a smaller file.",
+        });
+    }
+
     if (status === 408 || status === 504) {
         return buildError(surface, {
             code: `http/${status}`,
