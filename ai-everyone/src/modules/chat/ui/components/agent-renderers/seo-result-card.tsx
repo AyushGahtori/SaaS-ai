@@ -27,6 +27,10 @@ function asStringArray(value: unknown): string[] {
     return Array.isArray(value) ? value.map((item) => asString(item, "")).filter(Boolean) : [];
 }
 
+function hasText(value: string): boolean {
+    return value.trim().length > 0;
+}
+
 function normalizePayload(result: Record<string, unknown>): Record<string, unknown> {
     const nested = asObject(result.result);
     return Object.keys(nested).length > 0 ? nested : result;
@@ -82,6 +86,8 @@ export const SeoResultCard: React.FC<SeoResultCardProps> = ({ result }) => {
     const searchIntent = asString(searchInsights.searchIntent, "Search intent unavailable.");
     const competitorAnalysis = asString(searchInsights.competitorAnalysis, "");
     const aiOverviewSummary = asString(searchInsights.aiOverviewSummary, "");
+    const topDomains = asStringArray(searchInsights.topDomains);
+    const topResultTitles = asStringArray(searchInsights.topResultTitles);
 
     const brief = asObject(payload.contentBrief);
     const audit = asObject(payload.articleAudit);
@@ -107,6 +113,25 @@ export const SeoResultCard: React.FC<SeoResultCardProps> = ({ result }) => {
 
     const wordCount = Number(payload.sourceWordCount || 0);
     const charCount = Number(payload.sourceCharacterCount || 0);
+    const hasBriefData =
+        headings.length > 0 ||
+        faqs.length > 0 ||
+        hasText(asString(brief.contentOutline, "")) ||
+        hasText(briefStructure) ||
+        hasText(keywordGuidance) ||
+        hasText(writingGuidelines);
+    const hasAuditData =
+        hasText(strengths) ||
+        hasText(gaps) ||
+        hasText(opportunities) ||
+        hasText(structureImprovements) ||
+        hasText(eeat) ||
+        missingSections.length > 0 ||
+        recommendations.length > 0;
+    const hasRewriteData =
+        improvedSections.length > 0 ||
+        hasText(keywordIntegrationSummary) ||
+        hasText(changesExplanation);
 
     return (
         <div className="mt-3 rounded-2xl border border-slate-200/10 bg-slate-950/85 p-4 text-slate-100 shadow-[0_20px_60px_rgba(15,23,42,0.35)]">
@@ -209,6 +234,25 @@ export const SeoResultCard: React.FC<SeoResultCardProps> = ({ result }) => {
                         <h4 className="text-sm font-semibold text-slate-100">Competitor and SERP Notes</h4>
                     </div>
                     {competitorAnalysis ? <p className="text-sm leading-6 text-slate-300">{competitorAnalysis}</p> : null}
+                    {topDomains.length > 0 ? (
+                        <div className="mt-3 rounded-lg border border-slate-200/10 bg-slate-950/70 p-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Top Domains</p>
+                            <p className="mt-1 text-sm leading-6 text-slate-300">{topDomains.slice(0, 5).join(", ")}</p>
+                        </div>
+                    ) : null}
+                    {topResultTitles.length > 0 ? (
+                        <div className="mt-3 rounded-lg border border-slate-200/10 bg-slate-950/70 p-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Top Result Titles</p>
+                            <ul className="mt-2 space-y-2 text-sm text-slate-300">
+                                {topResultTitles.slice(0, 3).map((titleItem, idx) => (
+                                    <li key={`${titleItem}-${idx}`} className="flex gap-2">
+                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                                        <span>{titleItem}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    ) : null}
                     {aiOverviewSummary ? (
                         <div className="mt-3 rounded-lg border border-slate-200/10 bg-slate-950/70 p-3">
                             <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">AI Overview Summary</p>
@@ -218,7 +262,7 @@ export const SeoResultCard: React.FC<SeoResultCardProps> = ({ result }) => {
                 </div>
             </div>
 
-            {brief ? (
+            {hasBriefData ? (
                 <div className="mt-4 grid gap-3 lg:grid-cols-2">
                     <div className="rounded-xl border border-slate-200/10 bg-slate-100/5 p-3">
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Content Outline</p>
@@ -245,7 +289,7 @@ export const SeoResultCard: React.FC<SeoResultCardProps> = ({ result }) => {
                 </div>
             ) : null}
 
-            {audit ? (
+            {hasAuditData ? (
                 <div className="mt-4 grid gap-3 lg:grid-cols-2">
                     <div className="rounded-xl border border-slate-200/10 bg-slate-100/5 p-3">
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Audit Notes</p>
@@ -281,7 +325,7 @@ export const SeoResultCard: React.FC<SeoResultCardProps> = ({ result }) => {
                 </div>
             ) : null}
 
-            {edits ? (
+            {hasRewriteData ? (
                 <div className="mt-4 grid gap-3 lg:grid-cols-2">
                     <div className="rounded-xl border border-slate-200/10 bg-slate-100/5 p-3">
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Rewrite Guidance</p>
