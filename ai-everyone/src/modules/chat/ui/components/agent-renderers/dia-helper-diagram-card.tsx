@@ -12,6 +12,25 @@ function asObject(value: unknown): Record<string, unknown> {
     return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
+function isStructurallyEmptyMermaid(value: string): boolean {
+    const mermaid = value.trim();
+    if (!mermaid) return true;
+    const lines = mermaid.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (lines.length === 0) return true;
+    const header = lines[0].toLowerCase();
+    if (header.startsWith("flowchart") || header.startsWith("graph")) {
+        const hasEdge = lines.slice(1).some((line) => line.includes("-->") || line.includes("---"));
+        const labels = Array.from(mermaid.matchAll(/[\[\(\{]([^{}\[\]\(\)]{2,120})[\]\)\}]/g))
+            .map((match) => String(match[1] || "").trim().toLowerCase())
+            .filter(Boolean);
+        return !hasEdge || new Set(labels).size < 2;
+    }
+    if (header.startsWith("sequencediagram")) return !lines.slice(1).some((line) => line.includes("->"));
+    if (header.startsWith("statediagram-v2")) return !lines.slice(1).some((line) => line.includes("-->"));
+    if (header.startsWith("gantt")) return lines.length <= 2;
+    return false;
+}
+
 export const DiaHelperDiagramCard: React.FC<DiaHelperDiagramCardProps> = ({ result }) => {
     const payload = useMemo(() => {
         const nested = asObject(result.result);
@@ -36,7 +55,7 @@ export const DiaHelperDiagramCard: React.FC<DiaHelperDiagramCardProps> = ({ resu
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     const diagramUrl = useMemo(() => {
-        if (!mermaid.trim()) return null;
+        if (isStructurallyEmptyMermaid(mermaid)) return null;
         try {
             let cleanMermaid = mermaid.trim();
             if (cleanMermaid.startsWith("```mermaid")) {

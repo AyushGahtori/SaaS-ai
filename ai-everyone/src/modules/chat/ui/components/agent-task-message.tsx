@@ -75,6 +75,15 @@ interface GmailListMeta {
     returnedCount: number;
 }
 
+interface GmailSummaryDetails {
+    from: string;
+    subject: string;
+    date: string;
+    summary: string;
+    keyPoints: string[];
+    nextSteps: string[];
+}
+
 interface DriveRow {
     name: string;
     mimeType: string;
@@ -282,6 +291,60 @@ function getGmailListMeta(result: Record<string, unknown>, rows: GmailRow[]): Gm
     return { returnedCount };
 }
 
+function splitSummaryLines(value: unknown): string[] {
+    return String(value || "")
+        .replace(/\*\*/g, "")
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^[-*]\s*/, "").trim())
+        .filter(Boolean);
+}
+
+function extractLabeledValue(lines: string[], label: string): string {
+    const lowerLabel = label.toLowerCase();
+    const match = lines.find((line) => line.toLowerCase().startsWith(`${lowerLabel}:`));
+    return match ? match.slice(match.indexOf(":") + 1).trim() : "";
+}
+
+function getGmailSummaryDetails(result: Record<string, unknown>): GmailSummaryDetails | null {
+    const payload = (result.result as Record<string, unknown> | undefined) || {};
+    const hasMessageShape =
+        typeof payload.subject === "string" ||
+        typeof payload.from === "string" ||
+        typeof payload.body === "string";
+    if (!hasMessageShape) return null;
+
+    const lines = splitSummaryLines(result.summary);
+    const summaryFromLabels = [
+        extractLabeledValue(lines, "Topic"),
+        extractLabeledValue(lines, "Summary"),
+        extractLabeledValue(lines, "Why it matters"),
+    ].filter(Boolean);
+    const asks = extractLabeledValue(lines, "Asks");
+    const deadlines = extractLabeledValue(lines, "Deadlines");
+    const followUp = extractLabeledValue(lines, "Follow-up") || extractLabeledValue(lines, "Next step");
+    const unlabeled = lines.filter((line) => !/^[A-Za-z ]{2,24}:/.test(line));
+
+    const keyPoints = [
+        ...summaryFromLabels,
+        ...unlabeled,
+        asks && asks.toLowerCase() !== "none" ? `Ask: ${asks}` : "",
+        deadlines && deadlines.toLowerCase() !== "none" ? `Deadline: ${deadlines}` : "",
+    ].filter(Boolean).slice(0, 5);
+
+    const nextSteps = followUp && followUp.toLowerCase() !== "none needed"
+        ? [followUp]
+        : [];
+
+    return {
+        from: normalizeString(payload.from || extractLabeledValue(lines, "Sender")),
+        subject: normalizeString(payload.subject),
+        date: normalizeString(payload.date),
+        summary: keyPoints[0] || normalizeString(result.summary, "Email summarized."),
+        keyPoints,
+        nextSteps,
+    };
+}
+
 function getDriveListMeta(result: Record<string, unknown>, rows: DriveRow[]): DriveListMeta {
     const payload = (result.result as Record<string, unknown> | undefined) || result;
     const hasMore = payload.hasMore === true;
@@ -324,6 +387,48 @@ function GmailTableCard({ rows, meta }: { rows: GmailRow[]; meta: GmailListMeta 
             <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2 text-[11px] text-white/55">
                 <span>Showing {meta.returnedCount} email(s)</span>
                 <span>Scroll inside the table to view all rows.</span>
+            </div>
+        </div>
+    );
+}
+
+function GmailSummaryCard({ details }: { details: GmailSummaryDetails }) {
+    return (
+        <div className="mt-3 overflow-hidden rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+            <div className="border-b border-white/10 bg-black/25 px-3 py-3">
+                <div className="flex items-start gap-2">
+                    <Mail className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-300" />
+                    <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white/90">{details.subject}</p>
+                        <p className="mt-1 text-xs text-white/60">
+                            {details.from}{details.date !== "-" ? ` · ${details.date}` : ""}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div className="space-y-3 px-3 py-3">
+                <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-sm leading-6 text-white/85">
+                    {details.summary}
+                </div>
+                {details.keyPoints.length > 1 ? (
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">Key Points</p>
+                        <ul className="space-y-1.5 text-sm text-white/78">
+                            {details.keyPoints.slice(1).map((point, index) => (
+                                <li key={`${point}-${index}`} className="flex gap-2">
+                                    <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-emerald-300" />
+                                    <span>{point}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                ) : null}
+                {details.nextSteps.length > 0 ? (
+                    <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/8 px-3 py-2 text-sm text-cyan-50">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-200/80">Follow-up</p>
+                        <p className="mt-1">{details.nextSteps[0]}</p>
+                    </div>
+                ) : null}
             </div>
         </div>
     );
@@ -861,6 +966,10 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             const rows = getGmailRows(result);
             if (rows.length > 0) {
                 return <GmailTableCard rows={rows} meta={getGmailListMeta(result, rows)} />;
+            }
+            const summaryDetails = getGmailSummaryDetails(result);
+            if (summaryDetails) {
+                return <GmailSummaryCard details={summaryDetails} />;
             }
         }
 

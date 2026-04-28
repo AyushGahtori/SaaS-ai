@@ -55,8 +55,10 @@ export const DashboardSidebar = () => {
 
   const pathname = usePathname();
   const router = useRouter();
-  const { createNewChat } = useChatContext();
-  const isNewChatActive = pathname === "/";
+  const { createNewChat, workspaceScope } = useChatContext();
+  const workspaceHome =
+    workspaceScope.type === "agent" ? `/agents/${workspaceScope.agentId}` : "/";
+  const isNewChatActive = pathname === workspaceHome;
 
   if (pathname?.startsWith("/bloom")) {
     return null;
@@ -93,7 +95,7 @@ export const DashboardSidebar = () => {
                   <button
                     onClick={() => {
                       createNewChat();
-                      router.push("/");
+                      router.push(workspaceHome);
                     }}
                     className={cn("w-full text-left", navItemClasses(isNewChatActive))}
                   >
@@ -139,7 +141,9 @@ export const DashboardSidebar = () => {
           <SidebarGroupContent className="flex flex-col h-full overflow-hidden">
             <div className="px-2 pb-1 flex-shrink-0">
               <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/32">
-                Recent Chats
+                {workspaceScope.type === "agent"
+                  ? `${workspaceScope.agentName} Chats`
+                  : "Recent Chats"}
               </span>
             </div>
             <div className="ui-surface flex h-full flex-col rounded-xl">

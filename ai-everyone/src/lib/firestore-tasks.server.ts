@@ -23,6 +23,7 @@ import {
     normalizeAgentExecutionResult,
     type AgentExecutionContract,
 } from "@/lib/agent-error";
+import { AGENT_ENDPOINTS } from "@/lib/orchestrator/langgraph/registry";
 
 const DEFAULT_AGENT_HTTP_TIMEOUT_MS = Number(process.env.AGENT_HTTP_TIMEOUT_MS || 45000);
 const AGENT_HTTP_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
@@ -35,47 +36,41 @@ function getAgentHttpTimeoutMs(agentId: string): number {
     return timeout;
 }
 
+function sanitizeForFirestore(value: unknown): unknown {
+    if (typeof value === "undefined") return undefined;
+    if (value === null) return null;
+    if (Array.isArray(value)) {
+        return value.map((item) => {
+            const sanitized = sanitizeForFirestore(item);
+            return typeof sanitized === "undefined" ? null : sanitized;
+        });
+    }
+    if (typeof value === "object") {
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Object.prototype && prototype !== null) return value;
+
+        const next: Record<string, unknown> = {};
+        for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+            const sanitized = sanitizeForFirestore(item);
+            if (typeof sanitized !== "undefined") {
+                next[key] = sanitized;
+            }
+        }
+        return next;
+    }
+    return value;
+}
+
+function sanitizeRecordForFirestore(record: Record<string, unknown>): Record<string, unknown> {
+    return sanitizeForFirestore(record) as Record<string, unknown>;
+}
+
 // ---------------------------------------------------------------------------
 // Agent routing map â€” maps agentId to its API endpoint path.
 // Must match the routes defined in each agent's FastAPI server.
 // ---------------------------------------------------------------------------
 
-const AGENT_ROUTES: Record<string, string> = {
-    "teams-agent": "/teams/action",
-    "email-agent": "/email/action",
-    "calendar-agent": "/calendar/action",
-    "todo-agent": "/todo/action",
-    "google-agent": "/google/action",
-    "notion-agent": "/notion/action",
-    "maps-agent": "/maps/action",
-    "emergency-response-agent": "/emergency/action",
-    "strata-agent": "/strata/action",
-    // New integration agents
-    "canva-agent": "/canva/action",
-    "day-planner-agent": "/dayplanner/action",
-    "discord-agent": "/discord/action",
-    "dropbox-agent": "/dropbox/action",
-    "freshdesk-agent": "/freshdesk/action",
-    "github-agent": "/github/action",
-    "gitlab-agent": "/gitlab/action",
-    "greenhouse-agent": "/greenhouse/action",
-    "jira-agent": "/jira/action",
-    "linkedin-agent": "/linkedin/action",
-    "zoom-agent": "/zoom/action",
-    "dia-helper-agent": "/diahelper/action",
-    "shopgenie-agent": "/shopgenie/action",
-    "career-switch-agent": "/career-switch/action",
-    "startup-fundraising-agent": "/fundraising/action",
-    "smart-gtm-agent": "/smartgtm/action",
-    "seo-agent": "/seo/action",
-    "dashboard-designer-agent": "/dashboarddesigner/action",
-    "ats-agent": "/ats/action",
-    "building-construction-agent": "/building/action",
-    "lms-agent": "/lms/action",
-    "travel-halper-agent": "/travelhalper/action",
-    "devika-engineer-agent": "/devika/action",
-    "data-analyst-agent": "/dataanalyst/action",
-};
+const AGENT_ROUTES: Record<string, string> = AGENT_ENDPOINTS;
 
 async function persistInterpretedFailure(params: {
     taskRef: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
@@ -153,9 +148,107 @@ function extractRawErrorMessage(result: AgentExecutionContract): string {
     return "Agent execution failed.";
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {};
+}
+
+function asText(value: unknown): string {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function extractMermaidLabels(mermaid: string): string[] {
+    const labels = Array.from(mermaid.matchAll(/[\[\(\{]([^{}\[\]\(\)]{2,120})[\]\)\}]/g))
+        .map((match) => asText(match[1]).toLowerCase())
+        .filter(Boolean);
+    return Array.from(new Set(labels));
+}
+
+function isStructurallyEmptyMermaid(mermaid: string): boolean {
+    const lines = mermaid.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (lines.length === 0) return true;
+    const header = lines[0].toLowerCase();
+    const isFlowchart = header.startsWith("flowchart") || header.startsWith("graph");
+    if (isFlowchart) {
+        const hasEdge = lines.slice(1).some((line) => line.includes("-->") || line.includes("---"));
+        if (!hasEdge) return true;
+        const labels = extractMermaidLabels(mermaid);
+        if (labels.length < 2) return true;
+        if (labels.length === 1 && /^(add more details|update step|request diagram|diagram)$/.test(labels[0])) return true;
+        return false;
+    }
+    if (header.startsWith("sequencediagram")) {
+        return !lines.slice(1).some((line) => line.includes("->"));
+    }
+    if (header.startsWith("statediagram-v2")) {
+        return !lines.slice(1).some((line) => line.includes("-->"));
+    }
+    if (header.startsWith("gantt")) {
+        return lines.length <= 2;
+    }
+    return false;
+}
+
+function validateAgentSuccessOutput(task: AgentTask, result: AgentExecutionContract): { valid: true } | { valid: false; reason: string; code: string } {
+    const outputResult = asRecord(result.result);
+    const summary = asText(result.summary || result.message);
+    const hasResultPayload = Object.keys(outputResult).length > 0;
+    const route = asRecord(asRecord(task.flow).route);
+    const targetAction = asText(task.agentInput?.action || route.target_action || result.action);
+
+    if (!summary && !hasResultPayload) {
+        return {
+            valid: false,
+            code: "EMPTY_AGENT_OUTPUT",
+            reason: "The selected agent returned success without a usable payload.",
+        };
+    }
+
+    if (task.agentId === "dia-helper-agent") {
+        const mermaid = asText(outputResult.mermaid);
+        if (isStructurallyEmptyMermaid(mermaid)) {
+            return {
+                valid: false,
+                code: "EMPTY_DIAGRAM_OUTPUT",
+                reason: "Dia Helper returned an empty or placeholder Mermaid diagram.",
+            };
+        }
+    }
+
+    if (task.agentId === "smart-gtm-agent") {
+        const sections = Array.isArray(outputResult.sections) ? outputResult.sections : [];
+        const takeaways = Array.isArray(outputResult.keyTakeaways) ? outputResult.keyTakeaways : [];
+        const markdown = asText(outputResult.reportMarkdown);
+        if (targetAction === "go_to_market" && sections.length === 0 && takeaways.length === 0 && !markdown) {
+            return {
+                valid: false,
+                code: "INVALID_GTM_OUTPUT",
+                reason: "Smart GTM returned success without a go-to-market report structure.",
+            };
+        }
+    }
+
+    if (task.agentId === "startup-fundraising-agent") {
+        const investors = Array.isArray(outputResult.investors) ? outputResult.investors : [];
+        const shortlist = Array.isArray(outputResult.shortlist) ? outputResult.shortlist : [];
+        const sequence = Array.isArray(outputResult.sequence) ? outputResult.sequence : [];
+        const nextSteps = Array.isArray(outputResult.next_steps) ? outputResult.next_steps : [];
+        if (investors.length === 0 && shortlist.length === 0 && sequence.length === 0 && nextSteps.length === 0) {
+            return {
+                valid: false,
+                code: "INVALID_FUND_OUTPUT",
+                reason: "Fund Agent returned success without investor, outreach, or fundraising-plan content.",
+            };
+        }
+    }
+
+    return { valid: true };
+}
+
 /**
  * Create a new agent task in Firestore (server-side only).
- * Called from the /api/chat route when the parent LLM emits an agent intent.
+ * Called by the LangGraph orchestrator after deterministic routing and validation.
  */
 export async function createAgentTask(data: {
     userId: string;
@@ -163,6 +256,7 @@ export async function createAgentTask(data: {
     agentId: string;
     parentLLMRequest: Record<string, unknown>;
     agentInput: Record<string, unknown>;
+    flow?: Record<string, unknown>;
 }): Promise<AgentTask> {
     const taskId = uuidv4();
 
@@ -172,8 +266,9 @@ export async function createAgentTask(data: {
         chatId: data.chatId,
         agentId: data.agentId,
         status: "queued",
-        parentLLMRequest: data.parentLLMRequest,
-        agentInput: data.agentInput,
+        parentLLMRequest: sanitizeRecordForFirestore(data.parentLLMRequest),
+        agentInput: sanitizeRecordForFirestore(data.agentInput),
+        ...(data.flow ? { flow: sanitizeRecordForFirestore(data.flow) } : {}),
         agentOutput: null,
         startedAt: null,
         finishedAt: null,
@@ -353,6 +448,36 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
 
         // â”€â”€ 4. Update task with result â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (result.status === "success" || result.status === "partial_success") {
+            const outputValidation = validateAgentSuccessOutput(task, result);
+            if (!outputValidation.valid) {
+                console.warn("[executeAgentTask] Agent output failed validation", {
+                    taskId: task.taskId,
+                    agentId: task.agentId,
+                    action: task.agentInput?.action,
+                    code: outputValidation.code,
+                    reason: outputValidation.reason,
+                });
+                await taskRef.update({
+                    status: "failed",
+                    agentOutput: {
+                        ...result,
+                        status: "failed",
+                        error_code: outputValidation.code,
+                        error: outputValidation.reason,
+                        summary: outputValidation.reason,
+                        error_context: {
+                            ...asRecord(result.error_context),
+                            output_validation_failed: true,
+                            original_status: result.status,
+                            agent_id: task.agentId,
+                            action: task.agentInput?.action || null,
+                        },
+                    },
+                    finishedAt: FieldValue.serverTimestamp(),
+                });
+                return;
+            }
+
             await taskRef.update({
                 status: result.status,
                 agentOutput: result,

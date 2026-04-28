@@ -55,10 +55,15 @@ interface StreamPayload {
     meta?: Record<string, unknown>;
 }
 
+export type ChatWorkspaceScope =
+    | { type: "global" }
+    | { type: "agent"; agentId: string; agentName: string };
+
 interface ChatContextValue {
     chats: Chat[];
     activeChatId: string | null;
     messages: ChatMessage[];
+    workspaceScope: ChatWorkspaceScope;
     isGenerating: boolean;
     isStopping: boolean;
     isLoadingChats: boolean;
@@ -68,7 +73,8 @@ interface ChatContextValue {
     availableModels: { id: string; label: string }[];
     isVoiceActive: boolean;
     pendingVoiceResponse: string | null;
-    loadChats: () => Promise<void>;
+    loadChats: (scopeOverride?: ChatWorkspaceScope) => Promise<void>;
+    setWorkspaceScope: (scope: ChatWorkspaceScope) => void;
     createNewChat: () => void;
     selectChat: (chatId: string) => Promise<void>;
     sendMessage: (
@@ -260,6 +266,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [chats, setChats] = useState<Chat[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [workspaceScope, setWorkspaceScopeState] = useState<ChatWorkspaceScope>({
+        type: "global",
+    });
     const [generationStateByChatId, setGenerationStateByChatId] = useState<
         Record<string, { isGenerating: boolean; isStopping: boolean }>
     >({});
@@ -278,6 +287,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const [pendingVoiceResponse, setPendingVoiceResponse] = useState<string | null>(null);
 
     const activeChatIdRef = useRef<string | null>(activeChatId);
+    const workspaceScopeRef = useRef<ChatWorkspaceScope>(workspaceScope);
     const messagesRef = useRef<ChatMessage[]>(messages);
     const messagesByChatRef = useRef<Record<string, ChatMessage[]>>({});
     const generationStateRef = useRef<
@@ -290,6 +300,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         activeChatIdRef.current = activeChatId;
     }, [activeChatId]);
+
+    useEffect(() => {
+        workspaceScopeRef.current = workspaceScope;
+    }, [workspaceScope]);
 
     useEffect(() => {
         messagesRef.current = messages;
@@ -366,11 +380,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         };
     }, []);
 
-    const loadChats = useCallback(async () => {
+    const loadChats = useCallback(async (scopeOverride?: ChatWorkspaceScope) => {
         if (!uid) return;
         setIsLoadingChats(true);
         try {
-            const fetched = await getChats(uid);
+            const scope = scopeOverride || workspaceScopeRef.current;
+            const fetched = await getChats(
+                uid,
+                scope.type === "agent"
+                    ? { workspaceType: "agent", agentId: scope.agentId }
+                    : { workspaceType: "global" }
+            );
             setChats(fetched);
         } catch (err) {
             console.error("[loadChats]", err);
@@ -378,6 +398,33 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setIsLoadingChats(false);
         }
     }, [uid]);
+
+    const createNewChat = useCallback(() => {
+        activeChatIdRef.current = null;
+        messagesRef.current = [];
+        setActiveChatId(null);
+        setMessages([]);
+        setError(null);
+    }, []);
+
+    const setWorkspaceScope = useCallback(
+        (scope: ChatWorkspaceScope) => {
+            const previous = workspaceScopeRef.current;
+            const sameScope =
+                previous.type === scope.type &&
+                (previous.type !== "agent" ||
+                    (scope.type === "agent" && previous.agentId === scope.agentId));
+
+            workspaceScopeRef.current = scope;
+            setWorkspaceScopeState(scope);
+
+            if (!sameScope) {
+                createNewChat();
+                void loadChats(scope);
+            }
+        },
+        [createNewChat, loadChats]
+    );
 
     useEffect(() => {
         if (uid) {
@@ -393,14 +440,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         requestAbortControllersRef.current = {};
         setGenerationStateByChatId({});
     }, [uid, loadChats]);
-
-    const createNewChat = useCallback(() => {
-        activeChatIdRef.current = null;
-        messagesRef.current = [];
-        setActiveChatId(null);
-        setMessages([]);
-        setError(null);
-    }, []);
 
     const selectChat = useCallback(
         async (chatId: string) => {
@@ -496,6 +535,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setError(null);
 
             const requestModel = options.modelOverride ?? selectedModel;
+            const currentWorkspaceScope = workspaceScopeRef.current;
             let currentChatId = options.forceNewChat ? null : activeChatIdRef.current;
             let tempAssistantId = "";
             let resolvedChatId: string | null = null;
@@ -512,7 +552,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 if (!currentChatId) {
                     const title =
                         content.length > 40 ? content.slice(0, 40) + "…" : content;
-                    const newChat = await createChat(uid, title);
+                    const newChat = await createChat(
+                        uid,
+                        title,
+                        currentWorkspaceScope.type === "agent"
+                            ? {
+                                  workspaceType: "agent",
+                                  agentId: currentWorkspaceScope.agentId,
+                                  agentName: currentWorkspaceScope.agentName,
+                              }
+                            : { workspaceType: "global" }
+                    );
                     currentChatId = newChat.id;
                     activeChatIdRef.current = currentChatId;
                     setActiveChatId(currentChatId);
@@ -576,7 +626,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 const controller = new AbortController();
                 requestAbortControllersRef.current[resolvedChatIdValue] = controller;
 
-                const isLocalModelSelected = isLocalOllamaModel(requestModel);
+                const isLocalModelSelected =
+                    currentWorkspaceScope.type === "global" &&
+                    isLocalOllamaModel(requestModel);
                 if (isLocalModelSelected) {
                     if (attachments.length > 0) {
                         throw new Error(
@@ -650,7 +702,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     throw new Error("Authentication expired. Please sign in again.");
                 }
 
-                const res = await fetch("/api/chat", {
+                const endpoint =
+                    currentWorkspaceScope.type === "agent"
+                        ? `/api/agents/${encodeURIComponent(currentWorkspaceScope.agentId)}/chat`
+                        : "/api/chat";
+
+                const res = await fetch(endpoint, {
                     method: "POST",
                     signal: controller.signal,
                     headers: {
@@ -663,6 +720,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         model: requestModel,
                         attachments,
                         failedAttachments,
+                        workspace:
+                            currentWorkspaceScope.type === "agent"
+                                ? {
+                                      type: "agent",
+                                      agentId: currentWorkspaceScope.agentId,
+                                      agentName: currentWorkspaceScope.agentName,
+                                  }
+                                : { type: "global" },
                     }),
                 });
 
@@ -951,6 +1016,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         chats,
         activeChatId,
         messages,
+        workspaceScope,
         isGenerating,
         isStopping,
         isLoadingChats,
@@ -961,6 +1027,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         isVoiceActive,
         pendingVoiceResponse,
         loadChats,
+        setWorkspaceScope,
         createNewChat,
         selectChat,
         sendMessage,

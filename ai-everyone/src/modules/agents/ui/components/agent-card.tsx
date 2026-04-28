@@ -20,6 +20,7 @@ interface AgentCardProps {
   isTrialUsed?: boolean;
   onInstall: (agentId: string) => Promise<void>;
   onUninstall: (agentId: string) => Promise<void>;
+  onOpen: (agentId: string) => void;
   onUseTrial?: (agentId: string, prompt: string) => Promise<void>;
   showHoverDetails?: boolean;
 }
@@ -30,6 +31,7 @@ export const AgentCard = ({
   isTrialUsed = false,
   onInstall,
   onUninstall,
+  onOpen,
   onUseTrial,
   showHoverDetails = false,
 }: AgentCardProps) => {
@@ -43,7 +45,7 @@ export const AgentCard = ({
 
   const installLabel = useMemo(() => {
     if (installed) {
-      return agent.kind === "bundle" || agent.requiresConnection ? "Connected" : "Installed";
+      return "Open";
     }
     return agent.kind === "bundle" || agent.requiresConnection ? "Connect" : "Get";
   }, [agent.kind, agent.requiresConnection, installed]);
@@ -52,17 +54,30 @@ export const AgentCard = ({
   const formattedInstalls = `${(agent.installCount / 1000).toFixed(1)}K`;
 
   const handleClick = async () => {
+    if (installed) {
+      onOpen(agent.id);
+      return;
+    }
+
     setLoading(true);
     try {
-      if (installed) {
-        await onUninstall(agent.id);
-        setInstalled(false);
-      } else {
-        await onInstall(agent.id);
-        setInstalled(true);
-      }
+      await onInstall(agent.id);
+      setInstalled(true);
     } catch (err) {
-      console.error("Install/uninstall failed", err);
+      console.error("Install failed", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUninstall = async () => {
+    if (!installed || loading) return;
+    setLoading(true);
+    try {
+      await onUninstall(agent.id);
+      setInstalled(false);
+    } catch (err) {
+      console.error("Uninstall failed", err);
     } finally {
       setLoading(false);
     }
@@ -283,6 +298,15 @@ export const AgentCard = ({
 
               <div className="mt-3">{renderTrialButton()}</div>
               <div className="mt-2">{renderActionButton()}</div>
+              {installed ? (
+                <button
+                  onClick={handleUninstall}
+                  disabled={loading}
+                  className="mt-2 flex w-full items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] px-4 py-2 text-[12px] font-semibold text-white/48 transition hover:border-red-400/25 hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Remove from account
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
