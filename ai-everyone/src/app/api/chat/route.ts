@@ -5,13 +5,12 @@
  *
  * - Verifies the Firebase ID token from the Authorization header
  * - Streams normal Ollama text responses incrementally
- * - Buffers agent-intent responses and converts them into agent tasks
+ * - Routes agent work through the deterministic LangGraph orchestrator
  * - Preserves the existing persona + memory pipeline
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI, type Part } from "@google/genai";
-import { createAgentTask, executeAgentTask } from "@/lib/firestore-tasks.server";
 import { adminDb } from "@/lib/firebase-admin";
 import { isTriggerMessage, isPersonalContextQuery } from "@/lib/memory/trigger-detector";
 import { extractMemories } from "@/lib/memory/extractor";
@@ -20,14 +19,6 @@ import { rebuildPersona, formatPersonaForPrompt } from "@/lib/memory/persona-bui
 import { getPersona } from "@/lib/memory/memory-repository.server";
 import { getTopKMemories, formatMemoriesForPrompt } from "@/lib/memory/retrieval";
 import { getServerOllamaBaseUrls } from "@/lib/memory/server-ollama-base-urls";
-import {
-    AGENT_BUNDLES,
-    AGENT_CATALOG,
-    getAgentCatalogEntry,
-    getInstallHintForAgent,
-    getInstalledAgentRegistry,
-} from "@/lib/agents/catalog";
-import { getMarketplaceAgentById } from "@/lib/agents/marketplace";
 import {
     getAccessibleAgentIds,
     getProviderConnection,
@@ -50,12 +41,8 @@ import {
 import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 import { commitUsageSlot, reserveUsageSlot, UsageLimitError } from "@/lib/usage-limit";
 import {
-    getGoogleIntentLimitViolation as getOrchestratedGoogleIntentLimitViolation,
-    normalizeGoogleExecutionPayload as normalizeOrchestratedGoogleExecutionPayload,
-    parseModelAgentIntent,
-    resolveDeterministicAgentIntent,
-    resolveEmailFollowUp,
-} from "@/lib/agents/orchestrator";
+    runLangGraphOrchestration,
+} from "@/lib/orchestrator/langgraph";
 
 interface ChatRequestMessage {
     role: string;
@@ -81,32 +68,6 @@ interface ChatFailedAttachment {
     reason: string;
 }
 
-interface AgentIntent {
-    agent_required: string;
-    action: string;
-    parameters: Record<string, unknown>;
-    reasoning?: string;
-}
-
-interface AgentInstallSuggestionMeta {
-    id: string;
-    name: string;
-    description: string;
-    iconUrl: string;
-    category: string;
-    installCount: number;
-    rating: number;
-    requiresConnection: boolean;
-    bundleId?: string;
-    kind: "agent" | "bundle";
-}
-
-interface RecentAgentContext {
-    agent_outputs: Record<string, unknown>;
-    recent_tasks: Array<Record<string, unknown>>;
-    pending_task?: Record<string, unknown>;
-}
-
 const GEMINI_MODEL_ALIASES: Record<string, string> = {
     "gemini-3-pro": process.env.GEMINI_MODEL_PRO || "gemini-3-pro",
     "gemini-3-flash": process.env.GEMINI_MODEL_FLASH || "gemini-3-flash",
@@ -119,169 +80,6 @@ const GEMINI_MODEL_ALIASES: Record<string, string> = {
     "gemini-3.1-flash-lite-preview":
         process.env.GEMINI_MODEL_FLASH_LITE || "gemini-3.1-flash-lite-preview",
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-    return isRecord(value) ? value : {};
-}
-
-function asString(value: unknown): string {
-    return typeof value === "string" ? value.trim() : "";
-}
-
-function getTimestampMillis(value: unknown): number {
-    if (value && typeof value === "object" && "toMillis" in value) {
-        const toMillis = (value as { toMillis?: () => number }).toMillis;
-        if (typeof toMillis === "function") {
-            const millis = Number(toMillis.call(value));
-            return Number.isFinite(millis) ? millis : 0;
-        }
-    }
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string") {
-        const parsed = Date.parse(value);
-        return Number.isFinite(parsed) ? parsed : 0;
-    }
-    return 0;
-}
-
-function compactAgentOutputForPrompt(output: Record<string, unknown>): Record<string, unknown> {
-    const result = asRecord(output.result);
-    const emails = Array.isArray(result.emails) ? result.emails.slice(0, 8) : undefined;
-    const files = Array.isArray(result.files) ? result.files.slice(0, 8) : undefined;
-
-    return {
-        type: asString(output.type) || undefined,
-        action: asString(output.action) || undefined,
-        status: asString(output.status) || undefined,
-        summary: asString(output.summary) || asString(output.error) || undefined,
-        ...(emails ? { emails } : {}),
-        ...(files ? { files } : {}),
-    };
-}
-
-function extractPendingTaskFromOutput(output: Record<string, unknown>): Record<string, unknown> | null {
-    const directResult = asRecord(output.result);
-    if (isRecord(directResult.pending_task)) {
-        return directResult.pending_task;
-    }
-
-    const originalResult = asRecord(output.originalResult);
-    const originalNestedResult = asRecord(originalResult.result);
-    if (isRecord(originalNestedResult.pending_task)) {
-        return originalNestedResult.pending_task;
-    }
-
-    return null;
-}
-
-async function loadRecentAgentContext(
-    uid: string,
-    chatId: string | undefined
-): Promise<RecentAgentContext | null> {
-    if (!chatId) return null;
-
-    try {
-        const snapshot = await adminDb
-            .collection("agentTasks")
-            .where("chatId", "==", chatId)
-            .limit(20)
-            .get();
-
-        const tasks = snapshot.docs
-            .map((doc) => asRecord(doc.data()))
-            .filter((task) => task.userId === uid)
-            .sort((a, b) => getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt))
-            .slice(0, 8);
-
-        if (tasks.length === 0) return null;
-
-        const context: RecentAgentContext = {
-            agent_outputs: {},
-            recent_tasks: [],
-        };
-
-        for (const task of tasks) {
-            const agentId = asString(task.agentId);
-            const status = asString(task.status);
-            const agentInput = asRecord(task.agentInput);
-            const output = asRecord(task.agentOutput);
-            if (!agentId || Object.keys(output).length === 0) continue;
-
-            context.recent_tasks.push({
-                agentId,
-                status,
-                action: asString(agentInput.action) || asString(output.action) || undefined,
-                output: compactAgentOutputForPrompt(output),
-            });
-
-            const pendingTask = extractPendingTaskFromOutput(output);
-            if (!context.pending_task && pendingTask) {
-                context.pending_task = pendingTask;
-            }
-
-            if (agentId !== "google-agent") continue;
-
-            const outputType = asString(output.type);
-            const result = asRecord(output.result);
-            const agentType =
-                asString(output.agent_type) ||
-                asString(agentInput.agent_type) ||
-                (outputType === "google_gmail"
-                    ? "gmail"
-                    : outputType === "google_drive"
-                        ? "drive"
-                        : "");
-
-            if (agentType === "gmail") {
-                const emails = Array.isArray(result.emails) ? result.emails.slice(0, 20) : [];
-                context.agent_outputs.gmail = {
-                    summary: asString(output.summary),
-                    action: asString(output.action) || asString(agentInput.action),
-                    emails,
-                    last_result: result,
-                };
-            }
-
-            if (agentType === "drive") {
-                const files = Array.isArray(result.files) ? result.files.slice(0, 20) : [];
-                context.agent_outputs.drive = {
-                    summary: asString(output.summary),
-                    action: asString(output.action) || asString(agentInput.action),
-                    files,
-                    last_result: result,
-                };
-            }
-        }
-
-        if (
-            Object.keys(context.agent_outputs).length === 0 &&
-            context.recent_tasks.length === 0 &&
-            !context.pending_task
-        ) {
-            return null;
-        }
-
-        return context;
-    } catch (error) {
-        console.error("[AgentContext] failed to load recent agent context:", error);
-        return null;
-    }
-}
-
-function formatRecentAgentContextForPrompt(context: RecentAgentContext | null): string {
-    if (!context) return "";
-
-    return [
-        "## Recent Agent Context",
-        "Use this only to resolve follow-up references such as \"this email\", \"that file\", \"same person\", or missing details from the immediately previous agent task.",
-        "Do not invent data that is not present in this context.",
-        JSON.stringify(context, null, 2),
-    ].join("\n");
-}
 
 function normalizeName(value: string): string {
     return value.toLowerCase().replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
@@ -380,26 +178,6 @@ function buildAttachmentFailureMessage(failedAttachments: ChatFailedAttachment[]
         "I could not process the following file(s), so I continued with the rest:",
         ...lines,
     ].join("\n");
-}
-
-async function buildUnavailableAgentSuggestionMeta(
-    agentId: string
-): Promise<AgentInstallSuggestionMeta | null> {
-    const marketplaceItem = await getMarketplaceAgentById(agentId);
-    if (!marketplaceItem) return null;
-
-    return {
-        id: marketplaceItem.id,
-        name: marketplaceItem.name,
-        description: marketplaceItem.description,
-        iconUrl: marketplaceItem.iconUrl,
-        category: marketplaceItem.category,
-        installCount: marketplaceItem.installCount,
-        rating: marketplaceItem.rating,
-        requiresConnection: marketplaceItem.requiresConnection,
-        bundleId: marketplaceItem.bundleId,
-        kind: marketplaceItem.kind,
-    };
 }
 
 function toFriendlyAttachmentReason(rawReason: string): string {
@@ -586,330 +364,6 @@ function validateRequestAttachmentPolicy(attachments: ChatAttachment[]): void {
     }
 
     validateTotalAttachmentSize(totalBytes);
-}
-
-function buildOrchestrationPrompt(
-    installedAgentIds: string[],
-    accessibleAgentIds: string[]
-): string {
-    const installedRegistry = getInstalledAgentRegistry(accessibleAgentIds);
-    const installedSet = new Set(installedAgentIds);
-    const accessibleSet = new Set(accessibleAgentIds);
-
-    const availableAgentDescriptions = installedRegistry
-        .map(
-            (agent) =>
-                `- **${agent.name}** (id: "${agent.id}")\n` +
-                `  Description: ${agent.description}\n` +
-                `  Actions: ${agent.actions.join(", ")}\n` +
-                `  Example prompts: ${agent.examplePrompts.map((prompt) => `"${prompt}"`).join(", ")}`
-        )
-        .join("\n\n");
-
-    const unavailableDescriptions = AGENT_CATALOG
-        .filter((agent) => !accessibleSet.has(agent.id))
-        .map((agent) => {
-            const reason = installedSet.has(agent.id)
-                ? `Installed but not connected. ${getInstallHintForAgent(agent.id)}`
-                : getInstallHintForAgent(agent.id);
-            return `- ${agent.name} (${agent.id}): ${reason}`;
-        })
-        .join("\n");
-
-    const bundleDescriptions = AGENT_BUNDLES.map((bundle) => {
-        const installedChildren = bundle.childAgentIds.filter((id) => installedSet.has(id)).length;
-        const accessibleChildren = bundle.childAgentIds.filter((id) =>
-            accessibleSet.has(id)
-        ).length;
-        const isFullyConnected = accessibleChildren === bundle.childAgentIds.length;
-        const status = isFullyConnected
-            ? "Connected"
-            : installedChildren > 0
-                ? "Partially installed/connected"
-                : "Not installed";
-        return `- ${bundle.name} (${bundle.id}): ${status}. Includes: ${bundle.childAgentIds.join(
-            ", "
-        )}`;
-    }).join("\n");
-
-    const totalUnits = AGENT_CATALOG.length + AGENT_BUNDLES.length;
-    const availableUnits = installedRegistry.length + AGENT_BUNDLES.filter((bundle) =>
-        bundle.childAgentIds.every((id) => accessibleSet.has(id))
-    ).length;
-    const unavailableUnits = totalUnits - availableUnits;
-
-    return `You are the orchestration AI of Pian, an AI assistant platform.
-
-You can either answer questions directly OR delegate tasks to specialized agents.
-
-## Registry Summary
-- Total marketplace units (agents + bundles): ${totalUnits}
-- Currently available units: ${availableUnits}
-- Currently unavailable units: ${unavailableUnits}
-
-## Currently Available Agents
-${availableAgentDescriptions || "No agents are currently available for this user."}
-
-## Unavailable Agents
-${unavailableDescriptions || "All registered agents are available right now."}
-
-## Marketplace Bundles (Install Packs)
-${bundleDescriptions || "No bundles are registered."}
-
-## Core Rules
-1. If a request should be delegated to an AVAILABLE agent, respond with ONLY a valid JSON object wrapped inside <AGENT_INTENT> tags. Do not include any explanation before or after the tags.
-2. If a request needs an UNAVAILABLE agent, still emit exactly one <AGENT_INTENT> with the best matching single agent so the app can show an install/connect card inline.
-3. NEVER execute actions yourself. Only delegate using <AGENT_INTENT> for available agents.
-4. If you are unsure which single agent is needed, ask a concise clarification question instead of emitting <AGENT_INTENT>.
-5. The JSON inside <AGENT_INTENT> must be valid and parseable: no comments, no trailing commas.
-6. For potential medical emergencies (chest pain, breathing issues, severe injury), prefer the emergency-response-agent first.
-7. Never return multiple agent IDs in one response. Choose only one agent at a time.
-8. Do not block on optional details. If the user has given enough information to attempt the task, delegate to the agent and let the agent return needs_input if a truly required field is missing.
-9. When the previous agent task context says status=needs_input and the latest user supplies the requested detail(s), merge the latest message with the earlier user request and emit the same agent intent again immediately.
-10. If the user asks what detail is missing, answer from the previous agent task context. Never ask for or invent generic placeholder field names.
-
-## Agent Formatting Rules
-For the teams-agent:
-- make_call: extract "contact"
-- send_message: extract "contact" and "message"
-- schedule_meeting: extract "title", "attendees", "date", "time", "duration", "description", and "notification_preference"
-- If notification preference is missing for a meeting request, do NOT emit <AGENT_INTENT>. Ask: "Would you like to be notified via WhatsApp, SMS, Call, All, or None?"
-
-For the todo-agent:
-- add_task: extract "title" and optional "datetime" in YYYY-MM-DD HH:MM
-- add_to_plan: extract "title", optional "date", optional "time", optional "description", and optional "priority"
-- list_tasks: optional "status"
-- list_tasks_by_date: required "datetime" in YYYY-MM-DD
-- get_daily_plan: extract "date" in YYYY-MM-DD when the user asks for a day's plan
-- get_weekly_overview: extract optional "startDate" in YYYY-MM-DD
-- delete_task and mark_done: use "task_id" if known, otherwise "title"
-- Use the todo-agent for reminders, daily planning, and "remind me" requests unless the user explicitly asks for Google Tasks.
-
-For the google-agent:
-- Return this exact JSON shape:
-  {
-    "agent_required": "google-agent",
-    "action": "<brief action label>",
-    "parameters": {
-      "agent_type": "<calendar|gmail|meet|drive|tasks|web_search>",
-      "parameters": "<plain text details>"
-    },
-    "reasoning": "<brief explanation>"
-  }
-- For Gmail or Drive listing requests, NEVER request or return more than 20 items at once.
-- If the user asks for a numeric count (example: "last 10 emails/files"), include "limit" as a STRING (example: "10"), not a number.
-- For Gmail listing, prefer action "list_emails". For Drive listing, prefer action "list_files".
-- Use "gmail" when the request is about Gmail inbox, reading emails, searching emails, or summarizing emails.
-- Use "drive" when the request is about files, Google Docs, Drive documents, reading docs, or summarizing docs.
-- Use "calendar" for calendar events, scheduling, and agendas.
-- Use "meet" for Google Meet calls or links.
-- Use "tasks" for Google Tasks or reminders.
-- Use "web_search" for internet lookups.
-
-For the maps-agent:
-- get_directions: extract "origin", "destination", and optional "mode"
-- search_places: extract "query", optional "location", and optional "radius"
-- geocode: extract either "address" or "latlng"
-- distance_matrix: extract "origins", "destinations", and optional "mode"
-
-For the emergency-response-agent:
-- assess_emergency: extract "description" from symptoms or emergency statement
-- activate_emergency: extract "lat", "lng", optional "description", optional "radius"
-- Use this agent for medical emergency triage requests (e.g., chest pain, breathing trouble, severe injury, urgent SOS).
-
-For the notion-agent:
-- search_pages: extract "query" and optional "limit"
-- get_page: extract "pageId" when known, otherwise use "query"
-- create_page: extract "title", "content", and optional "parentPageId"
-- append_to_page: extract "pageId" when known, otherwise use "query" plus "content"
-
-For the canva-agent:
-- list_designs: extract optional "limit" (number of designs to show)
-- create_design: extract "title" and optional "type" (e.g. "presentation", "social_media")
-
-For the day-planner-agent:
-- get_daily_plan: extract "date" in YYYY-MM-DD (default: today)
-- add_to_plan: extract "title", optional "date" in YYYY-MM-DD, optional "time" (HH:MM), optional "description", optional "priority" (high/medium/low), optional "duration" in minutes
-- get_weekly_overview: extract optional "startDate" in YYYY-MM-DD (default: this Monday)
-- NOTE: day-planner-agent is different from todo-agent — use day-planner-agent when user asks to "plan my day" or "add to my daily planner"
-
-For the discord-agent:
-- get_user_info: no parameters needed
-- list_guilds: no parameters needed
-
-For the dropbox-agent:
-- search_files: extract "query" (search term) and optional "limit"
-- create_folder: extract "path" (e.g. "/NewFolder")
-- move_file: extract "from_path" and "to_path"
-
-For the freshdesk-agent:
-- create_ticket: extract "subject", "description", optional "status" (2=Open default), optional "priority" (1=Low default)
-- check_ticket_status: extract "ticket_id" (number)
-- search_solutions: extract "keyword"
-- list_tickets: extract optional "limit" (default 5)
-
-For the github-agent:
-- list_repositories: extract optional "limit" and optional "sort" (updated/created/pushed)
-- search_repositories: extract "query"
-- get_issue: extract "owner", "repo", and "issueNumber"
-- create_issue: extract "owner", "repo", "title", and optional "body"
-- If owner or repo are missing and user hasn't specified, ask: "Which repository? (format: owner/repo)"
-
-For the gitlab-agent:
-- list_projects: extract optional "limit" and optional "search" filter
-- get_issue: extract "projectId" (e.g. "mygroup/myproject") and "issueIid" (internal issue number)
-- create_issue: extract "projectId", "title", and optional "description"
-
-For the greenhouse-agent:
-- list_candidates: extract optional "job_id" and optional "candidate_status" (active/rejected/hired)
-- get_candidate_resume: extract "candidate_id"
-- schedule_interview: extract "candidate_id", "interviewer_email", "start_time" (ISO 8601), "end_time" (ISO 8601)
-
-For the jira-agent:
-- create_issue: extract "project_key", "summary", "description", optional "issue_type" (Bug/Task/Story)
-- get_issue_status: extract "issue_key" (e.g. "PROJ-123")
-- search_issues: extract "jql" (Jira Query Language string)
-- list_issues: extract optional "limit" (default 5)
-
-For the linkedin-agent:
-- schedule_post: extract "content" (the post text) and optional "scheduled_time" (ISO datetime)
-- analyze_engagement: no parameters needed
-- If user asks to "post on LinkedIn", use schedule_post without scheduled_time for an immediate post
-
-For the zoom-agent:
-- create_meeting: extract "topic", optional "start_time" (UTC ISO format), optional "duration" (minutes)
-- list_upcoming_meetings: extract optional "type" (scheduled/upcoming, default upcoming)
-- get_meeting_summary: extract "meetingId"
-
-For the travel-halper-agent:
-- plan_trip: extract "prompt" with the complete travel request, including source, destination, dates, budget, and hotel/flight preferences when provided.
-- send_plan_email: extract optional "prompt", optional "threadId", required "receiverEmail", optional "senderEmail", and optional "subject".
-- Use travel-halper-agent for trip planning, flight and hotel discovery, itinerary drafting, and emailing finalized travel plans.
-- If the user asks to email the travel plan but does not provide recipient email, ask a concise clarification for the receiver email.
-- If the user is answering Travel Halper follow-up questions, build "prompt" from the full conversation so prior destination/date/budget details are not lost.
-
-For the strata-agent:
-- open_workspace: extract optional "symbol", optional "month", optional "months"
-- dashboard: extract optional "symbol", optional "month"
-- trends: extract optional "symbol", optional "months"
-- categories: extract optional "symbol", optional "month"
-- ai_insights: extract optional "symbol"
-- ask: extract "question" and optional "symbol"
-- upload_report: extract optional "reportName" and pass through uploaded attachments only if explicitly present in this request
-- Use strata-agent for company financial analytics, stock trend/snapshot interpretation, profitability breakdowns, and decision insights.
-- If the user asks for "any company"/"any big company" and no symbol is given, you may select a default large-cap symbol yourself (AAPL, MSFT, GOOGL, AMZN, TSLA) and include it in parameters.symbol.
-- If the user explicitly asks for India/Indian companies and no tradable ticker is provided, ask a short clarification for the ticker format (for example NSE symbol style), instead of guessing unsupported symbols.
-
-For the dia-helper-agent:
-- generate_diagram: extract "prompt" (the natural-language description of the flow), optional "projectContext" (longer brief), optional "diagramType" (flowchart | sequenceDiagram | stateDiagram-v2 | gantt), optional "fileKey" (external reference such as a Figma file key).
-- update_diagram: extract "editInstruction" (what to change, e.g. "add a database layer"), optional "projectContext" and "diagramType", and include "currentMermaid" when the user explicitly refers to updating the existing diagram inside the Dia Helper card.
-- Prefer dia-helper-agent when the user asks for a Mermaid diagram, system/data flow, architecture map, or a "prompt to paste into Figma AI" instead of using generic chat.
-
-For the shopgenie-agent:
-- recommend_product (or shop_search/run_shopgenie): extract "query" (shopping intent), optional "budget", optional "recipientEmail", and optional "sendEmail" (true when user asks to email recommendation).
-- Use shopgenie-agent for product comparison, buying recommendations, best-product selection, and shopping decision help.
-- If user explicitly asks to email the recommendation, set "sendEmail": true and pass recipientEmail if provided.
-
-For the startup-fundraising-agent:
-- search_investors: extract "startup_name", optional "company_url", optional "industry", optional "stage", optional "geography", and optional "raise_amount".
-- plan_outreach: extract "startup_name", optional "company_url", optional "preferred_channel", optional "investor_name", optional "stage", and optional "notes".
-- track_conversation: extract "startup_name", "investor_name", "update", and optional "next_step" plus optional "status".
-- term_sheet_guidance: extract "startup_name", optional "offer_terms", and optional "question".
-- generate_fundraising_plan: extract "startup_name", optional "company_url", optional "industry", optional "stage", optional "geography", and optional "raise_amount".
-- Use startup-fundraising-agent for investor discovery, fundraising planning, outreach drafting, and investor follow-up workflows.
-- If the user specifically wants LinkedIn-based outreach, still use startup-fundraising-agent first; it may return an action-required step that depends on linkedin-agent.
-
-For the smart-gtm-agent:
-- research_company: extract "company_url", optional "company_name", and optional "focus".
-- go_to_market: extract "company_url", optional "company_name", optional "goal", and optional "market_context".
-- channel: extract "company_url", optional "company_name", optional "region", and optional "segment".
-- Use smart-gtm-agent for company research, GTM playbooks, channel recommendations, and market-intelligence requests grounded in a company URL.
-- If no company URL or company name is provided for research/GTM work, ask a short clarification instead of guessing.
-
-For the seo-agent:
-- generate_brief: extract "topic" and optional "target_keyword".
-- audit: extract "url" when available, otherwise extract "title" and "content".
-- optimize_article: extract optional "url", optional "title", optional "content", and optional "topic".
-- Use seo-agent for keyword research, SEO content briefs, article audits, content optimization, and SERP-driven writing guidance.
-- If the user provides only a topic or keyword and no real article body or URL, use generate_brief and do NOT use audit.
-- Use audit only when the user provides a real URL or actual article text to review.
-- Use optimize_article only when the user wants to improve existing content and provides a real URL or actual draft text.
-- Placeholder text like "[paste draft]" or "[paste URL]" does not count as real article input.
-- If the user asks for SEO help but provides neither a topic, a URL, nor article content, ask a concise clarification.
-
-For the dashboard-designer-agent:
-- design_dashboard: extract "prompt", optional "dashboard_title", optional "manual_data", and optional "context".
-- refine_dashboard: extract "prompt", optional "existingDashboard", optional "manual_data", and optional "context".
-- update_dashboard: extract "prompt", optional "existingDashboard", optional "manual_data", and optional "context".
-- Use dashboard-designer-agent for KPI board design, analytics layouts, dashboard summaries, and threshold/alert suggestions.
-
-For the ats-agent:
-- analyze_candidate: extract "candidateName", optional "candidateEmail", "resumeText", optional "jobTitle", optional "jobDescription".
-- generate_interview_questions: extract optional "candidateId", optional "candidateName", optional "resumeText", optional "jobTitle", optional "jobDescription", optional "interviewStage".
-- save_interview_transcript: extract optional "candidateId", "transcript", optional "interviewStage", optional "jobTitle", optional "jobDescription".
-- compare_candidates: extract "candidates" (array; each item may contain candidateId, name, summary, skills, experienceYears).
-- list_candidates: no parameters needed.
-- Use ats-agent for recruiting workflows like ATS fit scoring, interview preparation, transcript feedback, and candidate ranking.
-- If the user asks ATS analysis without resume text or candidate context, ask a concise clarification.
-
-For the lms-agent:
-- learner_progress_dashboard: extract optional "department", optional "dateRange", optional "enrollmentType", and optional "courseType".
-- courses_catalog: extract optional "department", optional "dateRange", and optional "courseType".
-- learners_directory: extract optional "department" and optional "dateRange".
-- learner_detail: extract optional "learnerId" and optional "learnerName".
-- assignments_integrations: extract optional "dateRange".
-- list_snapshots: no parameters needed.
-- Use lms-agent for LMS reporting, learner progress boards, course catalog analytics, learner-level KPIs, and assignment/integration health summaries.
-- If user requests a specific learner report without learner name or learner ID, ask a concise clarification.
-
-For the building-construction-agent:
-- generate_plan: extract "prompt" (or "message"), optional "location" object, optional "budget_inr", optional "floors", optional "rooms", optional "design_style", optional "special_requirements", and optional "vendor_type".
-- list_plans: no parameters needed.
-- Use building-construction-agent for house planning, construction costing, plot/layout guidance, and nearby contractor/vendor discovery.
-- If the user requests construction planning without any requirement details, ask for a concise clarification (plot size/location, floor count, budget, or style).
-
-For the devika-engineer-agent:
-- run_devika_agent: extract "prompt" with the full software engineering request.
-- plan_project: extract "prompt", optional "projectName", optional "constraints", optional "files".
-- research_plan: extract "prompt", optional "context", optional "files".
-- implement_feature: extract "featureRequest" (or "prompt"), optional "projectName", optional "files", optional "constraints", optional "codebaseSummary".
-- fix_bug: extract "errorLog" or "stackTrace", optional "codeSnippet", optional "projectName".
-- run_project: extract "prompt", optional "projectName", optional "context.command".
-- deploy_project: extract "prompt", optional "projectName", optional "constraints".
-- generate_report: extract "prompt", optional "projectName", optional "files".
-- answer_question: extract "question" (or "prompt"), optional "codebaseSummary".
-- repo_intake: extract required "repositoryUrl", optional "branch".
-- browser_strategy: extract "prompt" describing the interaction objective.
-- list_snapshots: no additional parameters needed.
-- agent_status: no additional parameters needed.
-- token_estimate: extract "prompt" text to estimate.
-- Use devika-engineer-agent for software-engineering planning, bug triage, feature implementation strategy, repo onboarding, and deployment/report workflows.
-- If user asks for repo analysis but no repository URL is provided, ask a concise clarification for the repository URL.
-
-For the data-analyst-agent:
-- monitor: extract required "data" (numeric array), optional "label", optional "forceRefresh".
-- autonomous: extract required "goal" (or "prompt"), optional "data", optional "label", optional "forceRefresh".
-- list_capabilities: no additional parameters needed.
-- Use data-analyst-agent for anomaly detection, data-quality checks, numeric trend sanity checks, and goal-driven analysis workflows.
-- If the user asks for anomaly detection without numeric data, ask a concise clarification requesting a numeric series.
-
-If an agent is needed, output ONLY:
-<AGENT_INTENT>
-{
-  "agent_required": "<agent-id>",
-  "action": "<action-name>",
-  "parameters": {
-    "key": "value"
-  },
-  "reasoning": "<brief explanation>"
-}
-</AGENT_INTENT>`;
-}
-
-function isStrataUploadIntent(intent: AgentIntent): boolean {
-    if (intent.agent_required !== "strata-agent") return false;
-    const action = intent.action.toLowerCase().trim();
-    return action === "upload_report" || action === "analyze_report";
 }
 
 function resolveGeminiModel(model: string): string {
@@ -1571,11 +1025,10 @@ export async function POST(req: NextRequest) {
             });
         }
 
-        const [installedAgentIds, accessibleAgentIds, personaContext, recentAgentContext] = await Promise.all([
+        const [installedAgentIds, accessibleAgentIds, personaContext] = await Promise.all([
             getInstalledAgentIds(uid),
             getAccessibleAgentIds(uid),
             buildPersonaContext(uid, lastUserMessage),
-            loadRecentAgentContext(uid, chatId),
         ]);
 
         if (lastUserMessage) {
@@ -1585,12 +1038,85 @@ export async function POST(req: NextRequest) {
         const shouldForceDirectAttachmentResponse =
             usingGemini &&
             (effectiveAttachments.length > 0 || normalizedFailedAttachments.length > 0);
-        const recentAgentPrompt = formatRecentAgentContextForPrompt(recentAgentContext);
-        const deterministicRoute = shouldForceDirectAttachmentResponse
+        const orchestrationResult = shouldForceDirectAttachmentResponse || !chatId
             ? null
-            : resolveEmailFollowUp(lastUserMessage, recentAgentContext)
-              ?? resolveDeterministicAgentIntent(lastUserMessage);
-        if (usingGemini && !geminiApiKey && !deterministicRoute) {
+            : await runLangGraphOrchestration({
+                userId: uid,
+                chatId,
+                userInput: lastUserMessage,
+                model,
+                llmProvider: usingGemini ? "gemini" : "ollama",
+                installedAgentIds,
+                accessibleAgentIds,
+                recentMessages: messages.map((message) => ({
+                    role: message.role,
+                    content: message.content,
+                    taskId: message.taskId,
+                    agentId: message.agentId,
+                })),
+                attachments: effectiveAttachments.map((attachment) => ({
+                    name: attachment.name,
+                    mimeType: attachment.mimeType,
+                    size: attachment.size,
+                    source: attachment.source,
+                    driveFileId: attachment.driveFileId,
+                    storagePath: attachment.storagePath,
+                })),
+            });
+
+        if (orchestrationResult?.handled) {
+            await commitUsageSlot(uid);
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream({
+                start(controller) {
+                    const sendEvent = (event: string, data: Record<string, unknown>) => {
+                        controller.enqueue(
+                            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+                        );
+                    };
+
+                    if (orchestrationResult.content) {
+                        sendEvent("text", { content: orchestrationResult.content });
+                    }
+
+                    if (
+                        orchestrationResult.type === "agent_task" &&
+                        orchestrationResult.taskId &&
+                        orchestrationResult.agentId
+                    ) {
+                        const payload = {
+                            type: "agent_task",
+                            taskId: orchestrationResult.taskId,
+                            agentId: orchestrationResult.agentId,
+                            status: orchestrationResult.status,
+                            ...(orchestrationResult.result ? { result: orchestrationResult.result } : {}),
+                            content: orchestrationResult.content,
+                            ...(orchestrationResult.meta ? { meta: orchestrationResult.meta } : {}),
+                        };
+                        sendEvent("agent_task", payload);
+                        sendEvent("done", payload);
+                    } else {
+                        sendEvent("done", {
+                            type: "chat",
+                            content: orchestrationResult.content,
+                            ...(orchestrationResult.meta ? { meta: orchestrationResult.meta } : {}),
+                        });
+                    }
+                    controller.close();
+                },
+            });
+
+            return new Response(stream, {
+                headers: {
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache, no-transform",
+                    Connection: "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            });
+        }
+
+        if (usingGemini && !geminiApiKey) {
             return NextResponse.json(
                 { error: "GEMINI_API_KEY is not configured on the server." },
                 { status: 500 }
@@ -1599,8 +1125,7 @@ export async function POST(req: NextRequest) {
         const systemPrompt = shouldForceDirectAttachmentResponse
             ? buildDirectAttachmentPrompt(personaContext)
             : [
-                buildOrchestrationPrompt(installedAgentIds, accessibleAgentIds),
-                recentAgentPrompt,
+                "You are Pian assistant. Answer directly in natural language. Agent orchestration is handled by a deterministic LangGraph runtime before this model call, so do not emit tool-routing JSON or <AGENT_INTENT> tags.",
                 personaContext,
             ]
                 .filter(Boolean)
@@ -1651,7 +1176,7 @@ export async function POST(req: NextRequest) {
                     try {
                         let streamedText = "";
                         let heldBuffer = "";
-                        let streamMode: "undecided" | "text" | "intent" = "undecided";
+                        let streamMode: "undecided" | "text" = "undecided";
 
                         const handleDelta = (delta: string) => {
                             if (streamClosed) {
@@ -1664,18 +1189,6 @@ export async function POST(req: NextRequest) {
                             if (streamMode === "undecided") {
                                 const trimmed = heldBuffer.trimStart();
                                 if (!trimmed) return;
-
-                                if (
-                                    trimmed.startsWith("<AGENT_INTENT>") ||
-                                    "<AGENT_INTENT>".startsWith(trimmed)
-                                ) {
-                                    streamMode = "intent";
-                                    return;
-                                }
-
-                                if (trimmed.startsWith("<") && heldBuffer.length < 24) {
-                                    return;
-                                }
 
                                 streamMode = "text";
                                 streamedText += heldBuffer;
@@ -1691,185 +1204,6 @@ export async function POST(req: NextRequest) {
                         };
 
                         let attachmentFailuresForResponse = [...normalizedFailedAttachments];
-
-                        const dispatchAgentIntent = async (
-                            rawIntent: AgentIntent,
-                            source: "deterministic" | "llm"
-                        ): Promise<boolean | undefined> => {
-                            if (!chatId) return false;
-
-                            const effectiveIntent = normalizeOrchestratedGoogleExecutionPayload(
-                                rawIntent,
-                                lastUserMessage
-                            );
-                            const googleLimitMessage = getOrchestratedGoogleIntentLimitViolation(
-                                effectiveIntent,
-                                lastUserMessage
-                            );
-                            if (googleLimitMessage) {
-                                if (!streamedText.trim()) {
-                                    sendEvent("text", { content: googleLimitMessage });
-                                }
-                                sendEvent("done", { type: "chat", content: googleLimitMessage });
-                                safeClose();
-                                return true;
-                            }
-
-                            if (!installedAgentIds.includes(effectiveIntent.agent_required)) {
-                                const installMessage = getInstallHintForAgent(effectiveIntent.agent_required);
-                                const suggestion = await buildUnavailableAgentSuggestionMeta(
-                                    effectiveIntent.agent_required
-                                );
-                                if (!streamedText.trim()) {
-                                    sendEvent("text", { content: installMessage });
-                                }
-                                sendEvent("done", {
-                                    type: "chat",
-                                    content: installMessage,
-                                    ...(suggestion
-                                        ? {
-                                            meta: {
-                                                kind: "agent_install_suggestion",
-                                                suggestion,
-                                            },
-                                        }
-                                        : {}),
-                                });
-                                safeClose();
-                                return true;
-                            }
-
-                            if (!accessibleAgentIds.includes(effectiveIntent.agent_required)) {
-                                const connectMessage = getInstallHintForAgent(effectiveIntent.agent_required);
-                                const suggestion = await buildUnavailableAgentSuggestionMeta(
-                                    effectiveIntent.agent_required
-                                );
-                                if (!streamedText.trim()) {
-                                    sendEvent("text", { content: connectMessage });
-                                }
-                                sendEvent("done", {
-                                    type: "chat",
-                                    content: connectMessage,
-                                    ...(suggestion
-                                        ? {
-                                            meta: {
-                                                kind: "agent_install_suggestion",
-                                                suggestion,
-                                            },
-                                        }
-                                        : {}),
-                                });
-                                safeClose();
-                                return true;
-                            }
-
-                            const agentInput: Record<string, unknown> = {
-                                action: effectiveIntent.action,
-                                ...effectiveIntent.parameters,
-                                llm_provider: usingGemini ? "gemini" : "ollama",
-                                model,
-                            };
-
-                            if (recentAgentContext) {
-                                agentInput.conversation_context = recentAgentContext;
-                            }
-
-                            if (
-                                isStrataUploadIntent(effectiveIntent) &&
-                                !Array.isArray(agentInput.attachments) &&
-                                effectiveAttachments.length > 0
-                            ) {
-                                agentInput.attachments = effectiveAttachments.map((attachment) => ({
-                                    name: attachment.name,
-                                    mimeType: attachment.mimeType,
-                                    size: attachment.size,
-                                    source: attachment.source,
-                                    driveFileId: attachment.driveFileId,
-                                    storagePath: attachment.storagePath,
-                                }));
-                            }
-
-                            const parentLLMRequest: Record<string, unknown> = {
-                                ...(effectiveIntent as unknown as Record<string, unknown>),
-                                routing_source: source,
-                            };
-
-                            const task = await createAgentTask({
-                                userId: uid,
-                                chatId,
-                                agentId: effectiveIntent.agent_required,
-                                parentLLMRequest,
-                                agentInput,
-                            });
-
-                            const agentName =
-                                getAgentCatalogEntry(effectiveIntent.agent_required)?.name ||
-                                effectiveIntent.agent_required;
-                            const content =
-                                `Delegating to ${agentName}.\n\n` +
-                                `Action: ${effectiveIntent.action}` +
-                                (effectiveIntent.reasoning
-                                    ? `\n\nReasoning: ${effectiveIntent.reasoning}`
-                                    : "");
-
-                            if (!streamedText.trim()) {
-                                streamedText = content;
-                                sendEvent("text", { content });
-                            }
-
-                            try {
-                                // In serverless runtimes, fire-and-forget can be terminated before execution.
-                                // Awaiting guarantees the task is actually dispatched to the EC2 agent runtime.
-                                await executeAgentTask(task);
-                            } catch (err) {
-                                console.error("[executeAgentTask] execution error:", err);
-                            }
-
-                            const executedTaskSnap = await adminDb
-                                .collection("agentTasks")
-                                .doc(task.taskId)
-                                .get();
-                            const executedTaskData = executedTaskSnap.exists
-                                ? executedTaskSnap.data()
-                                : null;
-                            const finalTaskStatus =
-                                typeof executedTaskData?.status === "string"
-                                    ? executedTaskData.status
-                                    : task.status;
-                            const finalTaskResult =
-                                executedTaskData?.agentOutput &&
-                                    typeof executedTaskData.agentOutput === "object"
-                                    ? (executedTaskData.agentOutput as Record<string, unknown>)
-                                    : undefined;
-
-                            sendEvent("agent_task", {
-                                type: "agent_task",
-                                taskId: task.taskId,
-                                agentId: effectiveIntent.agent_required,
-                                status: finalTaskStatus,
-                                ...(finalTaskResult ? { result: finalTaskResult } : {}),
-                                content,
-                            });
-                            sendEvent("done", {
-                                type: "agent_task",
-                                taskId: task.taskId,
-                                agentId: effectiveIntent.agent_required,
-                                status: finalTaskStatus,
-                                ...(finalTaskResult ? { result: finalTaskResult } : {}),
-                                content,
-                            });
-                            safeClose();
-                            return true;
-                        };
-
-                        if (deterministicRoute) {
-                            await commitUsageSlot(uid);
-                            const handled = await dispatchAgentIntent(
-                                deterministicRoute.intent as AgentIntent,
-                                deterministicRoute.source
-                            );
-                            if (handled) return;
-                        }
 
                         const assistantContent = usingGemini
                             ? await (async () => {
@@ -1902,29 +1236,6 @@ export async function POST(req: NextRequest) {
                                 upstreamAbortController.signal
                             );
                         await commitUsageSlot(uid);
-
-                        const parsedIntentOrError = parseModelAgentIntent(assistantContent);
-                        const parseResult =
-                            shouldForceDirectAttachmentResponse &&
-                                parsedIntentOrError &&
-                                !("error" in parsedIntentOrError) &&
-                                !isStrataUploadIntent(parsedIntentOrError.intent)
-                                ? null
-                                : parsedIntentOrError;
-                        if (parseResult && "error" in parseResult) {
-                            const fallback = parseResult.fallback;
-                            if (!streamedText.trim()) {
-                                sendEvent("text", { content: fallback });
-                            }
-                            sendEvent("done", { type: "chat", content: fallback });
-                            safeClose();
-                            return;
-                        }
-
-                        if (parseResult && chatId) {
-                            const handled = await dispatchAgentIntent(parseResult.intent as AgentIntent, "llm");
-                            if (handled) return;
-                        }
 
                         const cleanContent = assistantContent
                             .replace(/<AGENT_INTENT>[\s\S]*?<\/AGENT_INTENT>/g, "")

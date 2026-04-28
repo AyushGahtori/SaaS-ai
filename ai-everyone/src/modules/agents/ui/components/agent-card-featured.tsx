@@ -9,6 +9,7 @@ interface AgentCardFeaturedProps {
   isInstalled: boolean;
   onInstall: (agentId: string) => Promise<void>;
   onUninstall: (agentId: string) => Promise<void>;
+  onOpen: (agentId: string) => void;
   large?: boolean;
 }
 
@@ -17,6 +18,7 @@ export const AgentCardFeatured = ({
   isInstalled,
   onInstall,
   onUninstall,
+  onOpen,
   large = false,
 }: AgentCardFeaturedProps) => {
   const [loading, setLoading] = useState(false);
@@ -28,23 +30,36 @@ export const AgentCardFeatured = ({
 
   const installLabel = useMemo(() => {
     if (installed) {
-      return agent.kind === "bundle" || agent.requiresConnection ? "Connected" : "Installed";
+      return "Open";
     }
     return agent.kind === "bundle" || agent.requiresConnection ? "Connect" : "Get";
   }, [agent.kind, agent.requiresConnection, installed]);
 
   const handleClick = async () => {
+    if (installed) {
+      onOpen(agent.id);
+      return;
+    }
+
     setLoading(true);
     try {
-      if (installed) {
-        await onUninstall(agent.id);
-        setInstalled(false);
-      } else {
-        await onInstall(agent.id);
-        setInstalled(true);
-      }
+      await onInstall(agent.id);
+      setInstalled(true);
     } catch (err) {
-      console.error("Install/uninstall failed", err);
+      console.error("Install failed", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUninstall = async () => {
+    if (!installed || loading) return;
+    setLoading(true);
+    try {
+      await onUninstall(agent.id);
+      setInstalled(false);
+    } catch (err) {
+      console.error("Uninstall failed", err);
     } finally {
       setLoading(false);
     }
@@ -108,28 +123,40 @@ export const AgentCardFeatured = ({
         ) : null}
 
         <div className="flex w-full items-center justify-between gap-4">
-          <button
-            onClick={handleClick}
-            disabled={loading}
-            className={`flex items-center justify-center gap-2 rounded px-5 py-2 text-[13px] font-semibold tracking-wide transition-all duration-200 ${
-              installed
-                ? "border border-primary/28 bg-primary/16 text-white hover:bg-primary/24 hover:shadow-[0_10px_24px_rgb(92_53_229/24%)]"
-                : "bg-primary text-primary-foreground shadow-[0_10px_24px_rgb(107_76_255/34%)] hover:bg-primary/95 hover:shadow-[0_14px_28px_rgb(107_76_255/40%)]"
-            } disabled:cursor-not-allowed disabled:opacity-50`}
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                {installed ? (
-                  <Check className="h-4 w-4" />
-                ) : agent.kind === "bundle" || agent.requiresConnection ? (
-                  <Link2 className="h-4 w-4" />
-                ) : null}
-                {installLabel}
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleClick}
+              disabled={loading}
+              className={`flex items-center justify-center gap-2 rounded px-5 py-2 text-[13px] font-semibold tracking-wide transition-all duration-200 ${
+                installed
+                  ? "border border-primary/28 bg-primary/16 text-white hover:bg-primary/24 hover:shadow-[0_10px_24px_rgb(92_53_229/24%)]"
+                  : "bg-primary text-primary-foreground shadow-[0_10px_24px_rgb(107_76_255/34%)] hover:bg-primary/95 hover:shadow-[0_14px_28px_rgb(107_76_255/40%)]"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  {installed ? (
+                    <Check className="h-4 w-4" />
+                  ) : agent.kind === "bundle" || agent.requiresConnection ? (
+                    <Link2 className="h-4 w-4" />
+                  ) : null}
+                  {installLabel}
+                </>
+              )}
+            </button>
+
+            {installed ? (
+              <button
+                onClick={handleUninstall}
+                disabled={loading}
+                className="rounded border border-white/10 bg-white/[0.035] px-3 py-2 text-[12px] font-semibold text-white/50 transition hover:border-red-400/25 hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
 
           <div className="flex items-center gap-3 text-[11px] font-medium text-white/50">
             <span className="flex items-center gap-1">

@@ -10,6 +10,7 @@ interface AgentsFeaturedSectionProps {
   installedAgentIds: string[];
   onInstall: (agentId: string) => Promise<void>;
   onUninstall: (agentId: string) => Promise<void>;
+  onOpen: (agentId: string) => void;
 }
 
 export const AgentsFeaturedSection = ({
@@ -17,6 +18,7 @@ export const AgentsFeaturedSection = ({
   installedAgentIds,
   onInstall,
   onUninstall,
+  onOpen,
 }: AgentsFeaturedSectionProps) => {
   if (agents.length === 0) return null;
 
@@ -37,6 +39,7 @@ export const AgentsFeaturedSection = ({
           isInstalled={installedAgentIds.includes(hero.id)}
           onInstall={onInstall}
           onUninstall={onUninstall}
+          onOpen={onOpen}
         />
 
         {/* Two stacked smaller cards */}
@@ -48,6 +51,7 @@ export const AgentsFeaturedSection = ({
               isInstalled={installedAgentIds.includes(agent.id)}
               onInstall={onInstall}
               onUninstall={onUninstall}
+              onOpen={onOpen}
             />
           ))}
         </div>

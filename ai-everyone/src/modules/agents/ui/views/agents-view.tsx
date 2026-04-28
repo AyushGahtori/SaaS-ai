@@ -83,7 +83,7 @@ async function getAuthHeaders() {
 
 export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
   const router = useRouter();
-  const { sendAgentTrialPrompt } = useChatContext();
+  const { setWorkspaceScope } = useChatContext();
   const [allAgents, setAllAgents] = useState<Agent[]>(() => initialCatalog?.allAgents ?? []);
   const [featuredAgents, setFeaturedAgents] = useState<Agent[]>(() => initialCatalog?.featuredAgents ?? []);
   const [trendingAgents, setTrendingAgents] = useState<Agent[]>(() => initialCatalog?.trendingAgents ?? []);
@@ -142,6 +142,10 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
       setLoading(false);
     }
   }, [initialCatalog, loadMarketplaceState, uid]);
+
+  useEffect(() => {
+    setWorkspaceScope({ type: "global" });
+  }, [setWorkspaceScope]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -420,6 +424,25 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
     [allAgents, runAgentMutation]
   );
 
+  const resolveWorkspaceAgentId = useCallback(
+    (agentId: string) => {
+      const item = allAgents.find((agent) => agent.id === agentId);
+      if (!item) return agentId;
+      if (item.kind === "bundle") {
+        return item.childAgentIds?.[0] || agentId;
+      }
+      return item.id;
+    },
+    [allAgents]
+  );
+
+  const handleOpenAgent = useCallback(
+    (agentId: string) => {
+      router.push(`/agents/${resolveWorkspaceAgentId(agentId)}`);
+    },
+    [resolveWorkspaceAgentId, router]
+  );
+
   const handleUseTrial = useCallback(
     async (agentId: string, prompt: string) => {
       const item = allAgents.find((agent) => agent.id === agentId);
@@ -448,14 +471,15 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
           throw new Error(data.error || "This free trial prompt has already been used.");
         }
 
-        router.push("/");
-        await sendAgentTrialPrompt(prompt);
+        router.push(
+          `/agents/${resolveWorkspaceAgentId(agentId)}?prompt=${encodeURIComponent(prompt)}`
+        );
       } catch (err) {
         console.error("[AgentsView] trial prompt error:", err);
         setError(err instanceof Error ? err.message : "Failed to start the trial prompt.");
       }
     },
-    [allAgents, router, sendAgentTrialPrompt]
+    [allAgents, resolveWorkspaceAgentId, router]
   );
 
   const ownedIds = useMemo(
@@ -517,6 +541,7 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
               installedAgentIds={ownedIds}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
+              onOpen={handleOpenAgent}
             />
 
             <AgentsTrendingSection
@@ -525,6 +550,7 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
               installedAgentIds={ownedIds}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
+              onOpen={handleOpenAgent}
             />
 
             <AgentsTrendingSection
@@ -533,6 +559,7 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
               installedAgentIds={ownedIds}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
+              onOpen={handleOpenAgent}
             />
 
             <AgentsGrid
@@ -541,6 +568,7 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
               trialUsedAgentIds={trialUsedIds}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
+              onOpen={handleOpenAgent}
               onUseTrial={handleUseTrial}
             />
           </>
@@ -551,6 +579,7 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
             trialUsedAgentIds={trialUsedIds}
             onInstall={handleInstall}
             onUninstall={handleUninstall}
+            onOpen={handleOpenAgent}
             onUseTrial={handleUseTrial}
           />
         ) : groupedBrowseSections.length > 0 ? (
@@ -564,6 +593,7 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
                 trialUsedAgentIds={trialUsedIds}
                 onInstall={handleInstall}
                 onUninstall={handleUninstall}
+                onOpen={handleOpenAgent}
                 onUseTrial={handleUseTrial}
               />
             ))}
@@ -576,6 +606,7 @@ export const AgentsView = ({ initialCatalog }: AgentsViewProps) => {
             trialUsedAgentIds={trialUsedIds}
             onInstall={handleInstall}
             onUninstall={handleUninstall}
+            onOpen={handleOpenAgent}
             onUseTrial={handleUseTrial}
           />
         )}

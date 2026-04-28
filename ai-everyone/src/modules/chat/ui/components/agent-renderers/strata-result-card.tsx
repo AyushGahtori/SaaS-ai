@@ -18,6 +18,29 @@ function asNumber(value: unknown, fallback = 0): number {
     return Number.isFinite(number) ? number : fallback;
 }
 
+function asString(value: unknown, fallback = ""): string {
+    return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function numberFromObject(source: Record<string, unknown>, keys: string[], fallback = 0): number {
+    for (const key of keys) {
+        const value = source[key];
+        const number = Number(value);
+        if (Number.isFinite(number)) return number;
+    }
+    return fallback;
+}
+
+function pickFirstObject(...values: unknown[]): Record<string, unknown> {
+    for (const value of values) {
+        const next = asObject(value);
+        if (Object.keys(next).length > 0) {
+            return next;
+        }
+    }
+    return {};
+}
+
 const TAB_BASE =
     "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors";
 
@@ -204,25 +227,56 @@ function CategoryDonut({ categories }: { categories: Array<{ label: string; valu
 
 export const StrataResultCard: React.FC<StrataResultCardProps> = ({ result }) => {
     const payload = useMemo(() => {
-        const rawResult = asObject(result.result);
+        const internalPayload = asObject(result.internal_payload);
+        const rawInternalResult = asObject(internalPayload.raw_result);
+        const rawResult = pickFirstObject(result.result, rawInternalResult.result, rawInternalResult);
+        const queryContext = pickFirstObject(rawResult.context, rawInternalResult.context);
+        const querySummary = pickFirstObject(queryContext.summary, rawResult.summary);
+        const queryComparison = pickFirstObject(queryContext.comparison, rawResult.comparison);
+        const queryAnswer = asString(rawResult.answer || rawInternalResult.answer || result.summary);
+        const queryQuestion = asString(rawResult.question || rawInternalResult.question);
+
+        if (result.type === "strata_query" && (Object.keys(querySummary).length > 0 || queryAnswer)) {
+            return {
+                symbol: rawResult.symbol || rawInternalResult.symbol || queryContext.symbol || querySummary.symbol,
+                query: {
+                    question: queryQuestion,
+                    answer: queryAnswer,
+                },
+                dashboard: {
+                    summary: querySummary,
+                    comparison: queryComparison,
+                },
+                insights: {
+                    insight: queryAnswer,
+                    cause: "Based on the available financial summary returned by Stara.",
+                    action: "Ask for trends, categories, or AI insights to drill into the same symbol.",
+                },
+            };
+        }
+
         const alreadyWorkspaceShaped =
             Object.prototype.hasOwnProperty.call(rawResult, "dashboard") ||
+            Object.prototype.hasOwnProperty.call(rawInternalResult, "dashboard") ||
             Object.prototype.hasOwnProperty.call(rawResult, "trends") ||
+            Object.prototype.hasOwnProperty.call(rawInternalResult, "trends") ||
             Object.prototype.hasOwnProperty.call(rawResult, "categories") ||
+            Object.prototype.hasOwnProperty.call(rawInternalResult, "categories") ||
             Object.prototype.hasOwnProperty.call(rawResult, "insights") ||
+            Object.prototype.hasOwnProperty.call(rawInternalResult, "insights") ||
             Object.prototype.hasOwnProperty.call(rawResult, "upload");
 
         if (result.type === "strata_workspace" || alreadyWorkspaceShaped) {
-            return rawResult;
+            return pickFirstObject(rawResult, rawInternalResult);
         }
 
         return {
-            symbol: rawResult.symbol,
-            dashboard: result.type === "strata_dashboard" ? rawResult : undefined,
-            trends: result.type === "strata_trends" ? rawResult : undefined,
-            categories: result.type === "strata_categories" ? rawResult : undefined,
-            insights: result.type === "strata_insights" ? rawResult : undefined,
-            upload: result.type === "strata_upload" ? rawResult : undefined,
+            symbol: rawResult.symbol || rawInternalResult.symbol,
+            dashboard: result.type === "strata_dashboard" ? pickFirstObject(rawResult, rawInternalResult) : undefined,
+            trends: result.type === "strata_trends" ? pickFirstObject(rawResult, rawInternalResult) : undefined,
+            categories: result.type === "strata_categories" ? pickFirstObject(rawResult, rawInternalResult) : undefined,
+            insights: result.type === "strata_insights" ? pickFirstObject(rawResult, rawInternalResult) : undefined,
+            upload: result.type === "strata_upload" ? pickFirstObject(rawResult, rawInternalResult) : undefined,
         };
     }, [result]);
 
@@ -235,6 +289,8 @@ export const StrataResultCard: React.FC<StrataResultCardProps> = ({ result }) =>
     });
 
     const symbol = String(payload.symbol || "N/A");
+    const query = asObject(payload.query);
+    const queryAnswer = asString(query.answer);
     const dashboard = asObject(payload.dashboard);
     const summary = asObject(dashboard.summary);
     const comparison = asObject(dashboard.comparison);
@@ -260,10 +316,10 @@ export const StrataResultCard: React.FC<StrataResultCardProps> = ({ result }) =>
     const processed = Array.isArray(upload.processedFiles) ? upload.processedFiles : [];
     const failed = Array.isArray(upload.failedFiles) ? upload.failedFiles : [];
 
-    const revenue = asNumber(summary.revenue);
-    const expenses = asNumber(summary.expenses);
-    const profit = asNumber(summary.profit);
-    const margin = asNumber(summary.margin);
+    const revenue = numberFromObject(summary, ["revenue", "total_revenue"]);
+    const expenses = numberFromObject(summary, ["expenses", "operating_expenses", "total_expenses"]);
+    const profit = numberFromObject(summary, ["profit", "net_profit", "grossProfit", "gross_profit"], Math.max(0, revenue - expenses));
+    const margin = numberFromObject(summary, ["margin", "margin_pct", "profit_margin"]);
 
     // Fallbacks: older/partial payloads can arrive with only dashboard fields.
     // We derive minimal trend/category series so graph tabs never look empty.
@@ -289,14 +345,14 @@ export const StrataResultCard: React.FC<StrataResultCardProps> = ({ result }) =>
                       {
                           key: "supplier_cost",
                           label: "SUPPLIER COST",
-                          expenses: asNumber(summary.supplierCost),
-                          supplierCost: asNumber(summary.supplierCost),
+                          expenses: numberFromObject(summary, ["supplierCost", "supplier_cost"]),
+                          supplierCost: numberFromObject(summary, ["supplierCost", "supplier_cost"]),
                           color: CATEGORY_COLORS[0],
                       },
                       {
                           key: "gross_profit",
                           label: "GROSS PROFIT",
-                          expenses: Math.max(0, asNumber(summary.grossProfit)),
+                          expenses: Math.max(0, numberFromObject(summary, ["grossProfit", "gross_profit"], profit)),
                           supplierCost: 0,
                           color: CATEGORY_COLORS[1],
                       },
@@ -309,6 +365,12 @@ export const StrataResultCard: React.FC<StrataResultCardProps> = ({ result }) =>
                 <p className="text-sm font-semibold">Stara Financial Workspace</p>
                 <span className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs">{symbol}</span>
             </div>
+
+            {queryAnswer ? (
+                <div className="mb-3 rounded-lg border border-cyan-400/20 bg-cyan-400/8 px-3 py-2 text-sm leading-6 text-white/85">
+                    {queryAnswer}
+                </div>
+            ) : null}
 
             <div className="mb-3 flex flex-wrap gap-2">
                 <button
@@ -374,7 +436,7 @@ export const StrataResultCard: React.FC<StrataResultCardProps> = ({ result }) =>
                                 <MarginRing margin={margin} />
                             </div>
                             <div className="rounded-lg border border-white/10 bg-white/5 p-2.5 text-sm text-white/80">
-                                Revenue {asNumber(comparison.revenueChangePct).toFixed(2)}% | Expenses {asNumber(comparison.expenseChangePct).toFixed(2)}% | Margin {asNumber(comparison.marginChangePct).toFixed(2)}%
+                                Revenue {numberFromObject(comparison, ["revenueChangePct", "revenue_change_pct"]).toFixed(2)}% | Expenses {numberFromObject(comparison, ["expenseChangePct", "expense_change_pct"]).toFixed(2)}% | Margin {numberFromObject(comparison, ["marginChangePct", "margin_change_pct"]).toFixed(2)}%
                             </div>
                         </>
                     )}

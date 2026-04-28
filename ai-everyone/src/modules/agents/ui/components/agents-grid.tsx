@@ -11,6 +11,7 @@ interface AgentsGridProps {
   trialUsedAgentIds: string[];
   onInstall: (agentId: string) => Promise<void>;
   onUninstall: (agentId: string) => Promise<void>;
+  onOpen: (agentId: string) => void;
   onUseTrial: (agentId: string, prompt: string) => Promise<void>;
   title?: string;
 }
@@ -59,6 +60,7 @@ export const AgentsGrid = ({
   trialUsedAgentIds,
   onInstall,
   onUninstall,
+  onOpen,
   onUseTrial,
   title = "All Agents",
 }: AgentsGridProps) => {
@@ -94,6 +96,7 @@ export const AgentsGrid = ({
                 isTrialUsed={trialUsedAgentIds.includes(agent.id)}
                 onInstall={onInstall}
                 onUninstall={onUninstall}
+                onOpen={onOpen}
                 onUseTrial={onUseTrial}
                 showHoverDetails
               />

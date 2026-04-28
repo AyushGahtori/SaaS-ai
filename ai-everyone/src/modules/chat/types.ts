@@ -7,12 +7,17 @@
  */
 
 /** A single chat conversation belonging to a user. */
+export type ChatWorkspaceType = "global" | "agent";
+
 export interface Chat {
     id: string;
     userId: string;
     title: string;
     createdAt: string; // ISO 8601 timestamp
     updatedAt: string; // ISO 8601 timestamp
+    agentId?: string | null;
+    agentName?: string | null;
+    workspaceType?: ChatWorkspaceType;
 }
 
 /** The role of a message sender. */

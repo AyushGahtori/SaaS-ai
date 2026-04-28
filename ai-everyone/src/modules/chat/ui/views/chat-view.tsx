@@ -7,14 +7,18 @@
 
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useChatContext } from "@/modules/chat/context/chat-context";
 import { ChatMessageList } from "@/modules/chat/ui/components/chat-message-list";
 import { ChatInput } from "@/modules/chat/ui/components/chat-input";
 import { HomeView } from "@/modules/home/ui/views/home-view";
 
 export const ChatView: React.FC = () => {
-    const { activeChatId, messages } = useChatContext();
+    const { activeChatId, messages, setWorkspaceScope } = useChatContext();
+
+    useEffect(() => {
+        setWorkspaceScope({ type: "global" });
+    }, [setWorkspaceScope]);
 
     // ── Determine which view to show ─────────────────────────────────────
     const hasConversation = activeChatId !== null || messages.length > 0;

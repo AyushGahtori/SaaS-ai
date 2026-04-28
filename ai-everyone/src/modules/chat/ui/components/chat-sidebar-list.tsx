@@ -29,7 +29,7 @@ import {
 
 export const ChatSidebarList: React.FC = () => {
   const router = useRouter();
-  const { chats, activeChatId, selectChat, removeChatById, isLoadingChats } = useChatContext();
+  const { chats, activeChatId, selectChat, removeChatById, isLoadingChats, workspaceScope } = useChatContext();
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
@@ -79,7 +79,13 @@ export const ChatSidebarList: React.FC = () => {
               )}
               onClick={async () => {
                 await selectChat(chat.id);
-                router.push("/");
+                router.push(
+                  chat.agentId
+                    ? `/agents/${chat.agentId}`
+                    : workspaceScope.type === "agent"
+                      ? `/agents/${workspaceScope.agentId}`
+                      : "/"
+                );
               }}
               onMouseEnter={() => setHoveredId(chat.id)}
               onMouseLeave={() => setHoveredId(null)}

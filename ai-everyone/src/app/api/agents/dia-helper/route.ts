@@ -11,6 +11,31 @@ interface DiaHelperPayload {
     fileName?: string;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {};
+}
+
+function isStructurallyEmptyMermaid(value: unknown): boolean {
+    const mermaid = typeof value === "string" ? value.trim() : "";
+    if (!mermaid) return true;
+    const lines = mermaid.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (lines.length === 0) return true;
+    const header = lines[0].toLowerCase();
+    if (header.startsWith("flowchart") || header.startsWith("graph")) {
+        const hasEdge = lines.slice(1).some((line) => line.includes("-->") || line.includes("---"));
+        const labels = Array.from(mermaid.matchAll(/[\[\(\{]([^{}\[\]\(\)]{2,120})[\]\)\}]/g))
+            .map((match) => String(match[1] || "").trim().toLowerCase())
+            .filter(Boolean);
+        return !hasEdge || new Set(labels).size < 2;
+    }
+    if (header.startsWith("sequencediagram")) return !lines.slice(1).some((line) => line.includes("->"));
+    if (header.startsWith("statediagram-v2")) return !lines.slice(1).some((line) => line.includes("-->"));
+    if (header.startsWith("gantt")) return lines.length <= 2;
+    return false;
+}
+
 export async function POST(req: NextRequest) {
     const verifiedUser = await verifyFirebaseRequest(req);
     if (!verifiedUser) {
@@ -77,6 +102,19 @@ export async function POST(req: NextRequest) {
                         `Dia Helper agent returned HTTP ${response.status}.`,
                 },
                 { status: 502 }
+            );
+        }
+
+        const result = asRecord(data.result);
+        if (data.status === "success" && isStructurallyEmptyMermaid(result.mermaid)) {
+            return NextResponse.json(
+                {
+                    status: "failed",
+                    type: "dia_diagram",
+                    error: "Dia Helper returned an empty or placeholder Mermaid diagram.",
+                    message: "Please provide a concrete system, workflow, or architecture subject for the diagram.",
+                },
+                { status: 422 }
             );
         }
 

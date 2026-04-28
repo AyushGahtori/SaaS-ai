@@ -21,7 +21,18 @@ import {
     Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import type { Chat } from "@/modules/chat/types";
+import type { Chat, ChatWorkspaceType } from "@/modules/chat/types";
+
+export interface ChatScopeInput {
+    workspaceType?: ChatWorkspaceType;
+    agentId?: string | null;
+    agentName?: string | null;
+}
+
+export interface GetChatsOptions {
+    workspaceType?: ChatWorkspaceType;
+    agentId?: string | null;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,6 +52,37 @@ const toISO = (val: unknown): string => {
     return new Date().toISOString();
 };
 
+const mapChatDoc = (uid: string, id: string, data: Record<string, unknown>): Chat => {
+    const agentId = typeof data.agentId === "string" ? data.agentId : null;
+    const agentName = typeof data.agentName === "string" ? data.agentName : null;
+    const workspaceType =
+        data.workspaceType === "agent" || agentId ? "agent" : "global";
+
+    return {
+        id,
+        userId: uid,
+        title: typeof data.title === "string" ? data.title : "New Chat",
+        createdAt: toISO(data.createdAt),
+        updatedAt: toISO(data.updatedAt),
+        agentId,
+        agentName,
+        workspaceType,
+    };
+};
+
+const matchesChatOptions = (chat: Chat, options?: GetChatsOptions): boolean => {
+    if (!options) return true;
+    if (options.workspaceType === "global") {
+        return chat.workspaceType !== "agent" && !chat.agentId;
+    }
+    if (options.workspaceType === "agent") {
+        if (!options.agentId) return chat.workspaceType === "agent";
+        return chat.workspaceType === "agent" && chat.agentId === options.agentId;
+    }
+    if (typeof options.agentId === "string") return chat.agentId === options.agentId;
+    return true;
+};
+
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
@@ -51,12 +93,25 @@ const toISO = (val: unknown): string => {
  */
 export async function createChat(
     uid: string,
-    title: string
+    title: string,
+    scope?: ChatScopeInput
 ): Promise<Chat> {
-    const docRef = await addDoc(chatsCol(uid), {
+    const workspaceType: ChatWorkspaceType =
+        scope?.workspaceType || (scope?.agentId ? "agent" : "global");
+    const payload: Record<string, unknown> = {
         title,
+        workspaceType,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+    };
+
+    if (workspaceType === "agent") {
+        payload.agentId = scope?.agentId || null;
+        payload.agentName = scope?.agentName || null;
+    }
+
+    const docRef = await addDoc(chatsCol(uid), {
+        ...payload,
     });
 
     const now = new Date().toISOString();
@@ -66,26 +121,22 @@ export async function createChat(
         title,
         createdAt: now,
         updatedAt: now,
+        workspaceType,
+        agentId: workspaceType === "agent" ? scope?.agentId || null : null,
+        agentName: workspaceType === "agent" ? scope?.agentName || null : null,
     };
 }
 
 /**
  * Get all chats for the given user, ordered by most-recently-updated first.
  */
-export async function getChats(uid: string): Promise<Chat[]> {
+export async function getChats(uid: string, options?: GetChatsOptions): Promise<Chat[]> {
     const q = query(chatsCol(uid), orderBy("updatedAt", "desc"));
     const snapshot = await getDocs(q);
 
-    return snapshot.docs.map((d) => {
-        const data = d.data();
-        return {
-            id: d.id,
-            userId: uid,
-            title: data.title ?? "New Chat",
-            createdAt: toISO(data.createdAt),
-            updatedAt: toISO(data.updatedAt),
-        };
-    });
+    return snapshot.docs
+        .map((d) => mapChatDoc(uid, d.id, d.data()))
+        .filter((chat) => matchesChatOptions(chat, options));
 }
 
 /**
@@ -100,13 +151,7 @@ export async function getChatById(
     if (!snapshot.exists()) return null;
 
     const data = snapshot.data();
-    return {
-        id: snapshot.id,
-        userId: uid,
-        title: data.title ?? "New Chat",
-        createdAt: toISO(data.createdAt),
-        updatedAt: toISO(data.updatedAt),
-    };
+    return mapChatDoc(uid, snapshot.id, data);
 }
 
 /**

@@ -1,0 +1,862 @@
+import {
+    AGENT_CATALOG,
+    getAgentCatalogEntry,
+    type AgentCatalogEntry,
+} from "@/lib/agents/catalog";
+import {
+    extractEmailAddress,
+    getNumericRequestCount,
+    includesAny,
+    normalizeForMatch,
+} from "./text";
+import type { ConversationContext, RouteDecision } from "./types";
+
+export interface AgentActionCapability {
+    name: string;
+    required: string[];
+    optional: string[];
+    entityType?: "gmail_email" | "drive_file" | "todo_task" | "generic";
+    aliases?: string[];
+}
+
+export interface AgentCapability {
+    id: string;
+    name: string;
+    route: string;
+    provider: AgentCatalogEntry["provider"];
+    requiresConnection: boolean;
+    actions: Record<string, AgentActionCapability>;
+    defaultAction: string;
+    aliases: string[];
+}
+
+export const AGENT_ENDPOINTS: Record<string, string> = {
+    "teams-agent": "/teams/action",
+    "email-agent": "/email/action",
+    "calendar-agent": "/calendar/action",
+    "todo-agent": "/todo/action",
+    "google-agent": "/google/action",
+    "notion-agent": "/notion/action",
+    "maps-agent": "/maps/action",
+    "emergency-response-agent": "/emergency/action",
+    "strata-agent": "/strata/action",
+    "canva-agent": "/canva/action",
+    "day-planner-agent": "/dayplanner/action",
+    "discord-agent": "/discord/action",
+    "dropbox-agent": "/dropbox/action",
+    "freshdesk-agent": "/freshdesk/action",
+    "github-agent": "/github/action",
+    "gitlab-agent": "/gitlab/action",
+    "greenhouse-agent": "/greenhouse/action",
+    "jira-agent": "/jira/action",
+    "linkedin-agent": "/linkedin/action",
+    "zoom-agent": "/zoom/action",
+    "dia-helper-agent": "/diahelper/action",
+    "shopgenie-agent": "/shopgenie/action",
+    "career-switch-agent": "/career-switch/action",
+    "startup-fundraising-agent": "/fundraising/action",
+    "smart-gtm-agent": "/smartgtm/action",
+    "seo-agent": "/seo/action",
+    "dashboard-designer-agent": "/dashboarddesigner/action",
+    "ats-agent": "/ats/action",
+    "building-construction-agent": "/building/action",
+    "lms-agent": "/lms/action",
+    "travel-halper-agent": "/travelhalper/action",
+    "devika-engineer-agent": "/devika/action",
+    "data-analyst-agent": "/dataanalyst/action",
+};
+
+const EXTRA_ACTIONS: Record<string, Record<string, AgentActionCapability>> = {
+    "google-agent": {
+        list_emails: { name: "list_emails", required: ["agent_type"], optional: ["parameters", "limit", "count", "maxResults"], entityType: "gmail_email" },
+        read_email: { name: "read_email", required: ["agent_type", "message_id"], optional: ["parameters"], entityType: "gmail_email" },
+        search_emails: { name: "search_emails", required: ["agent_type", "parameters"], optional: ["limit", "count"], entityType: "gmail_email" },
+        send_email: { name: "send_email", required: ["agent_type", "parameters"], optional: ["to", "subject", "body"] },
+        reply_email: { name: "reply_email", required: ["agent_type", "message_id", "parameters"], optional: [] },
+        mark_as_read: { name: "mark_as_read", required: ["agent_type", "message_id"], optional: ["parameters"], entityType: "gmail_email" },
+        list_files: { name: "list_files", required: ["agent_type"], optional: ["parameters", "limit", "count", "maxResults"], entityType: "drive_file" },
+        list_pdf_files: { name: "list_pdf_files", required: ["agent_type"], optional: ["parameters", "limit", "count", "maxResults"], entityType: "drive_file" },
+        read_file: { name: "read_file", required: ["agent_type", "file_id"], optional: ["parameters"], entityType: "drive_file" },
+        search_files: { name: "search_files", required: ["agent_type", "parameters"], optional: ["limit", "count"], entityType: "drive_file" },
+        list_events: { name: "list_events", required: ["agent_type"], optional: ["parameters"] },
+        create_event: { name: "create_event", required: ["agent_type", "parameters"], optional: [] },
+        create_meet: { name: "create_meet", required: ["agent_type", "parameters"], optional: [] },
+        list_tasks: { name: "list_tasks", required: ["agent_type"], optional: ["parameters"] },
+        create_task: { name: "create_task", required: ["agent_type", "parameters"], optional: [] },
+        web_search: { name: "web_search", required: ["agent_type", "parameters"], optional: [] },
+    },
+    "strata-agent": {
+        ask: { name: "ask", required: ["question"], optional: ["symbol"] },
+    },
+};
+
+const DEFAULT_REQUIRED_BY_ACTION: Record<string, string[]> = {
+    send_message: ["contact", "message"],
+    schedule_meeting: ["title", "attendees", "date", "time", "notification_preference"],
+    make_call: ["contact"],
+    add_task: ["title"],
+    add_to_plan: ["title"],
+    list_tasks_by_date: ["datetime"],
+    delete_task: ["title"],
+    mark_done: ["title"],
+    get_directions: ["origin", "destination"],
+    search_places: ["query"],
+    geocode: ["address"],
+    distance_matrix: ["origins", "destinations"],
+    assess_emergency: ["description"],
+    activate_emergency: ["lat", "lng"],
+    search_pages: ["query"],
+    get_page: ["pageId"],
+    create_page: ["title", "content"],
+    append_to_page: ["pageId", "content"],
+    create_design: ["title"],
+    create_folder: ["path"],
+    move_file: ["from_path", "to_path"],
+    create_ticket: ["subject", "description"],
+    check_ticket_status: ["ticket_id"],
+    search_solutions: ["keyword"],
+    search_repositories: ["query"],
+    get_issue: ["owner", "repo", "issueNumber"],
+    create_issue: ["owner", "repo", "title"],
+    get_candidate_resume: ["candidate_id"],
+    schedule_interview: ["candidate_id", "interviewer_email", "start_time", "end_time"],
+    get_issue_status: ["issue_key"],
+    search_issues: ["jql"],
+    schedule_post: ["content"],
+    create_meeting: ["topic"],
+    get_meeting_summary: ["meetingId"],
+    send_plan_email: ["receiverEmail"],
+    generate_diagram: ["prompt"],
+    update_diagram: ["editInstruction"],
+    recommend_product: ["query"],
+    shop_search: ["query"],
+    run_shopgenie: ["query"],
+    search_investors: ["startup_name"],
+    plan_outreach: ["startup_name"],
+    track_conversation: ["startup_name", "investor_name", "update"],
+    term_sheet_guidance: ["startup_name"],
+    generate_fundraising_plan: ["startup_name"],
+    research_company: ["company_url"],
+    go_to_market: ["company_url"],
+    channel: ["company_url"],
+    generate_brief: ["topic"],
+    audit: ["url"],
+    optimize_article: ["topic"],
+    design_dashboard: ["prompt"],
+    refine_dashboard: ["prompt"],
+    update_dashboard: ["prompt"],
+    analyze_candidate: ["resumeText"],
+    save_interview_transcript: ["transcript"],
+    compare_candidates: ["candidates"],
+    learner_detail: ["learnerName"],
+    generate_plan: ["prompt"],
+    plan_trip: ["prompt"],
+    run_devika_agent: ["prompt"],
+    plan_project: ["prompt"],
+    research_plan: ["prompt"],
+    implement_feature: ["featureRequest"],
+    fix_bug: ["errorLog"],
+    run_project: ["prompt"],
+    deploy_project: ["prompt"],
+    generate_report: ["prompt"],
+    answer_question: ["question"],
+    repo_intake: ["repositoryUrl"],
+    browser_strategy: ["prompt"],
+    token_estimate: ["prompt"],
+    monitor: ["data"],
+    autonomous: ["goal"],
+};
+
+const ACTIONS_WITH_PROMPT_FALLBACK = new Set([
+    "generate_plan",
+    "generate_brief",
+    "design_dashboard",
+    "refine_dashboard",
+    "update_dashboard",
+    "plan_trip",
+    "recommend_product",
+    "shop_search",
+    "run_shopgenie",
+    "ask",
+    "generate_diagram",
+    "run_devika_agent",
+    "plan_project",
+    "research_plan",
+    "implement_feature",
+    "run_project",
+    "deploy_project",
+    "generate_report",
+    "answer_question",
+    "autonomous",
+]);
+
+function makeAliases(agent: AgentCatalogEntry): string[] {
+    const base = [
+        agent.id,
+        agent.id.replace(/-agent$/i, ""),
+        agent.name,
+        agent.name.replace(/\s+agent$/i, ""),
+    ];
+
+    if (agent.id === "strata-agent") base.push("stara", "strata", "finance analytics");
+    if (agent.id === "google-agent") base.push("gmail", "google mail", "google drive", "google calendar", "google meet", "google tasks");
+    if (agent.id === "travel-halper-agent") base.push("travel helper", "travel halper", "travel planner", "trip planner");
+    if (agent.id === "dia-helper-agent") base.push("dia", "diagram helper", "mermaid");
+    if (agent.id === "shopgenie-agent") base.push("shop genie", "shopping");
+    if (agent.id === "todo-agent") base.push("todo", "to do", "reminder", "reminders");
+    if (agent.id === "startup-fundraising-agent") base.push("fund", "funds", "fund agent", "funds agent", "fundraising agent", "investor agent");
+    if (agent.id === "smart-gtm-agent") base.push("smart gtm", "smart gtm agent", "gtm agent", "go to market agent", "go-to-market agent");
+    if (agent.id === "emergency-response-agent") base.push("emergency agent", "emergency response", "medical emergency agent");
+    if (agent.id === "day-planner-agent") base.push("day planner", "daily planner", "planner agent");
+    if (agent.id === "dashboard-designer-agent") base.push("dashboard designer", "dashboard designer agent");
+
+    return Array.from(new Set(base.map((alias) => normalizeForMatch(alias)).filter(Boolean)));
+}
+
+function makeCapabilities(agent: AgentCatalogEntry): AgentCapability {
+    const actions: Record<string, AgentActionCapability> = {};
+    for (const action of agent.actions) {
+        actions[action] = {
+            name: action,
+            required: DEFAULT_REQUIRED_BY_ACTION[action] || [],
+            optional: [],
+        };
+    }
+
+    for (const [action, capability] of Object.entries(EXTRA_ACTIONS[agent.id] || {})) {
+        actions[action] = capability;
+    }
+
+    const defaultAction =
+        agent.id === "google-agent"
+            ? "list_emails"
+            : agent.id === "strata-agent"
+                ? "ask"
+                : agent.actions[0] || "ask";
+
+    return {
+        id: agent.id,
+        name: agent.name,
+        route: AGENT_ENDPOINTS[agent.id],
+        provider: agent.provider,
+        requiresConnection: agent.requiresConnection,
+        actions,
+        defaultAction,
+        aliases: makeAliases(agent),
+    };
+}
+
+export const AGENT_CAPABILITY_REGISTRY: Record<string, AgentCapability> =
+    Object.fromEntries(AGENT_CATALOG.map((agent) => [agent.id, makeCapabilities(agent)]));
+
+export function getAgentCapability(agentId: string): AgentCapability | null {
+    return AGENT_CAPABILITY_REGISTRY[agentId] || null;
+}
+
+export function getActionCapability(agentId: string, action: string): AgentActionCapability | null {
+    return getAgentCapability(agentId)?.actions[action] || null;
+}
+
+function baseParams(text: string): Record<string, unknown> {
+    return { prompt: text, parameters: text };
+}
+
+function googleIntent(agentType: string, action: string, text: string, reason: string): RouteDecision {
+    const count = getNumericRequestCount(text);
+    const parameters: Record<string, unknown> = {
+        agent_type: agentType,
+        parameters: text,
+        strict_resolution: true,
+    };
+    if (count && count > 0) {
+        const limit = String(Math.min(count, 20));
+        parameters.limit = limit;
+        parameters.count = limit;
+        parameters.maxResults = limit;
+        parameters.pageSize = limit;
+    }
+    return {
+        target_agent: "google-agent",
+        target_action: action,
+        route_confidence: "high",
+        route_reason: reason,
+        parameters,
+        is_agent_request: true,
+    };
+}
+
+function simpleIntent(agentId: string, action: string, text: string, reason: string, parameters: Record<string, unknown> = {}): RouteDecision {
+    return {
+        target_agent: agentId,
+        target_action: action,
+        route_confidence: "high",
+        route_reason: reason,
+        parameters: { ...baseParams(text), ...parameters },
+        is_agent_request: true,
+    };
+}
+
+function noRoute(reason = "No deterministic agent route matched."): RouteDecision {
+    return {
+        target_agent: null,
+        target_action: null,
+        route_confidence: "low",
+        route_reason: reason,
+        parameters: {},
+        is_agent_request: false,
+    };
+}
+
+function inferGmailAction(lower: string): string {
+    if (/\b(mark|archive)\b.*\b(read|seen)\b/.test(lower)) return "mark_as_read";
+    if (/\b(reply|respond)\b/.test(lower)) return "reply_email";
+    if (/\b(search|find)\b/.test(lower)) return "search_emails";
+    if (/\b(send|compose|mail|email)\b/.test(lower) && /\b(to|@)\b/.test(lower)) return "send_email";
+    if (/\b(summarize|summarise|summary|read|open)\b/.test(lower) && getNumericRequestCount(lower) === null) return "read_email";
+    return "list_emails";
+}
+
+function inferDriveAction(lower: string): string {
+    if (/\b(search|find)\b/.test(lower)) return "search_files";
+    if (/\b(read|summarize|summarise|summary|open)\b/.test(lower) && getNumericRequestCount(lower) === null) return "read_file";
+    if (/\bpdf|pdfs\b/.test(lower)) return "list_pdf_files";
+    return "list_files";
+}
+
+function extractSymbol(text: string): string | undefined {
+    const companySymbols: Record<string, string> = {
+        apple: "AAPL",
+        microsoft: "MSFT",
+        google: "GOOGL",
+        alphabet: "GOOGL",
+        amazon: "AMZN",
+        tesla: "TSLA",
+        meta: "META",
+        facebook: "META",
+        nvidia: "NVDA",
+    };
+    const lower = normalizeForMatch(text);
+    for (const [name, symbol] of Object.entries(companySymbols)) {
+        if (new RegExp(`\\b${name}\\b`).test(lower)) return symbol;
+    }
+    const ticker = text.match(/\b[A-Z]{2,5}\b/);
+    return ticker?.[0];
+}
+
+function extractUrl(text: string): string | undefined {
+    return text.match(/https?:\/\/[^\s)]+/i)?.[0];
+}
+
+function aliasRegex(alias: string): RegExp {
+    const escaped = alias
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/\\ /g, "[\\s-]+");
+    return new RegExp(`(?:^|\\b)${escaped}(?:\\b|$)`);
+}
+
+const BROAD_STANDALONE_ALIASES = new Set([
+    "email",
+    "calendar",
+    "maps",
+    "map",
+    "travel",
+    "fund",
+    "funds",
+    "gtm",
+    "dia",
+    "seo",
+    "ats",
+    "lms",
+    "todo",
+    "shopping",
+]);
+
+function isExplicitAliasMatch(alias: string, lower: string): boolean {
+    if (!alias) return false;
+    if (BROAD_STANDALONE_ALIASES.has(alias)) {
+        return aliasRegex(`${alias} agent`).test(lower);
+    }
+    return aliasRegex(alias).test(lower);
+}
+
+function findExplicitAgentMention(lower: string): AgentCapability | null {
+    for (const capability of Object.values(AGENT_CAPABILITY_REGISTRY)) {
+        const mentioned = capability.aliases.some((alias) => isExplicitAliasMatch(alias, lower));
+        if (mentioned) return capability;
+    }
+    return null;
+}
+
+function stripExplicitAgentCommand(text: string, capability: AgentCapability): string {
+    let cleaned = text;
+    for (const alias of capability.aliases.sort((a, b) => b.length - a.length)) {
+        const escaped = alias
+            .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+            .replace(/\\ /g, "[\\s-]+");
+        cleaned = cleaned.replace(
+            new RegExp(`\\b(?:use|using|ask|run|route(?:\\s+to)?|switch(?:\\s+to)?|try|activate)?\\s*(?:the\\s+)?${escaped}(?:\\s+agent)?\\b`, "ig"),
+            " "
+        );
+    }
+    return cleaned
+        .replace(/\b(?:hey|hi|hello|please|pls|no|nope|sorry|actually|i meant|i ment|i want to|for this|you have to|can you|could you|would you|ok|okay|lets|let's|leave that)\b/gi, " ")
+        .replace(/^\s*(?:for|to|with)\s+/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function routeByExplicitAgentMention(text: string, lower: string): RouteDecision | null {
+    const capability = findExplicitAgentMention(lower);
+    if (!capability) return null;
+
+    const taskText = stripExplicitAgentCommand(text, capability);
+
+    if (capability.id === "google-agent") {
+        const routingText = taskText || text;
+        if (/\b(gmail|email|emails|mail|mails|inbox|message|messages)\b/.test(lower)) {
+            return googleIntent("gmail", inferGmailAction(lower), routingText, `Matched explicit ${capability.name} mention.`);
+        }
+        if (/\b(drive|docs?|documents?|files?|folder|folders|pdf|pdfs)\b/.test(lower)) {
+            return googleIntent("drive", inferDriveAction(lower), routingText, `Matched explicit ${capability.name} mention.`);
+        }
+        if (/\b(calendar|agenda|events?)\b/.test(lower)) {
+            return googleIntent("calendar", /\b(create|schedule|add|book)\b/.test(lower) ? "create_event" : "list_events", routingText, `Matched explicit ${capability.name} mention.`);
+        }
+        if (/\b(meet|meeting link|video call)\b/.test(lower)) {
+            return googleIntent("meet", "create_meet", routingText, `Matched explicit ${capability.name} mention.`);
+        }
+        return googleIntent("gmail", inferGmailAction(lower), routingText, `Matched explicit ${capability.name} mention.`);
+    }
+
+    if (capability.id === "strata-agent") {
+        const symbol = extractSymbol(text);
+        const action = /\b(workspace|open)\b/.test(lower)
+            ? "open_workspace"
+            : /\b(dashboard|snapshot)\b/.test(lower)
+                ? "dashboard"
+                : /\b(trend|forecast)\b/.test(lower)
+                    ? "trends"
+                    : /\b(category|categories|breakdown)\b/.test(lower)
+                        ? "categories"
+                        : /\b(insight|why|explain|detail|details|price|process|data)\b/.test(lower)
+                            ? "ask"
+                            : capability.defaultAction;
+        return simpleIntent(capability.id, action, taskText, `Matched explicit ${capability.name} mention.`, {
+            ...(taskText ? { question: taskText } : {}),
+            ...(symbol ? { symbol } : {}),
+            explicit_agent_mention: capability.id,
+            raw_user_input: text,
+        });
+    }
+
+    if (capability.id === "startup-fundraising-agent") {
+        const route = routeFundraisingIntent(taskText, lower, `Matched explicit ${capability.name} mention.`);
+        route.parameters = {
+            ...route.parameters,
+            explicit_agent_mention: capability.id,
+            raw_user_input: text,
+        };
+        return route;
+    }
+
+    if (capability.id === "smart-gtm-agent") {
+        const route = routeSmartGtmIntent(taskText, lower, `Matched explicit ${capability.name} mention.`);
+        route.parameters = {
+            ...route.parameters,
+            explicit_agent_mention: capability.id,
+            raw_user_input: text,
+        };
+        return route;
+    }
+
+    if (capability.id === "emergency-response-agent") {
+        const route = routeEmergencyIntent(taskText || text, `Matched explicit ${capability.name} mention.`);
+        route.parameters = {
+            ...route.parameters,
+            explicit_agent_mention: capability.id,
+            raw_user_input: text,
+        };
+        return route;
+    }
+
+    const action = chooseActionForAgent(capability.id, lower);
+    return simpleIntent(capability.id, action, taskText, `Matched explicit ${capability.name} mention.`, {
+        explicit_agent_mention: capability.id,
+        raw_user_input: text,
+    });
+}
+
+function routeByRecentCorrection(text: string, lower: string, context?: ConversationContext): RouteDecision | null {
+    if (findExplicitAgentMention(lower)) return null;
+    if (!/\b(this|that|same|again|retry|try again|redo|do it|use that|for this)\b/.test(lower)) return null;
+
+    const messages = [...(context?.recent_messages || [])].reverse();
+    for (const message of messages) {
+        if (message.role !== "user") continue;
+        const messageLower = normalizeForMatch(message.content);
+        if (!/\b(no|nope|wrong|instead|use|switch|i meant|for this|try again|redo)\b/.test(messageLower)) continue;
+        const capability = findExplicitAgentMention(messageLower);
+        if (!capability) continue;
+        const action = chooseActionForAgent(capability.id, lower);
+        return simpleIntent(capability.id, action, text, `Matched recent correction to ${capability.name}.`, {
+            correction_agent_mention: capability.id,
+            correction_source: message.content,
+        });
+    }
+
+    return null;
+}
+
+export function chooseActionForAgent(agentId: string, lower: string): string {
+    switch (agentId) {
+        case "teams-agent":
+            if (/\b(schedule|meeting|calendar)\b/.test(lower)) return "schedule_meeting";
+            if (/\b(call|phone)\b/.test(lower)) return "make_call";
+            return "send_message";
+        case "email-agent":
+            if (/\b(send|compose)\b/.test(lower)) return "send_email";
+            if (/\b(search|find)\b/.test(lower)) return "search_emails";
+            if (/\b(reply)\b/.test(lower)) return "reply_to_email";
+            if (/\b(summarize|summary|read|open)\b/.test(lower)) return "read_email";
+            return "read_inbox";
+        case "calendar-agent":
+            if (/\b(create|schedule|add|book)\b/.test(lower)) return "create_calendar_event";
+            if (/\b(conflict|free|available)\b/.test(lower)) return "check_conflicts";
+            return "get_calendar_events";
+        case "todo-agent":
+            if (/\b(done|complete|finished)\b/.test(lower)) return "mark_done";
+            if (/\b(delete|remove)\b/.test(lower)) return "delete_task";
+            if (/\b(list|show|what)\b/.test(lower)) return "list_tasks";
+            return "add_task";
+        case "day-planner-agent":
+            if (/\b(week|weekly)\b/.test(lower)) return "get_weekly_overview";
+            if (/\b(add|put|schedule)\b/.test(lower)) return "add_to_plan";
+            return "get_daily_plan";
+        case "maps-agent":
+            if (/\b(direction|route|navigate|from .+ to )\b/.test(lower)) return "get_directions";
+            if (/\b(distance|how far|travel time)\b/.test(lower)) return "distance_matrix";
+            if (/\b(geocode|coordinates|lat|lng)\b/.test(lower)) return "geocode";
+            return "search_places";
+        case "freshdesk-agent":
+            if (/\b(status|ticket #?\d+)\b/.test(lower)) return "check_ticket_status";
+            if (/\b(solution|kb|knowledge)\b/.test(lower)) return "search_solutions";
+            if (/\b(list|recent)\b/.test(lower)) return "list_tickets";
+            return "create_ticket";
+        case "github-agent":
+            if (/\b(create|open)\b.*\bissue\b/.test(lower)) return "create_issue";
+            if (/\bissue\b.*#?\d+/.test(lower)) return "get_issue";
+            if (/\b(search|find)\b/.test(lower)) return "search_repositories";
+            return "list_repositories";
+        case "gitlab-agent":
+            if (/\b(create|open)\b.*\bissue\b/.test(lower)) return "create_issue";
+            if (/\bissue\b.*#?\d+/.test(lower)) return "get_issue";
+            return "list_projects";
+        case "jira-agent":
+            if (/\b(create|open)\b.*\b(issue|bug|task|story)\b/.test(lower)) return "create_issue";
+            if (/\bstatus\b|\b[A-Z][A-Z0-9]+-\d+\b/.test(lower)) return "get_issue_status";
+            if (/\b(search|jql)\b/.test(lower)) return "search_issues";
+            return "list_issues";
+        case "linkedin-agent":
+            if (/\b(analy[sz]e|engagement)\b/.test(lower)) return "analyze_engagement";
+            return "schedule_post";
+        case "zoom-agent":
+            if (/\b(summary|transcript)\b/.test(lower)) return "get_meeting_summary";
+            if (/\b(list|upcoming)\b/.test(lower)) return "list_upcoming_meetings";
+            return "create_meeting";
+        case "seo-agent":
+            if (/\b(audit|review)\b/.test(lower) && extractUrl(lower)) return "audit";
+            if (/\b(optimi[sz]e|improve)\b/.test(lower)) return "optimize_article";
+            return "generate_brief";
+        case "smart-gtm-agent":
+            if (/\b(channel)\b/.test(lower)) return "channel";
+            if (/\b(gtm|go to market|go-to-market)\b/.test(lower)) return "go_to_market";
+            return "research_company";
+        case "startup-fundraising-agent":
+            if (/\b(investor|investors)\b/.test(lower) && /\b(find|search|list)\b/.test(lower)) return "search_investors";
+            if (/\b(outreach|email|message)\b/.test(lower)) return "plan_outreach";
+            if (/\b(term sheet)\b/.test(lower)) return "term_sheet_guidance";
+            if (/\b(track|update|follow up)\b/.test(lower)) return "track_conversation";
+            return "generate_fundraising_plan";
+        case "devika-engineer-agent":
+            if (/\b(repo|repository)\b/.test(lower) && extractUrl(lower)) return "repo_intake";
+            if (/\b(fix|bug|error|stack trace)\b/.test(lower)) return "fix_bug";
+            if (/\b(implement|build feature)\b/.test(lower)) return "implement_feature";
+            if (/\b(deploy|release)\b/.test(lower)) return "deploy_project";
+            if (/\b(run|start)\b/.test(lower)) return "run_project";
+            if (/\b(report)\b/.test(lower)) return "generate_report";
+            if (/\b(status)\b/.test(lower)) return "agent_status";
+            return "plan_project";
+        case "data-analyst-agent":
+            if (/\b(capabilities|can you do)\b/.test(lower)) return "list_capabilities";
+            if (/\b(anomaly|monitor|detect)\b/.test(lower)) return "monitor";
+            return "autonomous";
+        case "dia-helper-agent":
+            if (/\b(update|edit|change|add|more detail|details)\b/.test(lower)) return "update_diagram";
+            return "generate_diagram";
+        default:
+            return getAgentCapability(agentId)?.defaultAction || "ask";
+    }
+}
+
+function routeFundraisingIntent(text: string, lower: string, reason: string): RouteDecision {
+    const action = /\b(term sheet|safe|valuation cap|pro rata)\b/.test(lower)
+        ? "term_sheet_guidance"
+        : /\b(track|update|follow up|pipeline|conversation)\b/.test(lower)
+            ? "track_conversation"
+            : /\b(outreach|email|message|draft|sequence)\b/.test(lower)
+                ? "plan_outreach"
+                : /\b(investor|investors|vc|funds?)\b/.test(lower) && /\b(find|search|list|identify)\b/.test(lower)
+                    ? "search_investors"
+                    : "generate_fundraising_plan";
+
+    return simpleIntent(
+        "startup-fundraising-agent",
+        action,
+        text,
+        reason,
+        enrichParameters("startup-fundraising-agent", action, text, {})
+    );
+}
+
+function routeSmartGtmIntent(text: string, lower: string, reason: string): RouteDecision {
+    const action = /\b(channel|channels|distribution|partnership|partner)\b/.test(lower) && !/\b(go to market|go-to-market|gtm)\b/.test(lower)
+        ? "channel"
+        : /\b(gtm|go to market|go-to-market|positioning|audience|market plan)\b/.test(lower)
+            ? "go_to_market"
+            : "research_company";
+
+    return simpleIntent(
+        "smart-gtm-agent",
+        action,
+        text,
+        reason,
+        enrichParameters("smart-gtm-agent", action, text, {})
+    );
+}
+
+function routeEmergencyIntent(text: string, reason: string): RouteDecision {
+    return simpleIntent("emergency-response-agent", "assess_emergency", text, reason, {
+        description: text,
+    });
+}
+
+export function enrichParameters(agentId: string, action: string, text: string, params: Record<string, unknown>): Record<string, unknown> {
+    const next = { ...params };
+    const lower = normalizeForMatch(text);
+    const email = extractEmailAddress(text);
+    const url = extractUrl(text);
+    const count = getNumericRequestCount(text);
+
+    if (count && !next.limit) next.limit = Math.min(count, 20);
+    if (email) {
+        next.email = email;
+        next.receiverEmail = email;
+        next.recipientEmail = email;
+        next.contact = next.contact || email;
+    }
+    if (url) {
+        next.url = url;
+        next.company_url = url;
+        next.companyUrl = url;
+        next.repositoryUrl = url;
+    }
+    if (ACTIONS_WITH_PROMPT_FALLBACK.has(action)) {
+        const required = getActionCapability(agentId, action)?.required || [];
+        for (const field of required) {
+            if (!next[field]) next[field] = text;
+        }
+    }
+    if (agentId === "strata-agent") {
+        next.question = next.question || text;
+        const symbol = extractSymbol(text);
+        if (symbol) next.symbol = symbol;
+    }
+    if (agentId === "startup-fundraising-agent") {
+        const startupMatch =
+            text.match(/\bmy\s+(.{2,80}?\s+startup)\b/i) ||
+            text.match(/\b(?:for|about)\s+(.{2,80}?\s+startup)\b/i);
+        next.startup_name = next.startup_name || startupMatch?.[1]?.trim() || text;
+        if (/\bpre[-\s]?seed\b/.test(lower)) next.stage = next.stage || "pre-seed";
+        else if (/\bseed\b/.test(lower)) next.stage = next.stage || "seed";
+        else if (/\bseries\s*a\b/.test(lower)) next.stage = next.stage || "series a";
+        if (/\bb2b\b/.test(lower) && /\bai\b/.test(lower)) next.industry = next.industry || "b2b ai";
+        else if (/\bsaas\b/.test(lower)) next.industry = next.industry || "saas";
+        else if (/\bai\b/.test(lower)) next.industry = next.industry || "ai";
+        next.preferred_channel = next.preferred_channel || (/\blinkedin\b/.test(lower) ? "linkedin" : "email");
+        next.query = next.query || text;
+    }
+    if (agentId === "smart-gtm-agent") {
+        next.query = next.query || text;
+        if (url) {
+            next.companyUrl = next.companyUrl || url;
+            next.url = next.url || url;
+            next.company_url = next.company_url || url;
+        } else {
+            const companyMatch = text.match(/\b(?:for|about|analyze)\s+([A-Z][A-Za-z0-9 .&-]{2,60})\b/);
+            if (companyMatch?.[1]) next.companyName = next.companyName || companyMatch[1].trim();
+        }
+        if (action === "go_to_market") next.mode = next.mode || "gtm";
+        if (action === "channel") next.mode = next.mode || "channel";
+        if (action === "research_company") next.mode = next.mode || "research";
+    }
+    if (agentId === "emergency-response-agent") {
+        next.description = next.description || text;
+    }
+    if (agentId === "dia-helper-agent") {
+        if (action === "update_diagram") next.editInstruction = next.editInstruction || text;
+        else next.prompt = next.prompt || text;
+    }
+    if (agentId === "seo-agent" && action === "generate_brief") {
+        next.topic = next.topic || text.replace(/\bseo\b/gi, "").trim() || text;
+    }
+    if (agentId === "maps-agent" && action === "search_places") {
+        next.query = next.query || text;
+    }
+    if (agentId === "todo-agent" && action === "add_task") {
+        next.title = next.title || text;
+    }
+    if (agentId === "github-agent" && action === "list_repositories") {
+        next.limit = next.limit || 10;
+        if (/\b(created)\b/.test(lower)) next.sort = "created";
+        if (/\b(pushed)\b/.test(lower)) next.sort = "pushed";
+    }
+    return next;
+}
+
+function inferContextualGmailRoute(text: string, lower: string, context?: ConversationContext): RouteDecision | null {
+    const recentEmails = context?.entity_index.gmail_emails || [];
+    if (recentEmails.length === 0) return null;
+
+    const hasFollowUpAction = /\b(summarize|summarise|summary|read|open|mark|reply|respond)\b/.test(lower);
+    const hasReferenceHint =
+        /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|latest|top|this|that|same|one|it|mail|email|sender|from|subject|above|previous|list)\b/.test(lower);
+
+    if (!hasFollowUpAction || !hasReferenceHint) return null;
+    return googleIntent(
+        "gmail",
+        inferGmailAction(lower),
+        text,
+        "Matched a Gmail follow-up from recent structured context."
+    );
+}
+
+export function deterministicRoute(userInput: string, context?: ConversationContext): RouteDecision {
+    const text = userInput.trim();
+    const lower = normalizeForMatch(text);
+    if (!text) return noRoute("Empty message.");
+
+    const explicit = routeByExplicitAgentMention(text, lower);
+    if (explicit) {
+        const explicitRoutingText =
+            typeof explicit.parameters.prompt === "string"
+                ? explicit.parameters.prompt
+                : typeof explicit.parameters.parameters === "string"
+                    ? explicit.parameters.parameters
+                    : text;
+        explicit.parameters = enrichParameters(
+            explicit.target_agent || "",
+            explicit.target_action || "",
+            explicitRoutingText,
+            explicit.parameters
+        );
+        return explicit;
+    }
+
+    const correction = routeByRecentCorrection(text, lower, context);
+    if (correction) {
+        correction.parameters = enrichParameters(
+            correction.target_agent || "",
+            correction.target_action || "",
+            text,
+            correction.parameters
+        );
+        return correction;
+    }
+
+    if (/\b(heart attack|stroke|chest pain|breathing|can't breathe|cannot breathe|severe injury|emergency|sos|ambulance|bleeding|unconscious)\b/.test(lower)) {
+        return routeEmergencyIntent(text, "Matched an emergency/medical safety request.");
+    }
+
+    if (/\b(fundraising|fundraise|funds?|investors?|seed investors?|vc|venture capital|pitch deck|term sheet|outreach email)\b/.test(lower)) {
+        return routeFundraisingIntent(text, lower, "Matched a fundraising/investor workflow request.");
+    }
+
+    if (
+        /\b(gtm|go to market|go-to-market|positioning|audience|channels?|market plan|company url)\b/.test(lower) &&
+        /\b(company|url|startup|audience|positioning|channels?|strategy|plan|https?)\b/.test(lower)
+    ) {
+        return routeSmartGtmIntent(text, lower, "Matched a Smart GTM strategy request.");
+    }
+
+    const contextualGmailRoute = inferContextualGmailRoute(text, lower, context);
+    if (contextualGmailRoute) return contextualGmailRoute;
+
+    if (/\b(gmail|gamil|gmial|email|emails|mail|mails|inbox|message|messages)\b/.test(lower)) {
+        return googleIntent("gmail", inferGmailAction(lower), text, "Matched a Gmail/email request.");
+    }
+
+    if (/\b(google drive|drive|docs?|documents?|files?|folder|folders|pdf|pdfs)\b/.test(lower) && includesAny(lower, [
+        /\b(list|show|get|retrieve|fetch|find|search|read|summarize|summarise|open)\b/,
+        /\b(last|latest|recent)\b/,
+    ])) {
+        return googleIntent("drive", inferDriveAction(lower), text, "Matched a Google Drive/file request.");
+    }
+
+    if (/\b(google calendar|calendar|agenda|events?)\b/.test(lower)) {
+        return googleIntent("calendar", /\b(create|schedule|add|book)\b/.test(lower) ? "create_event" : "list_events", text, "Matched a Google Calendar request.");
+    }
+
+    if (/\b(google meet|meet link|meeting link|video call)\b/.test(lower)) {
+        return googleIntent("meet", "create_meet", text, "Matched a Google Meet request.");
+    }
+
+    if (/\b(google tasks)\b/.test(lower)) {
+        return googleIntent("tasks", /\b(add|create|remind)\b/.test(lower) ? "create_task" : "list_tasks", text, "Matched a Google Tasks request.");
+    }
+
+    if (/\b(remind me|to-do|todo|task|tasks|daily plan|weekly overview|plan my day)\b/.test(lower)) {
+        const agentId = /\b(plan my day|daily plan|weekly overview)\b/.test(lower)
+            ? "day-planner-agent"
+            : "todo-agent";
+        const action = chooseActionForAgent(agentId, lower);
+        return simpleIntent(agentId, action, text, `Matched ${getAgentCatalogEntry(agentId)?.name || agentId}.`, enrichParameters(agentId, action, text, {}));
+    }
+
+    if (/\b(map|maps|directions|route|near me|nearby|distance|coffee shops?|restaurants?)\b/.test(lower)) {
+        const action = chooseActionForAgent("maps-agent", lower);
+        return simpleIntent("maps-agent", action, text, "Matched a Maps request.", enrichParameters("maps-agent", action, text, { query: text }));
+    }
+
+    if (/\b(seo|keyword|serp|content brief|optimi[sz]e article)\b/.test(lower)) {
+        const action = chooseActionForAgent("seo-agent", lower);
+        return simpleIntent("seo-agent", action, text, "Matched an SEO request.", enrichParameters("seo-agent", action, text, {}));
+    }
+
+    if (/\b(shopgenie|shop genie|buy|best .+ under|compare .+ (phones|laptops|headphones|products))\b/.test(lower)) {
+        return simpleIntent("shopgenie-agent", "recommend_product", text, "Matched a shopping/product recommendation request.", { query: text });
+    }
+
+    if (/\b(plan a trip|travel|flights?|hotels?|itinerary)\b/.test(lower)) {
+        return simpleIntent("travel-halper-agent", "plan_trip", text, "Matched a travel planning request.", { prompt: text });
+    }
+
+    if (/\b(dashboard|kpi|analytics board|metrics board)\b/.test(lower)) {
+        return simpleIntent("dashboard-designer-agent", "design_dashboard", text, "Matched a dashboard design request.", { prompt: text });
+    }
+
+    if (/\b(resume|candidate|interview|ats)\b/.test(lower)) {
+        const action = chooseActionForAgent("ats-agent", lower);
+        return simpleIntent("ats-agent", action, text, "Matched a recruiting/ATS request.", enrichParameters("ats-agent", action, text, {}));
+    }
+
+    if (/\b(course|learner|lms|training|assignment)\b/.test(lower)) {
+        const action = chooseActionForAgent("lms-agent", lower);
+        return simpleIntent("lms-agent", action, text, "Matched an LMS request.", enrichParameters("lms-agent", action, text, {}));
+    }
+
+    if (/\b(construction|house plan|plot|contractor|architect|floor plan)\b/.test(lower)) {
+        return simpleIntent("building-construction-agent", "generate_plan", text, "Matched a construction planning request.", { prompt: text });
+    }
+
+    return noRoute();
+}

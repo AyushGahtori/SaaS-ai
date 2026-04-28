@@ -12,6 +12,7 @@ interface AgentsTrendingSectionProps {
   installedAgentIds: string[];
   onInstall: (agentId: string) => Promise<void>;
   onUninstall: (agentId: string) => Promise<void>;
+  onOpen: (agentId: string) => void;
 }
 
 export const AgentsTrendingSection = ({
@@ -20,6 +21,7 @@ export const AgentsTrendingSection = ({
   installedAgentIds,
   onInstall,
   onUninstall,
+  onOpen,
 }: AgentsTrendingSectionProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -101,6 +103,7 @@ export const AgentsTrendingSection = ({
               isInstalled={installedAgentIds.includes(agent.id)}
               onInstall={onInstall}
               onUninstall={onUninstall}
+              onOpen={onOpen}
             />
           </div>
         ))}
