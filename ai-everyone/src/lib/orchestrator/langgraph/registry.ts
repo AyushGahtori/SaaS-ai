@@ -582,12 +582,16 @@ export function chooseActionForAgent(agentId: string, lower: string): string {
             return "generate_fundraising_plan";
         case "devika-engineer-agent":
             if (/\b(repo|repository)\b/.test(lower) && extractUrl(lower)) return "repo_intake";
+            if (/\b(agent status|status summary|health|run summary)\b/.test(lower)) return "agent_status";
+            if (/\b(snapshot|snapshots|history|recent runs|recent executions)\b/.test(lower)) return "list_snapshots";
+            if (/\b(token|tokens|estimate tokens|token estimate)\b/.test(lower)) return "token_estimate";
+            if (/\b(browser|website flow|ui flow|click through|form flow)\b/.test(lower)) return "browser_strategy";
+            if (/\b(research|best practice|best practices|compare approaches)\b/.test(lower)) return "research_plan";
             if (/\b(fix|bug|error|stack trace)\b/.test(lower)) return "fix_bug";
             if (/\b(implement|build feature)\b/.test(lower)) return "implement_feature";
             if (/\b(deploy|release)\b/.test(lower)) return "deploy_project";
             if (/\b(run|start)\b/.test(lower)) return "run_project";
             if (/\b(report)\b/.test(lower)) return "generate_report";
-            if (/\b(status)\b/.test(lower)) return "agent_status";
             return "plan_project";
         case "data-analyst-agent":
             if (/\b(capabilities|can you do)\b/.test(lower)) return "list_capabilities";
