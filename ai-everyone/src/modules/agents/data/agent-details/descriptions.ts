@@ -55,6 +55,13 @@ export const agentDescriptionLines: Record<string, string[]> = {
     "The final plan can be packaged and emailed as a clean HTML summary.",
     "Best for weekend trips, business travel, and budget-aware planning.",
   ],
+  "restaurant-concierge-agent": [
+    "Run a full restaurant ordering flow inside a dedicated food-ordering workspace.",
+    "It can browse the menu, recommend dishes, build an order, modify quantities, and confirm delivery or pickup.",
+    "Use it when the conversation needs session memory instead of one-off food suggestions.",
+    "It keeps order state, upsell prompts, and human escalation in one scoped agent flow.",
+    "Best for menu discovery, multi-item ordering, order edits, and handoff-ready restaurant support.",
+  ],
   "emergency-response-agent": [
     "Assess urgent medical situations and guide next response steps.",
     "It can estimate severity, collect critical context, and activate escalation.",

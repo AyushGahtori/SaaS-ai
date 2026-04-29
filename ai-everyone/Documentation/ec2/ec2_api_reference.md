@@ -44,6 +44,7 @@ Detached runtime contract for all EC2 agents.
 - `GET /ats/health`
 - `GET /lms/health`
 - `GET /travelhalper/health`
+- `GET /restaurant/health`
 - `GET /devika/health`
 - `GET /dataanalyst/health`
 
@@ -79,6 +80,7 @@ Detached runtime contract for all EC2 agents.
 - `POST /ats/action`
 - `POST /lms/action`
 - `POST /travelhalper/action`
+- `POST /restaurant/action`
 - `POST /devika/action`
 - `POST /dataanalyst/action`
 
@@ -144,7 +146,7 @@ Stored fields:
 
 - OAuth: `teams-agent`, `google-agent`, `notion-agent`, `canva-agent`, `discord-agent`, `dropbox-agent`, `github-agent`, `gitlab-agent`, `jira-agent`, `linkedin-agent`, `zoom-agent`
 - API key: `freshdesk-agent`, `greenhouse-agent`
-- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`, `lms-agent`, `travel-halper-agent`, `devika-engineer-agent`, `data-analyst-agent`
+- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`, `lms-agent`, `travel-halper-agent`, `restaurant-concierge-agent`, `devika-engineer-agent`, `data-analyst-agent`
 
 ## JS-Parity Notes
 
@@ -167,6 +169,10 @@ curl -X POST "${AGENT_PUBLIC_BASE_URL}/lms/action" \
 curl -X POST "${AGENT_PUBLIC_BASE_URL}/travelhalper/action" \
   -H "Content-Type: application/json" \
   -d '{"taskId":"smoke-travel-1","userId":"smoke-user","agentId":"travel-halper-agent","action":"plan_trip","prompt":"Plan a Delhi to Goa trip for 3 days"}'
+
+curl -X POST "${AGENT_PUBLIC_BASE_URL}/restaurant/action" \
+  -H "Content-Type: application/json" \
+  -d '{"taskId":"smoke-restaurant-1","userId":"smoke-user","agentId":"restaurant-concierge-agent","action":"run_restaurant_concierge","prompt":"Add 2 chicken biryanis and one chai to my order"}'
 
 curl -X POST "${AGENT_PUBLIC_BASE_URL}/devika/action" \
   -H "Content-Type: application/json" \

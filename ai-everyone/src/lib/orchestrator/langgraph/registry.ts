@@ -62,6 +62,7 @@ export const AGENT_ENDPOINTS: Record<string, string> = {
     "building-construction-agent": "/building/action",
     "lms-agent": "/lms/action",
     "travel-halper-agent": "/travelhalper/action",
+    "restaurant-concierge-agent": "/restaurant/action",
     "devika-engineer-agent": "/devika/action",
     "data-analyst-agent": "/dataanalyst/action",
     "cyber-soc-agent": "/cybersoc/action",
@@ -88,6 +89,19 @@ const EXTRA_ACTIONS: Record<string, Record<string, AgentActionCapability>> = {
     },
     "strata-agent": {
         ask: { name: "ask", required: ["question"], optional: ["symbol"] },
+    },
+    "restaurant-concierge-agent": {
+        run_restaurant_concierge: { name: "run_restaurant_concierge", required: ["prompt"], optional: ["message", "query"] },
+        browse_menu: { name: "browse_menu", required: [], optional: ["category", "dietaryFilter"] },
+        search_menu: { name: "search_menu", required: ["query"], optional: ["prompt"] },
+        get_item_details: { name: "get_item_details", required: ["itemName"], optional: ["prompt"] },
+        get_recommendations: { name: "get_recommendations", required: [], optional: [] },
+        get_order_summary: { name: "get_order_summary", required: [], optional: [] },
+        get_session_analytics: { name: "get_session_analytics", required: [], optional: [] },
+        reset_session: { name: "reset_session", required: [], optional: [] },
+        suggest_items: { name: "suggest_items", required: ["query"], optional: ["prompt"] },
+        request_human_help: { name: "request_human_help", required: ["reason"], optional: [] },
+        list_capabilities: { name: "list_capabilities", required: [], optional: [] },
     },
 };
 
@@ -167,6 +181,11 @@ const DEFAULT_REQUIRED_BY_ACTION: Record<string, string[]> = {
     monitor: ["data"],
     autonomous: ["goal"],
     analyze_log: ["log"],
+    run_restaurant_concierge: ["prompt"],
+    search_menu: ["query"],
+    get_item_details: ["itemName"],
+    suggest_items: ["query"],
+    request_human_help: ["reason"],
 };
 
 const ACTIONS_WITH_PROMPT_FALLBACK = new Set([
@@ -190,6 +209,8 @@ const ACTIONS_WITH_PROMPT_FALLBACK = new Set([
     "generate_report",
     "answer_question",
     "autonomous",
+    "run_restaurant_concierge",
+    "suggest_items",
 ]);
 
 function makeAliases(agent: AgentCatalogEntry): string[] {
@@ -203,6 +224,7 @@ function makeAliases(agent: AgentCatalogEntry): string[] {
     if (agent.id === "strata-agent") base.push("stara", "strata", "finance analytics");
     if (agent.id === "google-agent") base.push("gmail", "google mail", "google drive", "google calendar", "google meet", "google tasks");
     if (agent.id === "travel-halper-agent") base.push("travel helper", "travel halper", "travel planner", "trip planner");
+    if (agent.id === "restaurant-concierge-agent") base.push("restaurant concierge", "restaurant agent", "food ordering", "menu ordering");
     if (agent.id === "dia-helper-agent") base.push("dia", "diagram helper", "mermaid");
     if (agent.id === "shopgenie-agent") base.push("shop genie", "shopping");
     if (agent.id === "todo-agent") base.push("todo", "to do", "reminder", "reminders");
@@ -593,6 +615,17 @@ export function chooseActionForAgent(agentId: string, lower: string): string {
             if (/\b(run|start)\b/.test(lower)) return "run_project";
             if (/\b(report)\b/.test(lower)) return "generate_report";
             return "plan_project";
+        case "restaurant-concierge-agent":
+            if (/\b(reset|start over|clear session|new order)\b/.test(lower)) return "reset_session";
+            if (/\b(human|manager|complaint|escalate|support)\b/.test(lower)) return "request_human_help";
+            if (/\b(current order|order summary|cart|what did i order|show order)\b/.test(lower)) return "get_order_summary";
+            if (/\b(log|analytics|session state|history)\b/.test(lower)) return "get_session_analytics";
+            if (/\bsuggest(?:ion)?\s+for\b|\bsuggest(?:\s+\w+){0,4}\s+items?\b/.test(lower)) return "suggest_items";
+            if (/\b(recommend|suggest|pair with|popular|chef)\b/.test(lower)) return "get_recommendations";
+            if (/\b(item details|details for|tell me about|ingredients|price of|what is)\b/.test(lower)) return "get_item_details";
+            if (/\b(search|find)\b/.test(lower) && /\b(menu|dish|food|item|drink|dessert)\b/.test(lower)) return "search_menu";
+            if (/\b(menu|vegetarian|vegan|gluten|dessert|beverage|appetizer|main course|pickup|delivery)\b/.test(lower)) return "browse_menu";
+            return "run_restaurant_concierge";
         case "data-analyst-agent":
             if (/\b(capabilities|can you do)\b/.test(lower)) return "list_capabilities";
             if (/\b(anomaly|monitor|detect)\b/.test(lower)) return "monitor";
@@ -715,6 +748,28 @@ export function enrichParameters(agentId: string, action: string, text: string, 
         if (action === "go_to_market") next.mode = next.mode || "gtm";
         if (action === "channel") next.mode = next.mode || "channel";
         if (action === "research_company") next.mode = next.mode || "research";
+    }
+    if (agentId === "restaurant-concierge-agent") {
+        next.prompt = next.prompt || text;
+        next.message = next.message || text;
+        if (action === "search_menu" || action === "suggest_items") {
+            next.query = next.query || text;
+        }
+        if (action === "get_item_details") {
+            next.itemName = next.itemName || text;
+        }
+        if (action === "request_human_help") {
+            next.reason = next.reason || text;
+        }
+        if (/\bvegetarian\b/.test(lower)) next.dietaryFilter = next.dietaryFilter || "vegetarian";
+        else if (/\bvegan\b/.test(lower)) next.dietaryFilter = next.dietaryFilter || "vegan";
+        else if (/\bgluten[- ]?free\b/.test(lower)) next.dietaryFilter = next.dietaryFilter || "gluten-free";
+
+        if (/\b(?:appetizer|starter)\b/.test(lower)) next.category = next.category || "appetizers";
+        else if (/\b(?:main|entree)\b/.test(lower)) next.category = next.category || "mains";
+        else if (/\b(?:salad)\b/.test(lower)) next.category = next.category || "salads";
+        else if (/\b(?:beverage|drink|chai|lassi)\b/.test(lower)) next.category = next.category || "beverages";
+        else if (/\b(?:dessert|sweet|gulab jamun|rasmalai)\b/.test(lower)) next.category = next.category || "desserts";
     }
     if (agentId === "emergency-response-agent") {
         next.description = next.description || text;
@@ -851,6 +906,20 @@ export function deterministicRoute(userInput: string, context?: ConversationCont
 
     if (/\b(shopgenie|shop genie|buy|best .+ under|compare .+ (phones|laptops|headphones|products))\b/.test(lower)) {
         return simpleIntent("shopgenie-agent", "recommend_product", text, "Matched a shopping/product recommendation request.", { query: text });
+    }
+
+    if (
+        /\b(restaurant|menu|food|dish|meal|pickup|delivery|biryani|butter chicken|paneer|dosa|chai|lassi|gulab jamun|rasmalai)\b/.test(lower) &&
+        /\b(order|menu|recommend|pickup|delivery|food|dish|meal|add|remove|cancel|search|find|vegetarian|vegan)\b/.test(lower)
+    ) {
+        const action = chooseActionForAgent("restaurant-concierge-agent", lower);
+        return simpleIntent(
+            "restaurant-concierge-agent",
+            action,
+            text,
+            "Matched a restaurant ordering or menu request.",
+            enrichParameters("restaurant-concierge-agent", action, text, {})
+        );
     }
 
     if (/\b(plan a trip|travel|flights?|hotels?|itinerary)\b/.test(lower)) {

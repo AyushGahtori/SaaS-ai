@@ -99,6 +99,10 @@ const FIELDS = {
     subject: field("subject", "subject", "string", "What subject should I use?"),
     body: field("body", "body", "string", "What should the body say?"),
     query: field("query", "query", "string", "What should I search for?"),
+    itemName: field("itemName", "item name", "string", "Which menu item should I inspect?"),
+    category: field("category", "menu category", "string", "Which menu category should I open?"),
+    dietaryFilter: field("dietaryFilter", "dietary filter", "string", "Which dietary filter should I apply?"),
+    reason: field("reason", "reason", "string", "Why should I escalate this to a human teammate?"),
     prompt: field("prompt", "full prompt", "string", "What exactly should the agent do?"),
     planMarkdown: field("planMarkdown", "travel plan content", "string", "Which travel plan should I send?", "travel plan content", false),
     url: field("url", "URL", "string", "Which URL should I use?"),
@@ -192,6 +196,56 @@ const AGENT_INTAKE_SCHEMAS: Record<string, AgentIntakeSchema> = {
                 optional: [field("threadId", "travel plan thread ID", "string", "Which existing travel plan should I send?", "threadId", false), FIELDS.subject, FIELDS.planMarkdown],
                 useUserInputAsPrompt: false,
             }),
+        ],
+    },
+    "restaurant-concierge-agent": {
+        agentId: "restaurant-concierge-agent",
+        purpose: "Restaurant menu browsing, ordering, order changes, session state, and human escalation.",
+        actions: [
+            action("run_restaurant_concierge", "Continue the restaurant conversation.", [FIELDS.prompt], {
+                examples: [
+                    "Add 2 chicken biryanis and one chai to my order.",
+                    "Remove the lassi and make it pickup.",
+                ],
+            }),
+            action("browse_menu", "Browse the restaurant menu.", [], {
+                optional: [FIELDS.category, FIELDS.dietaryFilter],
+                examples: [
+                    "Show me the vegetarian mains menu.",
+                    "Open the desserts section.",
+                ],
+            }),
+            action("search_menu", "Search the restaurant menu.", [FIELDS.query], {
+                examples: [
+                    "Search the menu for paneer dishes.",
+                    "Find mango drinks on the menu.",
+                ],
+            }),
+            action("get_item_details", "Inspect a specific menu item.", [FIELDS.itemName], {
+                examples: [
+                    "Tell me about Butter Chicken.",
+                    "What are the details for Masala Dosa?",
+                ],
+            }),
+            action("get_recommendations", "Get restaurant recommendations.", [], {
+                examples: [
+                    "What do you recommend for a vegetarian dinner?",
+                ],
+            }),
+            action("get_order_summary", "Show the current order summary.", []),
+            action("get_session_analytics", "Show session logs and analytics.", []),
+            action("reset_session", "Reset the current restaurant session.", []),
+            action("suggest_items", "Suggest likely menu items from partial input.", [FIELDS.query], {
+                examples: [
+                    "Suggest what matches 'biry'.",
+                ],
+            }),
+            action("request_human_help", "Escalate the restaurant session to a human teammate.", [FIELDS.reason], {
+                examples: [
+                    "Escalate this complaint about the wrong order to a human.",
+                ],
+            }),
+            action("list_capabilities", "List restaurant workspace capabilities.", []),
         ],
     },
     "emergency-response-agent": {

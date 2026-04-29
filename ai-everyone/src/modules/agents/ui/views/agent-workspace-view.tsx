@@ -79,6 +79,26 @@ const DEVIKA_RUNTIME_NOTES = [
   "The workspace is hard-locked to Devika so engineering prompts never drift into unrelated agents.",
 ];
 
+const RESTAURANT_ACTION_PROMPTS: Record<string, string> = {
+  run_restaurant_concierge: "Add 2 chicken biryanis, 1 mango lassi, and tell me the current total.",
+  browse_menu: "Show me the vegetarian mains menu.",
+  search_menu: "Search the menu for paneer dishes.",
+  get_item_details: "Tell me about Masala Dosa.",
+  get_recommendations: "What do you recommend for a vegetarian dinner?",
+  get_order_summary: "Show my current order summary.",
+  get_session_analytics: "Show this restaurant session analytics and recent logs.",
+  reset_session: "Reset my restaurant session and start fresh.",
+  suggest_items: "Suggest likely menu items for 'biry'.",
+  request_human_help: "Escalate this wrong-order complaint to a human teammate.",
+  list_capabilities: "Show what this restaurant concierge can do.",
+};
+
+const RESTAURANT_RUNTIME_NOTES = [
+  "This workspace stays locked to one restaurant ordering session, so order state and edits persist across messages.",
+  "Use the controls here for menu browsing, order review, recommendations, resets, and escalation without switching agents.",
+  "The normal chat card stays compact, while the workspace conversation can expose session logs, actions, and richer order context.",
+];
+
 function formatActionLabel(action: string): string {
   return action
     .split("_")
@@ -88,6 +108,169 @@ function formatActionLabel(action: string): string {
 
 function formatFieldLabel(label: string): string {
   return label.replace(/\s+/g, " ").trim();
+}
+
+type WorkspaceActionCard = {
+  action: string;
+  description: string;
+  required: Array<{ key: string; label: string }>;
+  optional?: Array<{ key: string; label: string }>;
+  examples?: string[];
+};
+
+interface AgentActionControlsSectionProps {
+  actions: WorkspaceActionCard[];
+  title: string;
+  notesTitle: string;
+  notes: string[];
+  quickFlowsTitle: string;
+  quickFlows: string[];
+  isAccessible: boolean;
+  sendWorkspacePrompt: (prompt: string, forceNewChat?: boolean) => Promise<void>;
+  formatActionLabel: (action: string) => string;
+  formatFieldLabel: (label: string) => string;
+  actionPrompts: Record<string, string>;
+  requiredToneClassName: string;
+  sectionClassName: string;
+}
+
+function AgentActionControlsSection({
+  actions,
+  title,
+  notesTitle,
+  notes,
+  quickFlowsTitle,
+  quickFlows,
+  isAccessible,
+  sendWorkspacePrompt,
+  formatActionLabel,
+  formatFieldLabel,
+  actionPrompts,
+  requiredToneClassName,
+  sectionClassName,
+}: AgentActionControlsSectionProps) {
+  return (
+    <section className={sectionClassName}>
+      <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/44">
+          {title}
+        </h2>
+        <div className="mt-4 grid gap-3">
+          {actions.map((workspaceAction) => {
+            const example =
+              actionPrompts[workspaceAction.action] ||
+              workspaceAction.examples?.[0] ||
+              "";
+            const requiredFields = workspaceAction.required || [];
+            const optionalFields = workspaceAction.optional || [];
+
+            return (
+              <div
+                key={workspaceAction.action}
+                className="rounded-2xl border border-white/10 bg-black/18 p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-white">
+                      {formatActionLabel(workspaceAction.action)}
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-white/62">
+                      {workspaceAction.description}
+                    </p>
+                  </div>
+
+                  {example ? (
+                    <button
+                      disabled={!isAccessible}
+                      onClick={() => void sendWorkspacePrompt(example, true)}
+                      className="rounded-lg border border-primary/26 bg-primary/12 px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      Use example
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(requiredFields.length
+                    ? requiredFields.map((field) => ({
+                        key: field.key,
+                        label: formatFieldLabel(field.label),
+                        tone: requiredToneClassName,
+                      }))
+                    : [
+                        {
+                          key: "none",
+                          label: "No required fields",
+                          tone: "border-white/10 bg-white/[0.05] text-white/62",
+                        },
+                      ]
+                  ).map((field) => (
+                    <span
+                      key={`${workspaceAction.action}-${field.key}`}
+                      className={`rounded-full border px-3 py-1 text-[11px] ${field.tone}`}
+                    >
+                      {field.label}
+                    </span>
+                  ))}
+
+                  {optionalFields.slice(0, 3).map((field) => (
+                    <span
+                      key={`${workspaceAction.action}-optional-${field.key}`}
+                      className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] text-white/62"
+                    >
+                      Optional: {formatFieldLabel(field.label)}
+                    </span>
+                  ))}
+                </div>
+
+                {example ? (
+                  <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm leading-6 text-white/70">
+                    {example}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid gap-4">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/44">
+            {notesTitle}
+          </h2>
+          <div className="mt-4 space-y-3">
+            {notes.map((note) => (
+              <div
+                key={note}
+                className="rounded-2xl border border-white/10 bg-black/18 px-4 py-3 text-sm leading-6 text-white/68"
+              >
+                {note}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/44">
+            {quickFlowsTitle}
+          </h2>
+          <div className="mt-4 grid gap-2">
+            {quickFlows.map((prompt) => (
+              <button
+                key={prompt}
+                disabled={!isAccessible}
+                onClick={() => void sendWorkspacePrompt(prompt, true)}
+                className="rounded-xl border border-white/10 bg-black/18 px-4 py-3 text-left text-sm leading-6 text-white/72 transition hover:border-primary/28 hover:bg-primary/12 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
@@ -172,6 +355,10 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
   );
   const devikaActions = useMemo(
     () => (agent?.id === "devika-engineer-agent" ? intakeSchema?.actions || [] : []),
+    [agent, intakeSchema]
+  );
+  const restaurantActions = useMemo(
+    () => (agent?.id === "restaurant-concierge-agent" ? intakeSchema?.actions || [] : []),
     [agent, intakeSchema]
   );
   const workspaceNotes = useMemo(
@@ -368,132 +555,52 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
             </section>
 
             {devikaActions.length ? (
-              <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                  <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/44">
-                    Devika controls
-                  </h2>
-                  <div className="mt-4 grid gap-3">
-                    {devikaActions.map((workspaceAction) => {
-                      const example =
-                        DEVIKA_ACTION_PROMPTS[workspaceAction.action] ||
-                        workspaceAction.examples?.[0] ||
-                        "";
-                      const requiredFields = workspaceAction.required || [];
-                      const optionalFields = workspaceAction.optional || [];
+              <AgentActionControlsSection
+                actions={devikaActions}
+                title="Devika controls"
+                notesTitle="Runtime traits"
+                notes={DEVIKA_RUNTIME_NOTES}
+                quickFlowsTitle="Ops shortcuts"
+                quickFlows={[
+                  DEVIKA_ACTION_PROMPTS.agent_status,
+                  DEVIKA_ACTION_PROMPTS.list_snapshots,
+                  DEVIKA_ACTION_PROMPTS.token_estimate,
+                  DEVIKA_ACTION_PROMPTS.repo_intake,
+                  DEVIKA_ACTION_PROMPTS.browser_strategy,
+                ]}
+                isAccessible={isAccessible}
+                sendWorkspacePrompt={sendWorkspacePrompt}
+                formatActionLabel={formatActionLabel}
+                formatFieldLabel={formatFieldLabel}
+                actionPrompts={DEVIKA_ACTION_PROMPTS}
+                requiredToneClassName="border-emerald-400/18 bg-emerald-400/10 text-emerald-100/88"
+                sectionClassName="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]"
+              />
+            ) : null}
 
-                      return (
-                        <div
-                          key={workspaceAction.action}
-                          className="rounded-2xl border border-white/10 bg-black/18 p-4"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-white">
-                                {formatActionLabel(workspaceAction.action)}
-                              </p>
-                              <p className="mt-1 text-sm leading-6 text-white/62">
-                                {workspaceAction.description}
-                              </p>
-                            </div>
-
-                            {example ? (
-                              <button
-                                disabled={!isAccessible}
-                                onClick={() => void sendWorkspacePrompt(example, true)}
-                                className="rounded-lg border border-primary/26 bg-primary/12 px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-45"
-                              >
-                                Use example
-                              </button>
-                            ) : null}
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {(requiredFields.length
-                              ? requiredFields.map((field) => ({
-                                  key: field.key,
-                                  label: formatFieldLabel(field.label),
-                                  tone: "border-emerald-400/18 bg-emerald-400/10 text-emerald-100/88",
-                                }))
-                              : [
-                                  {
-                                    key: "none",
-                                    label: "No required fields",
-                                    tone: "border-white/10 bg-white/[0.05] text-white/62",
-                                  },
-                                ]
-                            ).map((field) => (
-                              <span
-                                key={`${workspaceAction.action}-${field.key}`}
-                                className={`rounded-full border px-3 py-1 text-[11px] ${field.tone}`}
-                              >
-                                {field.label}
-                              </span>
-                            ))}
-
-                            {optionalFields.slice(0, 3).map((field) => (
-                              <span
-                                key={`${workspaceAction.action}-optional-${field.key}`}
-                                className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] text-white/62"
-                              >
-                                Optional: {formatFieldLabel(field.label)}
-                              </span>
-                            ))}
-                          </div>
-
-                          {example ? (
-                            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm leading-6 text-white/70">
-                              {example}
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="grid gap-4">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                    <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/44">
-                      Runtime traits
-                    </h2>
-                    <div className="mt-4 space-y-3">
-                      {DEVIKA_RUNTIME_NOTES.map((note) => (
-                        <div
-                          key={note}
-                          className="rounded-2xl border border-white/10 bg-black/18 px-4 py-3 text-sm leading-6 text-white/68"
-                        >
-                          {note}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                    <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/44">
-                      Ops shortcuts
-                    </h2>
-                    <div className="mt-4 grid gap-2">
-                      {[
-                        DEVIKA_ACTION_PROMPTS.agent_status,
-                        DEVIKA_ACTION_PROMPTS.list_snapshots,
-                        DEVIKA_ACTION_PROMPTS.token_estimate,
-                        DEVIKA_ACTION_PROMPTS.repo_intake,
-                        DEVIKA_ACTION_PROMPTS.browser_strategy,
-                      ].map((prompt) => (
-                        <button
-                          key={prompt}
-                          disabled={!isAccessible}
-                          onClick={() => void sendWorkspacePrompt(prompt, true)}
-                          className="rounded-xl border border-white/10 bg-black/18 px-4 py-3 text-left text-sm leading-6 text-white/72 transition hover:border-primary/28 hover:bg-primary/12 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
-                        >
-                          {prompt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </section>
+            {restaurantActions.length ? (
+              <AgentActionControlsSection
+                actions={restaurantActions}
+                title="Restaurant controls"
+                notesTitle="Workspace notes"
+                notes={RESTAURANT_RUNTIME_NOTES}
+                quickFlowsTitle="Quick flows"
+                quickFlows={[
+                  RESTAURANT_ACTION_PROMPTS.browse_menu,
+                  RESTAURANT_ACTION_PROMPTS.get_recommendations,
+                  RESTAURANT_ACTION_PROMPTS.get_order_summary,
+                  RESTAURANT_ACTION_PROMPTS.get_session_analytics,
+                  RESTAURANT_ACTION_PROMPTS.reset_session,
+                  RESTAURANT_ACTION_PROMPTS.request_human_help,
+                ]}
+                isAccessible={isAccessible}
+                sendWorkspacePrompt={sendWorkspacePrompt}
+                formatActionLabel={formatActionLabel}
+                formatFieldLabel={formatFieldLabel}
+                actionPrompts={RESTAURANT_ACTION_PROMPTS}
+                requiredToneClassName="border-amber-400/18 bg-amber-400/10 text-amber-100/88"
+                sectionClassName="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]"
+              />
             ) : null}
           </div>
         )}

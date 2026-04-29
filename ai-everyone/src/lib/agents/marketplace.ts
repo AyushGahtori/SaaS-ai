@@ -108,6 +108,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 846,
     },
+    "restaurant-concierge-agent": {
+        iconUrl: makeMonogramIcon("Dine", "#b45309", "#92400e"),
+        installCount: 6100,
+        rating: 4.8,
+        createdAt: "2026-04-29T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 744,
+    },
     "emergency-response-agent": {
         iconUrl: localIcon("emergency.png"),
         installCount: 9600,

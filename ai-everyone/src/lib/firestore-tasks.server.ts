@@ -394,6 +394,7 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "building-construction-agent": process.env.BUILDING_CONSTRUCTION_AGENT_URL,
         "lms-agent": process.env.LMS_AGENT_URL,
         "travel-halper-agent": process.env.TRAVEL_HALPER_AGENT_URL,
+        "restaurant-concierge-agent": process.env.RESTAURANT_CONCIERGE_AGENT_URL,
         "devika-engineer-agent": process.env.DEVIKA_ENGINEER_AGENT_URL,
         "data-analyst-agent": process.env.DATA_ANALYST_AGENT_URL,
         "cyber-soc-agent": process.env.CYBER_SOC_AGENT_URL,

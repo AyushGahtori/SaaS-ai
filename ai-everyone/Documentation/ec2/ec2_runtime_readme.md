@@ -46,6 +46,7 @@ This runtime is detached from the main web app.
 | `ats-agent` | 8036 | `/ats/action` | `/ats/health` |
 | `lms-agent` | 8039 | `/lms/action` | `/lms/health` |
 | `travel-halper-agent` | 8040 | `/travelhalper/action` | `/travelhalper/health` |
+| `restaurant-concierge-agent` | 8044 | `/restaurant/action` | `/restaurant/health` |
 | `devika-engineer-agent` | 8041 | `/devika/action` | `/devika/health` |
 | `data-analyst-agent` | 8042 | `/dataanalyst/action` | `/dataanalyst/health` |
 

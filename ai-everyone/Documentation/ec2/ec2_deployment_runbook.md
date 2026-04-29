@@ -32,6 +32,7 @@ Main web app routing env (in `ai-everyone/.env`):
 - `ATS_AGENT_URL`
 - `LMS_AGENT_URL`
 - `TRAVEL_HALPER_AGENT_URL`
+- `RESTAURANT_CONCIERGE_AGENT_URL`
 - `DEVIKA_ENGINEER_AGENT_URL`
 - `DATA_ANALYST_AGENT_URL`
 
@@ -46,6 +47,7 @@ Main web app routing env (in `ai-everyone/.env`):
 - Strata: `FMP_API_KEY` (optional `FMP_BASE_URL`, `STRATA_DEFAULT_SYMBOL`)
 - Travel Halper: `SERPAPI_API_KEY`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, plus optional `FROM_EMAIL`, `TO_EMAIL`, `EMAIL_SUBJECT`
 - Devika Engineer: `DEVIKA_ENGINEER_MODEL` (optional), `DEVIKA_CACHE_TTL_SECONDS` (optional)
+- Restaurant Concierge: `RESTAURANT_CONCIERGE_MODEL` (optional), `RESTAURANT_CONCIERGE_SESSION_TTL_SECONDS` (optional), `RESTAURANT_CONCIERGE_MAX_HISTORY` (optional)
 
 OAuth callback pattern for provider consoles:
 
@@ -86,7 +88,7 @@ sudo ./deploy.sh
 
 ```bash
 # Service state
-for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent strata-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent dia-helper-agent shopgenie-agent career-switch-agent dashboard-designer-agent smart-gtm-agent seo-agent startup-fundraising-agent ats-agent lms-agent travel-halper-agent devika-engineer-agent data-analyst-agent; do
+for s in teams-agent todo-agent google-agent notion-agent maps-agent emergency-response-agent strata-agent canva-agent day-planner-agent discord-agent dropbox-agent freshdesk-agent github-agent gitlab-agent greenhouse-agent jira-agent linkedin-agent zoom-agent dia-helper-agent shopgenie-agent career-switch-agent dashboard-designer-agent smart-gtm-agent seo-agent startup-fundraising-agent ats-agent lms-agent travel-halper-agent restaurant-concierge-agent devika-engineer-agent data-analyst-agent; do
   systemctl is-active "$s"
 done
 
@@ -103,6 +105,7 @@ curl "${AGENT_PUBLIC_BASE_URL}/fundraising/health"
 curl "${AGENT_PUBLIC_BASE_URL}/ats/health"
 curl "${AGENT_PUBLIC_BASE_URL}/lms/health"
 curl "${AGENT_PUBLIC_BASE_URL}/travelhalper/health"
+curl "${AGENT_PUBLIC_BASE_URL}/restaurant/health"
 curl "${AGENT_PUBLIC_BASE_URL}/devika/health"
 curl "${AGENT_PUBLIC_BASE_URL}/dataanalyst/health"
 

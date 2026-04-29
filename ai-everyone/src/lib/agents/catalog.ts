@@ -156,6 +156,34 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         requiresConnection: false,
     },
     {
+        id: "restaurant-concierge-agent",
+        name: "Restaurant Concierge Agent",
+        description:
+            "Browse the menu, build and modify food orders, handle delivery or pickup, review session state, and escalate to a human when needed.",
+        actions: [
+            "run_restaurant_concierge",
+            "browse_menu",
+            "search_menu",
+            "get_item_details",
+            "get_recommendations",
+            "get_order_summary",
+            "get_session_analytics",
+            "reset_session",
+            "suggest_items",
+            "request_human_help",
+            "list_capabilities",
+        ],
+        examplePrompts: [
+            "Show me the vegetarian menu and recommend something filling",
+            "Add 2 chicken biryanis and 1 mango lassi to my order",
+            "Remove the chai, make it pickup, and show my current order summary",
+        ],
+        provider: "internal",
+        category: "food",
+        tags: ["restaurant", "food-ordering", "menu", "delivery", "pickup"],
+        requiresConnection: false,
+    },
+    {
         id: "emergency-response-agent",
         name: "Emergency Response Agent",
         description:
