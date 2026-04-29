@@ -7,6 +7,7 @@ export const agentExamplePrompts: Record<string, string> = {
   "google-agent": "Find the Q3 planning doc in Drive, summarize it, and check my calendar for the next planning meeting.",
   "maps-agent": "Find quiet coffee shops near Connaught Place and estimate travel time from my current area.",
   "travel-halper-agent": "Plan a three-day Delhi to Goa trip with flights, budget hotels, and a shareable itinerary.",
+  "shelfie-grocery-agent": "Plan a weekly high-protein grocery list for two adults and continue it in the same session tomorrow.",
   "restaurant-concierge-agent": "Show me the menu, recommend a vegetarian main, and add 2 paneer dishes with pickup.",
   "emergency-response-agent": "I have severe chest pain and dizziness. Assess urgency and help me find the next safest step.",
   "strata-agent": "Open Stara for AAPL and explain the biggest revenue and margin trends from the latest data.",

@@ -99,6 +99,20 @@ const RESTAURANT_RUNTIME_NOTES = [
   "The normal chat card stays compact, while the workspace conversation can expose session logs, actions, and richer order context.",
 ];
 
+const SHELFIE_ACTION_PROMPTS: Record<string, string> = {
+  run_shelfie_grocery_agent: "Plan a weekly high-protein grocery list for two adults under a moderate budget.",
+  get_history: "Load history for session abc123-session.",
+  list_sessions: "Show my recent Shelfie sessions.",
+  reset_session: "Reset session abc123-session.",
+  list_capabilities: "Show Shelfie Grocery capabilities.",
+};
+
+const SHELFIE_RUNTIME_NOTES = [
+  "Shelfie keeps a session timeline so grocery planning can continue over multiple conversations.",
+  "Redis cache and persistent history are used for fast recall, with safe fallbacks when infrastructure is unavailable.",
+  "Use history and reset controls when you want to branch into a fresh shopping plan without losing other sessions.",
+];
+
 function formatActionLabel(action: string): string {
   return action
     .split("_")
@@ -361,6 +375,10 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
     () => (agent?.id === "restaurant-concierge-agent" ? intakeSchema?.actions || [] : []),
     [agent, intakeSchema]
   );
+  const shelfieActions = useMemo(
+    () => (agent?.id === "shelfie-grocery-agent" ? intakeSchema?.actions || [] : []),
+    [agent, intakeSchema]
+  );
   const workspaceNotes = useMemo(
     () =>
       agent?.id === "devika-engineer-agent"
@@ -599,6 +617,30 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
                 formatFieldLabel={formatFieldLabel}
                 actionPrompts={RESTAURANT_ACTION_PROMPTS}
                 requiredToneClassName="border-amber-400/18 bg-amber-400/10 text-amber-100/88"
+                sectionClassName="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]"
+              />
+            ) : null}
+
+            {shelfieActions.length ? (
+              <AgentActionControlsSection
+                actions={shelfieActions}
+                title="Shelfie controls"
+                notesTitle="Workspace notes"
+                notes={SHELFIE_RUNTIME_NOTES}
+                quickFlowsTitle="Quick flows"
+                quickFlows={[
+                  SHELFIE_ACTION_PROMPTS.run_shelfie_grocery_agent,
+                  SHELFIE_ACTION_PROMPTS.list_sessions,
+                  SHELFIE_ACTION_PROMPTS.get_history,
+                  SHELFIE_ACTION_PROMPTS.reset_session,
+                  SHELFIE_ACTION_PROMPTS.list_capabilities,
+                ]}
+                isAccessible={isAccessible}
+                sendWorkspacePrompt={sendWorkspacePrompt}
+                formatActionLabel={formatActionLabel}
+                formatFieldLabel={formatFieldLabel}
+                actionPrompts={SHELFIE_ACTION_PROMPTS}
+                requiredToneClassName="border-emerald-400/18 bg-emerald-400/10 text-emerald-100/88"
                 sectionClassName="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]"
               />
             ) : null}

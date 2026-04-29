@@ -47,6 +47,7 @@ Detached runtime contract for all EC2 agents.
 - `GET /restaurant/health`
 - `GET /devika/health`
 - `GET /dataanalyst/health`
+- `GET /shelfie/health`
 
 ## Action Routes
 
@@ -83,6 +84,7 @@ Detached runtime contract for all EC2 agents.
 - `POST /restaurant/action`
 - `POST /devika/action`
 - `POST /dataanalyst/action`
+- `POST /shelfie/action`
 
 ## OAuth Ownership (Detached)
 
@@ -146,7 +148,7 @@ Stored fields:
 
 - OAuth: `teams-agent`, `google-agent`, `notion-agent`, `canva-agent`, `discord-agent`, `dropbox-agent`, `github-agent`, `gitlab-agent`, `jira-agent`, `linkedin-agent`, `zoom-agent`
 - API key: `freshdesk-agent`, `greenhouse-agent`
-- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`, `lms-agent`, `travel-halper-agent`, `restaurant-concierge-agent`, `devika-engineer-agent`, `data-analyst-agent`
+- Internal/no-auth: `todo-agent`, `day-planner-agent`, `maps-agent`, `emergency-response-agent`, `strata-agent`, `dia-helper-agent`, `shopgenie-agent`, `career-switch-agent`, `dashboard-designer-agent`, `smart-gtm-agent`, `seo-agent`, `startup-fundraising-agent`, `ats-agent`, `lms-agent`, `travel-halper-agent`, `restaurant-concierge-agent`, `devika-engineer-agent`, `data-analyst-agent`, `shelfie-grocery-agent`
 
 ## JS-Parity Notes
 
@@ -181,4 +183,8 @@ curl -X POST "${AGENT_PUBLIC_BASE_URL}/devika/action" \
 curl -X POST "${AGENT_PUBLIC_BASE_URL}/dataanalyst/action" \
   -H "Content-Type: application/json" \
   -d '{"taskId":"smoke-data-1","userId":"smoke-user","agentId":"data-analyst-agent","action":"monitor","label":"revenue","data":[100,102,98,105,5000,101,99]}'
+
+curl -X POST "${AGENT_PUBLIC_BASE_URL}/shelfie/action" \
+  -H "Content-Type: application/json" \
+  -d '{"taskId":"smoke-shelfie-1","userId":"smoke-user","agentId":"shelfie-grocery-agent","action":"run_shelfie_grocery_agent","prompt":"Plan a weekly grocery list for 2 adults with high-protein meals"}'
 ```

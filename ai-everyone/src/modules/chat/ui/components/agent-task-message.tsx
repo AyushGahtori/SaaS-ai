@@ -33,6 +33,7 @@ import { TravelHalperResultCard } from "./agent-renderers/travel-halper-result-c
 import { RestaurantConciergeResultCard } from "./agent-renderers/restaurant-concierge-result-card";
 import { DevikaEngineerResultCard } from "./agent-renderers/devika-engineer-result-card";
 import { DataAnalystResultCard } from "./agent-renderers/data-analyst-result-card";
+import { ShelfieGroceryResultCard } from "./agent-renderers/shelfie-grocery-result-card";
 import { InterpretedAgentGuidance } from "./agent-renderers/interpreted-agent-guidance";
 import { GenericAgentResultCard } from "./agent-renderers/generic-agent-result-card";
 
@@ -65,6 +66,7 @@ const AGENT_NAMES: Record<string, string> = {
     "devika-engineer-agent": "Devika Engineer Agent",
     "data-analyst-agent": "Data Analyst Agent",
     "cyber-soc-agent": "Cyber SOC Agent",
+    "shelfie-grocery-agent": "Shelfie Grocery Agent",
 };
 
 interface GmailRow {
@@ -1045,6 +1047,10 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             resultType === "data_analyst_capabilities"
         ) {
             return <DataAnalystResultCard result={result} />;
+        }
+
+        if (typeof resultType === "string" && resultType.startsWith("shelfie_")) {
+            return <ShelfieGroceryResultCard result={result} />;
         }
 
         const nestedPayload =

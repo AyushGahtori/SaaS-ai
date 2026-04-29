@@ -49,6 +49,7 @@ This runtime is detached from the main web app.
 | `restaurant-concierge-agent` | 8044 | `/restaurant/action` | `/restaurant/health` |
 | `devika-engineer-agent` | 8041 | `/devika/action` | `/devika/health` |
 | `data-analyst-agent` | 8042 | `/dataanalyst/action` | `/dataanalyst/health` |
+| `shelfie-grocery-agent` | 8045 | `/shelfie/action` | `/shelfie/health` |
 
 ## Base URL Policy
 
