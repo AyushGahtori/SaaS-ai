@@ -156,6 +156,28 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         requiresConnection: false,
     },
     {
+        id: "shelfie-grocery-agent",
+        name: "Shelfie Grocery Agent",
+        description:
+            "AI grocery copilot with session memory, category-aware planning, and cached chat history for repeat shopping workflows.",
+        actions: [
+            "run_shelfie_grocery_agent",
+            "get_history",
+            "list_sessions",
+            "reset_session",
+            "list_capabilities",
+        ],
+        examplePrompts: [
+            "Plan a weekly high-protein grocery list for two adults on a budget.",
+            "Continue my last grocery session and optimize the list for vegetarian meals.",
+            "Show my recent Shelfie sessions and reset the current one.",
+        ],
+        provider: "internal",
+        category: "productivity",
+        tags: ["grocery", "meal-planning", "shopping-list", "session-memory", "ai-assistant"],
+        requiresConnection: false,
+    },
+    {
         id: "restaurant-concierge-agent",
         name: "Restaurant Concierge Agent",
         description:

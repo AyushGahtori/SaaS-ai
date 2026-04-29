@@ -5,8 +5,8 @@ import {
     getInstalledAgentIds,
 } from "@/lib/agents/user-access.server";
 import { resolveAgentWorkspaceRequest } from "@/lib/agents/workspace-router";
-import { adminDb } from "@/lib/firebase-admin";
-import { createAgentTask, executeAgentTask } from "@/lib/firestore-tasks.server";
+import { renderWorkspaceCapabilitiesText } from "@/lib/agents/workspace-intake";
+import { createAgentTask, executeAgentTaskAndReadBack } from "@/lib/firestore-tasks.server";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
 import { commitUsageSlot, reserveUsageSlot } from "@/lib/usage-limit";
 
@@ -156,6 +156,18 @@ export async function POST(
             });
         }
 
+        if (resolution.action === "list_capabilities") {
+            await commitUsageSlot(uid);
+            const content = renderWorkspaceCapabilitiesText(agentId, resolution.agentName);
+            return streamChat(content, {
+                status: "success",
+                selected_agent: agentId,
+                selected_action: resolution.action,
+                routing_source: "agent_workspace",
+                handled_by: "workspace_capability_summary",
+            });
+        }
+
         const parentLLMRequest: Record<string, unknown> = {
             agent_required: agentId,
             action: resolution.action,
@@ -185,17 +197,7 @@ export async function POST(
             },
         });
 
-        void executeAgentTask(task).catch((error) => {
-            console.error("[AgentWorkspaceChat] background executeAgentTask failed", {
-                agentId,
-                taskId: task.taskId,
-                error,
-            });
-        });
-        const refreshedSnap = await adminDb.collection("agentTasks").doc(task.taskId).get();
-        const refreshedTask = refreshedSnap.data() as Record<string, unknown> | undefined;
-        const refreshedStatus =
-            typeof refreshedTask?.status === "string" ? refreshedTask.status : task.status;
+        const { status: refreshedStatus } = await executeAgentTaskAndReadBack(task);
 
         await commitUsageSlot(uid);
 

@@ -1,7 +1,7 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { adminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
-import { createAgentTask, executeAgentTask } from "@/lib/firestore-tasks.server";
+import { createAgentTask, executeAgentTaskAndReadBack } from "@/lib/firestore-tasks.server";
 import {
     getAccessibleAgentIds,
     getInstalledAgentIds,
@@ -577,23 +577,16 @@ async function agentExecutionNode(state: GraphState): Promise<Partial<GraphState
             },
         });
 
-        if (shouldInlineGmailSummaryResponse(state as LangGraphOrchestrationState)) {
-            await executeAgentTask(task);
-            const refreshedSnap = await adminDb.collection("agentTasks").doc(task.taskId).get();
-            const refreshedTask = refreshedSnap.data() as Record<string, unknown> | undefined;
-            const refreshedStatus =
-                typeof refreshedTask?.status === "string"
-                    ? refreshedTask.status
-                    : "failed";
-            const refreshedOutput =
-                refreshedTask?.agentOutput && typeof refreshedTask.agentOutput === "object"
-                    ? (refreshedTask.agentOutput as Record<string, unknown>)
-                    : {
-                        status: "failed",
-                        summary: "The Gmail summary finished without a usable response.",
-                        error: "INLINE_AGENT_OUTPUT_MISSING",
-                    };
+        const { status: refreshedStatus, agentOutput: refreshedOutputMaybe } =
+            await executeAgentTaskAndReadBack(task);
+        const refreshedOutput =
+            refreshedOutputMaybe || {
+                status: "failed",
+                summary: "The agent finished without a usable response.",
+                error: "AGENT_OUTPUT_MISSING",
+            };
 
+        if (shouldInlineGmailSummaryResponse(state as LangGraphOrchestrationState)) {
             return {
                 created_task: {
                     ...task,
@@ -611,39 +604,14 @@ async function agentExecutionNode(state: GraphState): Promise<Partial<GraphState
             };
         }
 
-        void executeAgentTask(task).catch(async (error) => {
-            const message = error instanceof Error ? error.message : "Unknown agent dispatch error.";
-            console.error("[LangGraphExecution] background agent dispatch failed:", {
-                taskId: task.taskId,
-                agentId: task.agentId,
-                error,
-            });
-            try {
-                await adminDb.collection("agentTasks").doc(task.taskId).set(
-                    {
-                        status: "failed",
-                        agentOutput: {
-                            status: "error",
-                            error_code: "ORCHESTRATION_DISPATCH_ERROR",
-                            summary: "The orchestration layer could not dispatch the agent task.",
-                            error: message,
-                        },
-                        finishedAt: FieldValue.serverTimestamp(),
-                    },
-                    { merge: true }
-                );
-            } catch (persistError) {
-                console.error("[LangGraphExecution] failed to persist background dispatch error:", persistError);
-            }
-        });
-
         return {
-            created_task: task,
-            agent_response: {
-                status: "queued",
-                summary: `${agentName} task was queued.`,
+            created_task: {
+                ...task,
+                status: refreshedStatus as typeof task.status,
+                agentOutput: refreshedOutput,
             },
-            status: "success",
+            agent_response: refreshedOutput,
+            status: refreshedStatus === "failed" ? "failed" : "success",
             failure: null,
         };
     } catch (error) {

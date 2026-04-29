@@ -529,3 +529,22 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         });
     }
 }
+
+export async function executeAgentTaskAndReadBack(task: AgentTask): Promise<{
+    status: string;
+    agentOutput: Record<string, unknown> | null;
+}> {
+    await executeAgentTask(task);
+    const refreshedSnap = await adminDb.collection("agentTasks").doc(task.taskId).get();
+    const refreshedTask = refreshedSnap.data() as Record<string, unknown> | undefined;
+    return {
+        status:
+            typeof refreshedTask?.status === "string"
+                ? refreshedTask.status
+                : "failed",
+        agentOutput:
+            refreshedTask?.agentOutput && typeof refreshedTask.agentOutput === "object"
+                ? (refreshedTask.agentOutput as Record<string, unknown>)
+                : null,
+    };
+}

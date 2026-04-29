@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { AGENT_CATALOG, getAgentCatalogEntry } from "@/lib/agents/catalog";
+import { getAgentCapability } from "@/lib/orchestrator/langgraph/registry";
 import type { ConversationContext } from "@/lib/orchestrator/langgraph/types";
 
 type IntakeStatus = "ready" | "needs_clarification" | "out_of_scope";
@@ -76,6 +77,18 @@ function action(
     options: Pick<ActionIntakeSchema, "optional" | "examples" | "promptTemplate" | "useUserInputAsPrompt"> = {}
 ): ActionIntakeSchema {
     return { action: name, description, required, ...options };
+}
+
+function titleCaseWords(value: string): string {
+    return value
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+function humanizeActionName(actionName: string): string {
+    return titleCaseWords(actionName.replace(/_/g, " "));
 }
 
 function promptFromParams(title: string, params: Record<string, unknown>, userInput: string): string {
@@ -196,6 +209,26 @@ const AGENT_INTAKE_SCHEMAS: Record<string, AgentIntakeSchema> = {
                 optional: [field("threadId", "travel plan thread ID", "string", "Which existing travel plan should I send?", "threadId", false), FIELDS.subject, FIELDS.planMarkdown],
                 useUserInputAsPrompt: false,
             }),
+        ],
+    },
+    "shelfie-grocery-agent": {
+        agentId: "shelfie-grocery-agent",
+        purpose: "Conversational grocery planning with persistent sessions, history retrieval, and scoped reset controls.",
+        actions: [
+            action("run_shelfie_grocery_agent", "Run Shelfie grocery conversation.", [FIELDS.prompt], {
+                examples: [
+                    "Plan a weekly grocery list for two adults with high-protein meals.",
+                    "Continue my list and swap dairy items for lactose-free alternatives.",
+                ],
+            }),
+            action("get_history", "Load a previous Shelfie session history.", [field("session_id", "session ID", "string", "Which Shelfie session should I open?")]),
+            action("list_sessions", "List recent Shelfie sessions.", [], {
+                optional: [
+                    field("limit", "session limit", "number", "How many sessions should I load?", "session limit", false),
+                ],
+            }),
+            action("reset_session", "Reset one Shelfie session.", [field("session_id", "session ID", "string", "Which session should I clear?")]),
+            action("list_capabilities", "List Shelfie capabilities.", []),
         ],
     },
     "restaurant-concierge-agent": {
@@ -602,17 +635,72 @@ const AGENT_INTAKE_SCHEMAS: Record<string, AgentIntakeSchema> = {
     },
 };
 
+function ensureListCapabilitiesAction(schema: AgentIntakeSchema): AgentIntakeSchema {
+    if (schema.actions.some((item) => item.action === "list_capabilities")) {
+        return schema;
+    }
+
+    return {
+        ...schema,
+        actions: [
+            ...schema.actions,
+            action("list_capabilities", `List ${schema.purpose.toLowerCase()} capabilities.`, []),
+        ],
+    };
+}
+
 function getSchema(agentId: string): AgentIntakeSchema {
     const explicit = AGENT_INTAKE_SCHEMAS[agentId];
-    if (explicit) return explicit;
+    if (explicit) return ensureListCapabilitiesAction(explicit);
 
     const catalog = getAgentCatalogEntry(agentId);
+    const capability = getAgentCapability(agentId);
+    const capabilityActions = capability ? Object.values(capability.actions) : [];
+
     return {
         agentId,
         purpose: catalog?.description || "Scoped agent workspace.",
-        actions: (catalog?.actions || ["ask"]).map((item) =>
-            action(item, `Run ${item}.`, [FIELDS.prompt])
-        ),
+        actions: ensureListCapabilitiesAction({
+            agentId,
+            purpose: catalog?.description || "Scoped agent workspace.",
+            actions: (capabilityActions.length > 0 ? capabilityActions : (catalog?.actions || ["ask"]).map((item) => ({
+                name: item,
+                required: ["prompt"],
+                optional: [],
+            }))).map((item) =>
+                action(
+                    item.name,
+                    item.name === "list_capabilities"
+                        ? "List workspace capabilities."
+                        : `${humanizeActionName(item.name)} with the locked workspace agent.`,
+                    (item.required || []).map((fieldName) => {
+                        const fieldSchema = (FIELDS as Record<string, IntakeField | undefined>)[fieldName];
+                        if (fieldSchema) return fieldSchema;
+                        return field(
+                            fieldName,
+                            fieldName.replace(/_/g, " "),
+                            "string",
+                            `What should I use for ${fieldName.replace(/_/g, " ")}?`,
+                            fieldName.replace(/_/g, " ")
+                        );
+                    }),
+                    {
+                        optional: (item.optional || []).map((fieldName) => {
+                            const fieldSchema = (FIELDS as Record<string, IntakeField | undefined>)[fieldName];
+                            if (fieldSchema) return { ...fieldSchema, required: false };
+                            return field(
+                                fieldName,
+                                fieldName.replace(/_/g, " "),
+                                "string",
+                                `What should I use for ${fieldName.replace(/_/g, " ")}?`,
+                                fieldName.replace(/_/g, " "),
+                                false
+                            );
+                        }),
+                    }
+                )
+            ),
+        }).actions,
     };
 }
 
@@ -828,6 +916,38 @@ function stringifyForPrompt(value: unknown): string {
     return JSON.stringify(value, null, 2).slice(0, 18000);
 }
 
+function formatCapabilityLine(schema: ActionIntakeSchema): string {
+    const required = schema.required.map((field) => `${field.key}:${field.type}`);
+    const optional = (schema.optional || []).map((field) => `${field.key}:${field.type}`);
+    const fields = [
+        required.length > 0 ? `required ${required.join(", ")}` : "no required fields",
+        optional.length > 0 ? `optional ${optional.join(", ")}` : "",
+    ].filter(Boolean).join("; ");
+
+    return `${schema.action}: ${schema.description} (${fields})`;
+}
+
+export function renderWorkspaceCapabilitiesText(agentId: string, agentName?: string): string {
+    const schema = getSchema(agentId);
+    const resolvedName = agentName || getAgentCatalogEntry(agentId)?.name || agentId;
+    const lines = [
+        `${resolvedName} can help with:`,
+        schema.purpose,
+        "",
+        "Supported actions:",
+        ...schema.actions.map((item, index) => `${index + 1}. ${formatCapabilityLine(item)}`),
+    ];
+
+    const examples = schema.actions.flatMap((item) =>
+        (item.examples || []).map((example) => `- ${example}`)
+    );
+    if (examples.length > 0) {
+        lines.push("", "Example requests:", ...examples.slice(0, 6));
+    }
+
+    return lines.join("\n");
+}
+
 function buildLlmPrompt(params: {
     agentId: string;
     agentName: string;
@@ -852,6 +972,7 @@ function buildLlmPrompt(params: {
         "You may choose ONLY one action from this locked agent. Never choose another agent.",
         "Understand natural language flexibly. Convert values like 'seventy thousand rupees', '70k INR', 'only one, me', and '$70,000' into the schema's expected JSON types.",
         "Merge current user input with prior user/assistant messages. If the user is answering a previous clarification, keep known fields from earlier turns.",
+        "If the user asks what this agent can do, supported actions, or capabilities, choose action=list_capabilities.",
         "Return ONLY valid JSON with exactly this shape:",
         '{"status":"ready|needs_clarification|out_of_scope","action":"...","normalizedParams":{},"missingFields":[],"clarificationMessage":"...","reasoningSummary":"..."}',
         "Use status=ready only when all required fields for the selected action are present and normalized.",
@@ -859,6 +980,7 @@ function buildLlmPrompt(params: {
         "Use status=out_of_scope only when the request cannot be handled by the locked agent.",
         "If this is a repair attempt for wrong keys, wrong JSON shape, or wrong value types, fix the JSON internally. Do not ask the user again unless the actual information is missing or ambiguous.",
         `Suggested action from deterministic UI context: ${params.suggestedAction}. You may change it only to another action in the locked agent schema.`,
+        `Agent capability summary:\n${renderWorkspaceCapabilitiesText(params.agentId, params.agentName)}`,
         `Agent action schema:\n${stringifyForPrompt(schema)}`,
         `Recent conversation:\n${stringifyForPrompt(recentMessages)}`,
         `Current user message:\n${params.userInput}`,
@@ -1034,6 +1156,7 @@ export function getWorkspaceIntakePromptRules(agentId: string): string[] {
 
     return [
         "Use LLM structured intake for this workspace: choose an action only from this locked agent, extract normalizedParams, and ask for missing fields before tool execution.",
+        "If the user asks what the agent can do, supported actions, or capabilities, choose list_capabilities.",
         ...rules,
         "Return JSON in the workspace intake shape; backend validation will reject malformed or incomplete values and send the validation error back for repair.",
     ];
