@@ -303,6 +303,7 @@ function detectExplicitOtherAgentRequest(agentId: string, lower: string): string
         ["strata-agent", /\b(stara agent|strata agent)\b/],
         ["dashboard-designer-agent", /\bdashboard designer\b/],
         ["seo-agent", /\bseo agent\b/],
+        ["cyber-soc-agent", /\b(cyber soc agent|cyber soc|soc agent|cybersoc)\b/],
     ];
 
     for (const [mentionedAgentId, pattern] of mentions) {

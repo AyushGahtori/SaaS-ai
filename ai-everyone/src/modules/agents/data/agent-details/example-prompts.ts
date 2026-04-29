@@ -32,6 +32,7 @@ export const agentExamplePrompts: Record<string, string> = {
   "ats-agent": "Analyze this resume for a backend engineer role and generate first-round interview questions.",
   "lms-agent": "Show learner progress for engineering in the last 90 days and flag training completion risks.",
   "data-analyst-agent": "Analyze this weekly revenue series, flag anomalies, and suggest the next checks.",
+  "cyber-soc-agent": "Analyze this suspicious Windows security log, identify likely threat behavior, and tell me the risk level.",
   "building-construction-agent": "Plan a 3BHK home on a 30x40 plot with a rough budget and layout recommendations.",
   "devika-engineer-agent": "Plan the architecture for a multi-tenant SaaS billing module and list implementation steps.",
 };

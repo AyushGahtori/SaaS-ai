@@ -62,6 +62,7 @@ const AGENT_NAMES: Record<string, string> = {
     "travel-halper-agent": "Travel Halper Agent",
     "devika-engineer-agent": "Devika Engineer Agent",
     "data-analyst-agent": "Data Analyst Agent",
+    "cyber-soc-agent": "Cyber SOC Agent",
 };
 
 interface GmailRow {
