@@ -30,6 +30,7 @@ import { ATSResultCard } from "./agent-renderers/ats-result-card";
 import { BuildingConstructionResultCard } from "./agent-renderers/building-construction-result-card";
 import { LMSResultCard } from "./agent-renderers/lms-result-card";
 import { TravelHalperResultCard } from "./agent-renderers/travel-halper-result-card";
+import { RestaurantConciergeResultCard } from "./agent-renderers/restaurant-concierge-result-card";
 import { DevikaEngineerResultCard } from "./agent-renderers/devika-engineer-result-card";
 import { DataAnalystResultCard } from "./agent-renderers/data-analyst-result-card";
 import { InterpretedAgentGuidance } from "./agent-renderers/interpreted-agent-guidance";
@@ -60,6 +61,7 @@ const AGENT_NAMES: Record<string, string> = {
     "lms-agent": "LMS Agent",
     "building-construction-agent": "Building Construction Agent",
     "travel-halper-agent": "Travel Halper Agent",
+    "restaurant-concierge-agent": "Restaurant Concierge Agent",
     "devika-engineer-agent": "Devika Engineer Agent",
     "data-analyst-agent": "Data Analyst Agent",
     "cyber-soc-agent": "Cyber SOC Agent",
@@ -1027,6 +1029,10 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
 
         if (typeof resultType === "string" && resultType.startsWith("travel_")) {
             return <TravelHalperResultCard result={result} />;
+        }
+
+        if (typeof resultType === "string" && resultType.startsWith("restaurant_")) {
+            return <RestaurantConciergeResultCard result={result} />;
         }
 
         if (typeof resultType === "string" && resultType.startsWith("devika_")) {

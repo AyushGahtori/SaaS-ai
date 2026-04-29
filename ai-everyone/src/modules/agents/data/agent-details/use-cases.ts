@@ -7,6 +7,7 @@ export const agentUseCases: Record<string, string[]> = {
   "google-agent": ["Gmail triage", "Drive summaries", "Calendar review"],
   "maps-agent": ["Nearby search", "Route planning", "Travel estimates"],
   "travel-halper-agent": ["Trip planning", "Flight research", "Hotel shortlist"],
+  "restaurant-concierge-agent": ["Menu browsing", "Food ordering", "Order edits", "Delivery or pickup"],
   "emergency-response-agent": ["Urgency triage", "Hospital lookup", "Emergency escalation"],
   "strata-agent": ["Financial review", "Trend analysis", "Decision insights"],
   "dia-helper-agent": ["System diagrams", "Product flows", "Figma handoff"],
