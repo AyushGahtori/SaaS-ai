@@ -108,6 +108,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 846,
     },
+    "shelfie-grocery-agent": {
+        iconUrl: makeMonogramIcon("Shelf", "#166534", "#0f5132"),
+        installCount: 2400,
+        rating: 4.8,
+        createdAt: "2026-04-29T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 722,
+    },
     "restaurant-concierge-agent": {
         iconUrl: makeMonogramIcon("Dine", "#b45309", "#92400e"),
         installCount: 6100,

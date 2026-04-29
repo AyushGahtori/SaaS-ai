@@ -252,6 +252,14 @@ function makeCapabilities(agent: AgentCatalogEntry): AgentCapability {
         actions[action] = capability;
     }
 
+    if (!actions.list_capabilities) {
+        actions.list_capabilities = {
+            name: "list_capabilities",
+            required: [],
+            optional: [],
+        };
+    }
+
     const defaultAction =
         agent.id === "google-agent"
             ? "list_emails"
@@ -533,6 +541,14 @@ function routeByRecentCorrection(text: string, lower: string, context?: Conversa
 }
 
 export function chooseActionForAgent(agentId: string, lower: string): string {
+    const capability = getAgentCapability(agentId);
+    if (
+        capability?.actions.list_capabilities &&
+        /\b(capabilities|what can you do|what can you help|what do you do|supported actions|supported functions|functions)\b/.test(lower)
+    ) {
+        return "list_capabilities";
+    }
+
     switch (agentId) {
         case "teams-agent":
             if (/\b(schedule|meeting|calendar)\b/.test(lower)) return "schedule_meeting";
