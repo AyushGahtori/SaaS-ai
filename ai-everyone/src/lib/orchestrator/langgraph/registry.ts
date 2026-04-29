@@ -66,6 +66,7 @@ export const AGENT_ENDPOINTS: Record<string, string> = {
     "devika-engineer-agent": "/devika/action",
     "data-analyst-agent": "/dataanalyst/action",
     "cyber-soc-agent": "/cybersoc/action",
+    "shelfie-grocery-agent": "/shelfie/action",
 };
 
 const EXTRA_ACTIONS: Record<string, Record<string, AgentActionCapability>> = {
@@ -101,6 +102,13 @@ const EXTRA_ACTIONS: Record<string, Record<string, AgentActionCapability>> = {
         reset_session: { name: "reset_session", required: [], optional: [] },
         suggest_items: { name: "suggest_items", required: ["query"], optional: ["prompt"] },
         request_human_help: { name: "request_human_help", required: ["reason"], optional: [] },
+        list_capabilities: { name: "list_capabilities", required: [], optional: [] },
+    },
+    "shelfie-grocery-agent": {
+        run_shelfie_grocery_agent: { name: "run_shelfie_grocery_agent", required: ["prompt"], optional: ["message", "query", "session_id"] },
+        get_history: { name: "get_history", required: ["session_id"], optional: ["sessionId", "chatId"] },
+        list_sessions: { name: "list_sessions", required: [], optional: ["limit"] },
+        reset_session: { name: "reset_session", required: ["session_id"], optional: ["sessionId", "chatId"] },
         list_capabilities: { name: "list_capabilities", required: [], optional: [] },
     },
 };
@@ -186,6 +194,9 @@ const DEFAULT_REQUIRED_BY_ACTION: Record<string, string[]> = {
     get_item_details: ["itemName"],
     suggest_items: ["query"],
     request_human_help: ["reason"],
+    run_shelfie_grocery_agent: ["prompt"],
+    get_history: ["session_id"],
+    reset_session: ["session_id"],
 };
 
 const ACTIONS_WITH_PROMPT_FALLBACK = new Set([
@@ -211,6 +222,7 @@ const ACTIONS_WITH_PROMPT_FALLBACK = new Set([
     "autonomous",
     "run_restaurant_concierge",
     "suggest_items",
+    "run_shelfie_grocery_agent",
 ]);
 
 function makeAliases(agent: AgentCatalogEntry): string[] {
@@ -225,6 +237,7 @@ function makeAliases(agent: AgentCatalogEntry): string[] {
     if (agent.id === "google-agent") base.push("gmail", "google mail", "google drive", "google calendar", "google meet", "google tasks");
     if (agent.id === "travel-halper-agent") base.push("travel helper", "travel halper", "travel planner", "trip planner");
     if (agent.id === "restaurant-concierge-agent") base.push("restaurant concierge", "restaurant agent", "food ordering", "menu ordering");
+    if (agent.id === "shelfie-grocery-agent") base.push("shelfie", "grocery agent", "grocery assistant", "shopping list agent");
     if (agent.id === "dia-helper-agent") base.push("dia", "diagram helper", "mermaid");
     if (agent.id === "shopgenie-agent") base.push("shop genie", "shopping");
     if (agent.id === "todo-agent") base.push("todo", "to do", "reminder", "reminders");
@@ -646,6 +659,12 @@ export function chooseActionForAgent(agentId: string, lower: string): string {
             if (/\b(capabilities|can you do)\b/.test(lower)) return "list_capabilities";
             if (/\b(anomaly|monitor|detect)\b/.test(lower)) return "monitor";
             return "autonomous";
+        case "shelfie-grocery-agent":
+            if (/\b(capabilities|can you do|help|actions)\b/.test(lower)) return "list_capabilities";
+            if (/\b(reset|clear|new session|start over)\b/.test(lower)) return "reset_session";
+            if (/\b(history|previous session|load session|chat history)\b/.test(lower)) return "get_history";
+            if (/\b(sessions|recent sessions|list sessions)\b/.test(lower)) return "list_sessions";
+            return "run_shelfie_grocery_agent";
         case "cyber-soc-agent":
             if (/\b(capabilities|can you do|help|actions)\b/.test(lower)) return "list_capabilities";
             if (/\b(channel|channels)\b/.test(lower)) return "list_windows_channels";
@@ -787,6 +806,16 @@ export function enrichParameters(agentId: string, action: string, text: string, 
         else if (/\b(?:beverage|drink|chai|lassi)\b/.test(lower)) next.category = next.category || "beverages";
         else if (/\b(?:dessert|sweet|gulab jamun|rasmalai)\b/.test(lower)) next.category = next.category || "desserts";
     }
+    if (agentId === "shelfie-grocery-agent") {
+        next.prompt = next.prompt || text;
+        next.message = next.message || text;
+        next.query = next.query || text;
+
+        const sessionMatch = text.match(/\bsession(?:\s+id)?\s*[:#-]?\s*([A-Za-z0-9._:-]{6,})/i);
+        if (sessionMatch?.[1]) {
+            next.session_id = next.session_id || sessionMatch[1];
+        }
+    }
     if (agentId === "emergency-response-agent") {
         next.description = next.description || text;
     }
@@ -922,6 +951,20 @@ export function deterministicRoute(userInput: string, context?: ConversationCont
 
     if (/\b(shopgenie|shop genie|buy|best .+ under|compare .+ (phones|laptops|headphones|products))\b/.test(lower)) {
         return simpleIntent("shopgenie-agent", "recommend_product", text, "Matched a shopping/product recommendation request.", { query: text });
+    }
+
+    if (
+        /\b(grocery|shopping list|meal plan|pantry|weekly groceries|food list|supermarket)\b/.test(lower) &&
+        /\b(plan|list|organize|prepare|optimi[sz]e|continue|remember|session)\b/.test(lower)
+    ) {
+        const action = chooseActionForAgent("shelfie-grocery-agent", lower);
+        return simpleIntent(
+            "shelfie-grocery-agent",
+            action,
+            text,
+            "Matched a grocery planning or shopping-list request.",
+            enrichParameters("shelfie-grocery-agent", action, text, {})
+        );
     }
 
     if (

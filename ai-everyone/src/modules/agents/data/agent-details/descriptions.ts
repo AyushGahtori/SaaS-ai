@@ -55,6 +55,13 @@ export const agentDescriptionLines: Record<string, string[]> = {
     "The final plan can be packaged and emailed as a clean HTML summary.",
     "Best for weekend trips, business travel, and budget-aware planning.",
   ],
+  "shelfie-grocery-agent": [
+    "Build and continue grocery planning conversations inside a dedicated Shelfie workspace.",
+    "It keeps session memory, surfaces prior conversations, and supports resetting a single shopping thread.",
+    "Use it when grocery planning needs continuity across multiple turns instead of one-off suggestions.",
+    "It combines LLM reasoning with lightweight utility tools and cached conversation history.",
+    "Best for weekly shopping plans, diet-specific grocery lists, and repeat list optimization.",
+  ],
   "restaurant-concierge-agent": [
     "Run a full restaurant ordering flow inside a dedicated food-ordering workspace.",
     "It can browse the menu, recommend dishes, build an order, modify quantities, and confirm delivery or pickup.",
