@@ -5,6 +5,7 @@ import {
     getInstalledAgentIds,
 } from "@/lib/agents/user-access.server";
 import { resolveAgentWorkspaceRequest } from "@/lib/agents/workspace-router";
+import { adminDb } from "@/lib/firebase-admin";
 import { createAgentTask, executeAgentTask } from "@/lib/firestore-tasks.server";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
 import { commitUsageSlot, reserveUsageSlot } from "@/lib/usage-limit";
@@ -185,12 +186,16 @@ export async function POST(
         });
 
         void executeAgentTask(task).catch((error) => {
-            console.error("[AgentWorkspaceChat] background execution failed", {
+            console.error("[AgentWorkspaceChat] background executeAgentTask failed", {
+                agentId,
                 taskId: task.taskId,
-                agentId: task.agentId,
                 error,
             });
         });
+        const refreshedSnap = await adminDb.collection("agentTasks").doc(task.taskId).get();
+        const refreshedTask = refreshedSnap.data() as Record<string, unknown> | undefined;
+        const refreshedStatus =
+            typeof refreshedTask?.status === "string" ? refreshedTask.status : task.status;
 
         await commitUsageSlot(uid);
 
@@ -206,13 +211,14 @@ export async function POST(
             type: "agent_task",
             taskId: task.taskId,
             agentId,
-            status: task.status,
+            status: refreshedStatus,
             content,
             meta: {
                 selected_agent: agentId,
                 selected_action: resolution.action,
                 routing_source: "agent_workspace",
                 validation: "passed",
+                execution_status: refreshedStatus,
             },
         };
 

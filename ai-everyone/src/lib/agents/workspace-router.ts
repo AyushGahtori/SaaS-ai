@@ -1,4 +1,5 @@
 import { getAgentCatalogEntry } from "@/lib/agents/catalog";
+import { resolveWorkspaceIntakeWithLlm } from "@/lib/agents/workspace-intake";
 import { getAgentWorkspacePrompt } from "@/lib/agents/workspace-prompts";
 import { loadConversationContext } from "@/lib/orchestrator/langgraph/context";
 import {
@@ -64,6 +65,40 @@ function isPresent(value: unknown): boolean {
     if (typeof value === "string") return value.trim().length > 0;
     if (Array.isArray(value)) return value.length > 0;
     return true;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {};
+}
+
+function asString(value: unknown): string {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function getLatestTravelPlan(context: ConversationContext): { planMarkdown: string; threadId?: string } | null {
+    for (const task of context.recent_agent_tasks) {
+        if (asString(task.agentId) !== "travel-halper-agent") continue;
+
+        const output = asRecord(task.output);
+        if (asString(output.type) !== "travel_plan_result") continue;
+
+        const result = asRecord(output.result);
+        const planMarkdown = asString(result.planMarkdown);
+        if (!planMarkdown) continue;
+
+        const threadId = asString(result.threadId);
+        return threadId ? { planMarkdown, threadId } : { planMarkdown };
+    }
+
+    const recentOutput = asRecord(context.recent_agent_outputs["travel-halper-agent"]);
+    const result = asRecord(recentOutput.result);
+    const planMarkdown = asString(result.planMarkdown);
+    if (!planMarkdown) return null;
+
+    const threadId = asString(result.threadId);
+    return threadId ? { planMarkdown, threadId } : { planMarkdown };
 }
 
 function googleIntent(agentType: string, action: string, text: string, reason: string): RouteDecision {
@@ -172,6 +207,15 @@ function chooseGoogleRoute(text: string, lower: string): RouteDecision {
         );
     }
     return googleIntent("gmail", inferGmailAction(lower), text, "Google Workspace route locked to Gmail.");
+}
+
+function googleAgentTypeForAction(action: string): string {
+    if (["list_files", "list_pdf_files", "read_file", "search_files"].includes(action)) return "drive";
+    if (["list_events", "create_event"].includes(action)) return "calendar";
+    if (action === "create_meet") return "meet";
+    if (["list_tasks", "create_task"].includes(action)) return "tasks";
+    if (action === "web_search") return "web_search";
+    return "gmail";
 }
 
 function chooseWorkspaceRoute(agentId: string, text: string, context: ConversationContext): RouteDecision {
@@ -399,7 +443,34 @@ export async function resolveAgentWorkspaceRequest(
     });
 
     const route = chooseWorkspaceRoute(input.agentId, normalizedInput, conversationContext);
-    const action = route.target_action || agent.defaultAction;
+    const suggestedAction = route.target_action || agent.defaultAction;
+    const intake = await resolveWorkspaceIntakeWithLlm({
+        agentId: input.agentId,
+        agentName: agent.name,
+        action: suggestedAction,
+        userInput: normalizedInput,
+        context: conversationContext,
+        model: input.model,
+    });
+    if (!intake.ok) {
+        return {
+            ok: false,
+            status: intake.status === "out_of_scope" ? "out_of_scope" : "needs_clarification",
+            content: intake.content || buildMissingFieldMessage(agent.name, intake.missingFields.map((field) => field.label)),
+            meta: {
+                selected_agent: input.agentId,
+                selected_action: intake.action,
+                missing_fields: intake.missingFields.map((field) => field.key),
+                provided_fields: intake.values,
+                intake_gate: "llm_structured_intake_blocked_before_agent_execution",
+                validation_error: intake.validationError,
+                reasoning: intake.reasoningSummary,
+            },
+        };
+    }
+
+    const action = intake.action;
+    route.target_action = action;
     const actionCapability = getActionCapability(input.agentId, action);
     if (!actionCapability) {
         return {
@@ -411,6 +482,31 @@ export async function resolveAgentWorkspaceRequest(
                 selected_action: action,
             },
         };
+    }
+    route.parameters = {
+        ...route.parameters,
+        ...(intake.parameters || {}),
+        intake_gate: {
+            status: "complete",
+            engine: "llm_structured_intake",
+            values: intake.values,
+            reasoning: intake.reasoningSummary,
+        },
+    };
+    if (input.agentId === "travel-halper-agent" && action === "send_plan_email") {
+        const recentPlan = getLatestTravelPlan(conversationContext);
+        if (recentPlan && !isPresent(route.parameters.planMarkdown)) {
+            route.parameters.planMarkdown = recentPlan.planMarkdown;
+        }
+        if (recentPlan?.threadId && !isPresent(route.parameters.threadId)) {
+            route.parameters.threadId = recentPlan.threadId;
+        }
+    }
+    if (input.agentId === "google-agent") {
+        route.parameters.agent_type = googleAgentTypeForAction(action);
+    }
+    if (intake.reasoningSummary) {
+        route.route_reason = `Workspace locked to ${agent.name}. ${intake.reasoningSummary}`;
     }
 
     const preliminaryState = buildState({
