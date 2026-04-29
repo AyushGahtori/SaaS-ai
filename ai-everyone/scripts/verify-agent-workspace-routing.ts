@@ -9,6 +9,7 @@ const installedAgentIds = [
     "dia-helper-agent",
     "career-switch-agent",
     "travel-halper-agent",
+    "devika-engineer-agent",
 ];
 
 const accessibleAgentIds = installedAgentIds;
@@ -146,6 +147,65 @@ async function main() {
                 result.action === "plan_trip" &&
                 typeof result.agentRequest.prompt === "string"
                 : !result.ok && result.status === "needs_clarification"
+    );
+
+    await expectRoute(
+        "Devika workspace accepts architecture planning prompts",
+        "devika-engineer-agent",
+        "Plan the architecture for a multi-tenant SaaS billing module",
+        (result) =>
+            hasGeminiKey
+                ? result.ok &&
+                result.agentId === "devika-engineer-agent" &&
+                result.action === "plan_project" &&
+                typeof result.agentRequest.prompt === "string"
+                : !result.ok && result.status === "needs_clarification"
+    );
+
+    await expectRoute(
+        "Devika workspace accepts repository intake",
+        "devika-engineer-agent",
+        "Onboard this repo: https://github.com/example-org/service-core",
+        (result) =>
+            hasGeminiKey
+                ? result.ok &&
+                result.agentId === "devika-engineer-agent" &&
+                result.action === "repo_intake" &&
+                typeof result.agentRequest.repositoryUrl === "string"
+                : !result.ok && result.status === "needs_clarification"
+    );
+
+    await expectRoute(
+        "Devika workspace accepts bug debugging prompts",
+        "devika-engineer-agent",
+        "Fix this bug: TypeError reading status from undefined.",
+        (result) =>
+            hasGeminiKey
+                ? result.ok &&
+                result.agentId === "devika-engineer-agent" &&
+                result.action === "fix_bug" &&
+                typeof result.agentRequest.errorLog === "string"
+                : !result.ok && result.status === "needs_clarification"
+    );
+
+    await expectRoute(
+        "Devika workspace can request live agent status without extra input",
+        "devika-engineer-agent",
+        "Show the Devika agent status for my recent runs.",
+        (result) =>
+            result.ok &&
+            result.agentId === "devika-engineer-agent" &&
+            result.action === "agent_status"
+    );
+
+    await expectRoute(
+        "Devika workspace can request snapshot history without extra input",
+        "devika-engineer-agent",
+        "Show my recent Devika snapshots.",
+        (result) =>
+            result.ok &&
+            result.agentId === "devika-engineer-agent" &&
+            result.action === "list_snapshots"
     );
 
     if (!hasGeminiKey) {

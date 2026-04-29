@@ -477,20 +477,73 @@ const AGENT_INTAKE_SCHEMAS: Record<string, AgentIntakeSchema> = {
         agentId: "devika-engineer-agent",
         purpose: "Software engineering planning, debugging, implementation strategy, deployment, and reports.",
         actions: [
-            action("run_devika_agent", "Run Devika.", [field("goal", "engineering goal", "string", "What exact engineering goal should Devika work on?")]),
-            action("plan_project", "Plan project.", [field("goal", "project goal", "string", "What project should I plan?")]),
-            action("research_plan", "Research technical plan.", [field("goal", "research goal", "string", "What should I research?")]),
-            action("implement_feature", "Plan feature implementation.", [field("featureRequest", "feature request", "string", "What feature should I implement?")]),
-            action("fix_bug", "Debug bug.", [field("errorLog", "error or bug details", "string", "Paste the error log or describe the bug.")]),
-            action("run_project", "Run project.", [FIELDS.description]),
-            action("deploy_project", "Plan deployment.", [FIELDS.description]),
-            action("generate_report", "Generate engineering report.", [FIELDS.description]),
-            action("answer_question", "Answer engineering question.", [field("question", "question", "string", "What question should I answer?")]),
-            action("repo_intake", "Ingest repository.", [field("repositoryUrl", "repository URL", "string", "Which repository URL should I inspect?")]),
-            action("browser_strategy", "Create browser automation strategy.", [FIELDS.prompt]),
+            action("run_devika_agent", "Run Devika.", [field("goal", "engineering goal", "string", "What exact engineering goal should Devika work on?")], {
+                examples: [
+                    "Design a retry-safe webhook processor with idempotency keys.",
+                    "Help me figure out the best engineering approach for a durable background job system.",
+                ],
+            }),
+            action("plan_project", "Plan project.", [field("goal", "project goal", "string", "What project should I plan?")], {
+                examples: [
+                    "Plan the architecture for a multi-tenant SaaS billing module.",
+                    "Outline a phased implementation plan for a new analytics ingestion service.",
+                ],
+            }),
+            action("research_plan", "Research technical plan.", [field("goal", "research goal", "string", "What should I research?")], {
+                examples: [
+                    "Research best practices for multi-tenant RBAC in SaaS.",
+                    "Compare queueing strategies for retry-safe API workers.",
+                ],
+            }),
+            action("implement_feature", "Plan feature implementation.", [field("featureRequest", "feature request", "string", "What feature should I implement?")], {
+                examples: [
+                    "Add optimistic UI updates with rollback when the API fails.",
+                    "Implement audit logs for admin configuration changes.",
+                ],
+            }),
+            action("fix_bug", "Debug bug.", [field("errorLog", "error or bug details", "string", "Paste the error log or describe the bug.")], {
+                examples: [
+                    "Fix this bug: TypeError reading status from undefined.",
+                    "Debug why the OAuth popup closes but the connection never completes.",
+                ],
+            }),
+            action("run_project", "Run project.", [FIELDS.description], {
+                examples: [
+                    "How should I run this Next.js app in staging with strict env validation?",
+                ],
+            }),
+            action("deploy_project", "Plan deployment.", [FIELDS.description], {
+                examples: [
+                    "Give me a production deployment and rollback checklist for this API service.",
+                ],
+            }),
+            action("generate_report", "Generate engineering report.", [FIELDS.description], {
+                examples: [
+                    "Generate an engineering report for the payment retries module.",
+                ],
+            }),
+            action("answer_question", "Answer engineering question.", [field("question", "question", "string", "What question should I answer?")], {
+                examples: [
+                    "Why should we normalize agent action aliases before dispatch?",
+                ],
+            }),
+            action("repo_intake", "Ingest repository.", [field("repositoryUrl", "repository URL", "string", "Which repository URL should I inspect?")], {
+                examples: [
+                    "Onboard this repo: https://github.com/example-org/service-core",
+                ],
+            }),
+            action("browser_strategy", "Create browser automation strategy.", [FIELDS.prompt], {
+                examples: [
+                    "Create a browser strategy for testing a multi-step signup and checkout flow.",
+                ],
+            }),
             action("list_snapshots", "List snapshots.", []),
             action("agent_status", "Get agent status.", []),
-            action("token_estimate", "Estimate tokens.", [FIELDS.prompt]),
+            action("token_estimate", "Estimate tokens.", [FIELDS.prompt], {
+                examples: [
+                    "Estimate tokens for this prompt before I send it to the coding agent.",
+                ],
+            }),
         ],
     },
 };

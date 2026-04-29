@@ -9,7 +9,7 @@ interface DevikaEngineerResultCardProps {
 }
 
 function asRecord(value: unknown): AnyRecord {
-    return value && typeof value === "object" ? (value as AnyRecord) : {};
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as AnyRecord) : {};
 }
 
 function asArray(value: unknown): AnyRecord[] {
@@ -20,7 +20,36 @@ function asArray(value: unknown): AnyRecord[] {
 function asString(value: unknown, fallback = "-"): string {
     if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value === "boolean") return value ? "true" : "false";
     return fallback;
+}
+
+function stringifyValue(value: unknown): string {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value === "boolean") return value ? "Yes" : "No";
+    if (Array.isArray(value)) {
+        return value
+            .map((item) => stringifyValue(item))
+            .filter((item) => item !== "-")
+            .join(", ");
+    }
+    if (value && typeof value === "object") {
+        const entries = Object.entries(value as AnyRecord)
+            .slice(0, 4)
+            .map(([key, item]) => `${key}: ${stringifyValue(item)}`)
+            .filter((item) => !item.endsWith(": -"));
+        return entries.join(" | ") || "-";
+    }
+    return "-";
+}
+
+function hasEntries(value: AnyRecord): boolean {
+    return Object.values(value).some((item) => {
+        if (Array.isArray(item)) return item.length > 0;
+        if (item && typeof item === "object") return Object.keys(item as AnyRecord).length > 0;
+        return stringifyValue(item) !== "-";
+    });
 }
 
 function ListSection({ title, items }: { title: string; items: unknown[] }) {
@@ -30,7 +59,7 @@ function ListSection({ title, items }: { title: string; items: unknown[] }) {
             <p className="text-[11px] uppercase tracking-wide text-white/55">{title}</p>
             <ul className="mt-2 space-y-1 text-xs text-white/85">
                 {items.map((item, idx) => (
-                    <li key={`${title}-${idx}`}>• {asString(item, "")}</li>
+                    <li key={`${title}-${idx}`}>- {asString(item, "")}</li>
                 ))}
             </ul>
         </div>
@@ -126,6 +155,13 @@ function SnapshotView({ payload }: { payload: AnyRecord }) {
 
 function StatusView({ payload }: { payload: AnyRecord }) {
     const counts = asRecord(payload.counts);
+    if (!hasEntries(counts)) {
+        return (
+            <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-xs text-white/78">
+                {asString(payload.note, "Status details will appear here after Devika records recent runs.")}
+            </div>
+        );
+    }
     return (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             {["success", "partial_success", "needs_input", "failed", "action_required"].map((key) => (
@@ -138,13 +174,45 @@ function StatusView({ payload }: { payload: AnyRecord }) {
     );
 }
 
+function StructuredFallbackView({ payload }: { payload: AnyRecord }) {
+    const visibleEntries = Object.entries(payload).filter(([key]) => key !== "cache");
+    if (visibleEntries.length === 0) {
+        return (
+            <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-xs text-white/70">
+                Additional Devika details were returned, but there was no display-safe content to show yet.
+            </div>
+        );
+    }
+
+    return (
+        <div className="grid gap-2 sm:grid-cols-2">
+            {visibleEntries.map(([key, value]) => (
+                <div key={key} className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-wide text-white/55">
+                        {key.replace(/([A-Z])/g, " $1").replace(/_/g, " ")}
+                    </p>
+                    <p className="mt-1 text-xs leading-6 text-white/85 whitespace-pre-wrap">
+                        {stringifyValue(value)}
+                    </p>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 export function DevikaEngineerResultCard({ result }: DevikaEngineerResultCardProps) {
     const resultType = asString(result.type, "devika_status_result");
     const payload = asRecord(result.result);
+    const cache = asRecord(payload.cache);
     const summary =
         asString(result.summary, "") ||
         asString(result.message, "") ||
         asString(payload.summary, "");
+    const snapshotId = asString(payload.snapshotId, "");
+    const executedAction = asString(payload.executedAction, "");
+    const cacheHit = asString(cache.hit, "");
+    const cacheSource = asString(cache.source, "");
+    const cacheTtl = asString(cache.ttlSeconds, "");
 
     return (
         <div className="mt-3 rounded-xl border border-white/10 bg-gradient-to-b from-[#101725] to-[#0b111c] p-3">
@@ -242,9 +310,37 @@ export function DevikaEngineerResultCard({ result }: DevikaEngineerResultCardPro
                     "devika_status_result",
                     "devika_token_result",
                 ].includes(resultType) ? (
-                <pre className="max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/25 p-3 text-xs text-white/85 whitespace-pre-wrap">
-                    {JSON.stringify(payload, null, 2)}
-                </pre>
+                <StructuredFallbackView payload={payload} />
+            ) : null}
+
+            {executedAction || snapshotId || cacheHit || cacheSource || cacheTtl ? (
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-white/10 pt-3 text-[11px] text-white/62">
+                    {executedAction ? (
+                        <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1">
+                            Action: {executedAction.replaceAll("_", " ")}
+                        </span>
+                    ) : null}
+                    {cacheHit ? (
+                        <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1">
+                            Cache: {cacheHit}
+                        </span>
+                    ) : null}
+                    {cacheSource ? (
+                        <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1">
+                            Source: {cacheSource}
+                        </span>
+                    ) : null}
+                    {cacheTtl ? (
+                        <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1">
+                            TTL: {cacheTtl}s
+                        </span>
+                    ) : null}
+                    {snapshotId ? (
+                        <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1">
+                            Snapshot: {snapshotId}
+                        </span>
+                    ) : null}
+                </div>
             ) : null}
         </div>
     );
