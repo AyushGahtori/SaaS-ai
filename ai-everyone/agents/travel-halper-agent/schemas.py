@@ -13,6 +13,7 @@ class TravelHalperActionRequest(BaseModel):
 
     action: str
     prompt: str | None = None
+    trip_details: dict[str, Any] | None = None
     threadId: str | None = None
 
     senderEmail: str | None = None

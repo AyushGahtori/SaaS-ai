@@ -31,6 +31,7 @@ async def run_travel_halper_action(req: TravelHalperActionRequest) -> TravelHalp
 
         if action in plan_actions:
             prompt = _clean(req.prompt)
+            trip_details = req.trip_details or {}
             if not prompt:
                 return TravelHalperActionResponse(
                     status="needs_input",
@@ -41,7 +42,7 @@ async def run_travel_halper_action(req: TravelHalperActionRequest) -> TravelHalp
                 )
 
             thread_id = _clean(req.threadId) or str(uuid.uuid4())
-            plan = agent.plan_trip(prompt, thread_id)
+            plan = agent.plan_trip(prompt, thread_id, trip_details=trip_details)
             return TravelHalperActionResponse(
                 status="success",
                 type="travel_plan_result",
