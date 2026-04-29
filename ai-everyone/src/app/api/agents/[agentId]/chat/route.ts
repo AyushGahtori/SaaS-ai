@@ -185,7 +185,13 @@ export async function POST(
             },
         });
 
-        await executeAgentTask(task);
+        void executeAgentTask(task).catch((error) => {
+            console.error("[AgentWorkspaceChat] background executeAgentTask failed", {
+                agentId,
+                taskId: task.taskId,
+                error,
+            });
+        });
         const refreshedSnap = await adminDb.collection("agentTasks").doc(task.taskId).get();
         const refreshedTask = refreshedSnap.data() as Record<string, unknown> | undefined;
         const refreshedStatus =

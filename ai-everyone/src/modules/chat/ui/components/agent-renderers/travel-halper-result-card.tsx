@@ -40,6 +40,27 @@ function markdownInlineToText(value: string): string {
         .trim();
 }
 
+function extractFirstMatch(source: string, patterns: RegExp[]): string {
+    for (const pattern of patterns) {
+        const match = source.match(pattern);
+        const value = match?.[1] || match?.[2];
+        if (value) return markdownInlineToText(value);
+    }
+    return "-";
+}
+
+function extractCost(source: string): string {
+    const patterns = [
+        /(?:\*\*)?Total(?:\s+Estimated)?\s+Cost(?:\*\*)?\s*:\s*(?:\*\*)?(?:Rs\.?\s*)?([\d,]+)(?:\*\*)?/i,
+        /(?:\*\*)?Estimated\s+Total(?:\*\*)?\s*:\s*(?:\*\*)?(?:Rs\.?\s*)?([\d,]+)(?:\*\*)?/i,
+    ];
+    for (const pattern of patterns) {
+        const match = source.match(pattern);
+        if (match?.[1]) return match[1];
+    }
+    return "-";
+}
+
 function parseTravelPlan(markdown: string): ParsedTravelPlan {
     const lines = markdown.split(/\r?\n/);
     const sections: MarkdownSection[] = [];
@@ -48,7 +69,7 @@ function parseTravelPlan(markdown: string): ParsedTravelPlan {
     let currentLines: string[] = [];
     for (const rawLine of lines) {
         const line = rawLine.trimEnd();
-        const headingMatch = line.match(/^###\s+\*\*(.+?)\*\*$/);
+        const headingMatch = line.match(/^###\s+(?:\*\*(.+?)\*\*|(.+?))$/);
         if (headingMatch) {
             if (currentLines.length > 0) {
                 sections.push({
@@ -56,7 +77,7 @@ function parseTravelPlan(markdown: string): ParsedTravelPlan {
                     content: currentLines.join("\n").trim(),
                 });
             }
-            currentHeading = markdownInlineToText(headingMatch[1] || "Section");
+            currentHeading = markdownInlineToText(headingMatch[1] || headingMatch[2] || "Section");
             currentLines = [];
             continue;
         }
@@ -70,28 +91,61 @@ function parseTravelPlan(markdown: string): ParsedTravelPlan {
     }
 
     const bookingLinks: Array<{ label: string; href: string }> = [];
+    const seenLinks = new Set<string>();
+    const addLink = (label: string, href: string) => {
+        const normalizedHref = href.trim();
+        const normalizedLabel = markdownInlineToText(label) || "Open Link";
+        if (!normalizedHref || seenLinks.has(normalizedHref)) return;
+        seenLinks.add(normalizedHref);
+        bookingLinks.push({ label: normalizedLabel, href: normalizedHref });
+    };
     const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
+    const listUrlRegex = /^\s*-\s*([^:]+):\s*(https?:\/\/\S+)/i;
+    const plainUrlRegex = /https?:\/\/[^\s)\]]+/g;
     for (const section of sections) {
+        linkRegex.lastIndex = 0;
         let match: RegExpExecArray | null = null;
         while ((match = linkRegex.exec(section.content)) !== null) {
-            const label = (match[1] || "").trim();
-            const href = (match[2] || "").trim();
-            if (!label || !href) continue;
-            if (bookingLinks.some((item) => item.href === href)) continue;
-            bookingLinks.push({ label, href });
+            addLink(match[1] || "", match[2] || "");
+        }
+
+        for (const line of section.content.split(/\r?\n/)) {
+            const listUrlMatch = line.match(listUrlRegex);
+            if (listUrlMatch) {
+                addLink(listUrlMatch[1] || "Open Link", listUrlMatch[2] || "");
+                continue;
+            }
+
+            plainUrlRegex.lastIndex = 0;
+            let plainMatch: RegExpExecArray | null = null;
+            while ((plainMatch = plainUrlRegex.exec(line)) !== null) {
+                const href = (plainMatch[0] || "").trim();
+                let label = "Open Link";
+                try {
+                    label = new URL(href).hostname.replace(/^www\./, "");
+                } catch {
+                    label = "Open Link";
+                }
+                addLink(label, href);
+            }
         }
     }
 
-    const budgetMatch = markdown.match(/budget of Rs\.\s*([\d,]+)/i);
-    const travelersMatch = markdown.match(/for\s+(\d+)\s+(people|traveler|travelers|adults)/i);
-    const tripDatesMatch = markdown.match(/\*\*Trip Dates:\*\*\s*(.+)/i);
-    const totalCostMatch = markdown.match(/\*\*Total Estimated Cost:\*\*\s*\*\*Rs\.\s*([\d,]+)\*\*/i);
-
     return {
-        travelers: travelersMatch ? travelersMatch[1] : "-",
-        budget: budgetMatch ? budgetMatch[1] : "-",
-        tripDates: tripDatesMatch ? markdownInlineToText(tripDatesMatch[1]) : "-",
-        estimatedTotal: totalCostMatch ? totalCostMatch[1] : "-",
+        travelers: extractFirstMatch(markdown, [
+            /-\s*Travelers:\s*(.+)/i,
+            /-\s*Travellers:\s*(.+)/i,
+            /for\s+(\d+)\s+(?:people|traveler|travelers|adults)/i,
+        ]),
+        budget: extractFirstMatch(markdown, [
+            /-\s*Budget:\s*(.+)/i,
+            /budget of Rs\.?\s*([\d,]+)/i,
+        ]),
+        tripDates: extractFirstMatch(markdown, [
+            /\*\*Trip Dates:\*\*\s*(.+)/i,
+            /-\s*(?:Trip Dates|Dates\/duration|Dates|Duration):\s*(.+)/i,
+        ]),
+        estimatedTotal: extractCost(markdown),
         bookingLinks,
         sections: sections.filter((section) => section.content.length > 0),
     };

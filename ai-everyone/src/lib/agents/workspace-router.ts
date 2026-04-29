@@ -67,6 +67,40 @@ function isPresent(value: unknown): boolean {
     return true;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {};
+}
+
+function asString(value: unknown): string {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function getLatestTravelPlan(context: ConversationContext): { planMarkdown: string; threadId?: string } | null {
+    for (const task of context.recent_agent_tasks) {
+        if (asString(task.agentId) !== "travel-halper-agent") continue;
+
+        const output = asRecord(task.output);
+        if (asString(output.type) !== "travel_plan_result") continue;
+
+        const result = asRecord(output.result);
+        const planMarkdown = asString(result.planMarkdown);
+        if (!planMarkdown) continue;
+
+        const threadId = asString(result.threadId);
+        return threadId ? { planMarkdown, threadId } : { planMarkdown };
+    }
+
+    const recentOutput = asRecord(context.recent_agent_outputs["travel-halper-agent"]);
+    const result = asRecord(recentOutput.result);
+    const planMarkdown = asString(result.planMarkdown);
+    if (!planMarkdown) return null;
+
+    const threadId = asString(result.threadId);
+    return threadId ? { planMarkdown, threadId } : { planMarkdown };
+}
+
 function googleIntent(agentType: string, action: string, text: string, reason: string): RouteDecision {
     const count = getNumericRequestCount(text);
     const parameters: Record<string, unknown> = {
@@ -459,6 +493,15 @@ export async function resolveAgentWorkspaceRequest(
             reasoning: intake.reasoningSummary,
         },
     };
+    if (input.agentId === "travel-halper-agent" && action === "send_plan_email") {
+        const recentPlan = getLatestTravelPlan(conversationContext);
+        if (recentPlan && !isPresent(route.parameters.planMarkdown)) {
+            route.parameters.planMarkdown = recentPlan.planMarkdown;
+        }
+        if (recentPlan?.threadId && !isPresent(route.parameters.threadId)) {
+            route.parameters.threadId = recentPlan.threadId;
+        }
+    }
     if (input.agentId === "google-agent") {
         route.parameters.agent_type = googleAgentTypeForAction(action);
     }

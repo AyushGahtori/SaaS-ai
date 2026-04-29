@@ -52,9 +52,6 @@ def _extract_gemini_text(data: dict) -> str:
 
 
 class TravelGraphAgent:
-    def __init__(self):
-        self._plans_by_thread: dict[str, str] = {}
-
     def _gemini_generate(self, instruction: str, *, temperature: float = 0.2) -> str | None:
         api_key = (os.getenv("GEMINI_API_KEY") or "").strip()
         if not api_key:
@@ -129,15 +126,14 @@ class TravelGraphAgent:
         )
         return html_body or self._markdown_to_basic_html(source_text)
 
-    def _send_email(self, html_body: str):
-
+    def _send_email(self, html_body: str, *, from_email: str, to_email: str, subject: str) -> None:
         smtp_host = (os.environ.get("SMTP_HOST") or "").strip()
         smtp_port = int(os.environ.get("SMTP_PORT", "587"))
         smtp_user = (os.environ.get("SMTP_USER") or "").strip()
         smtp_password = (os.environ.get("SMTP_PASSWORD") or "").strip()
-        from_email = (os.environ.get("FROM_EMAIL") or "").strip()
-        to_email = (os.environ.get("TO_EMAIL") or "").strip()
-        subject = (os.environ.get("EMAIL_SUBJECT") or "Travel Plan").strip()
+        from_email = from_email.strip()
+        to_email = to_email.strip()
+        subject = subject.strip() or "Travel Plan"
 
         missing = [
             name
@@ -224,7 +220,6 @@ class TravelGraphAgent:
         details = trip_details or {}
         gemini_plan = self._gemini_travel_plan(prompt, details)
         plan = gemini_plan or self._deterministic_travel_plan(prompt, details)
-        self._plans_by_thread[thread_id] = plan
         return plan
 
     def send_plan_email(
@@ -234,15 +229,16 @@ class TravelGraphAgent:
         from_email: str,
         to_email: str,
         subject: str,
-        prompt: str | None = None,
+        plan_text: str,
     ) -> None:
-        os.environ["FROM_EMAIL"] = from_email
-        os.environ["TO_EMAIL"] = to_email
-        os.environ["EMAIL_SUBJECT"] = subject
-
-        source_text = (prompt or "").strip() or self._plans_by_thread.get(thread_id, "")
+        source_text = (plan_text or "").strip()
         if not source_text:
-            raise ValueError("Cannot send email because no travel plan is available.")
+            raise ValueError("Cannot send email because no travel plan content was provided.")
 
         html_body = self._gemini_email_html(source_text)
-        self._send_email(html_body)
+        self._send_email(
+            html_body,
+            from_email=from_email,
+            to_email=to_email,
+            subject=subject,
+        )

@@ -21,6 +21,7 @@ interface ActionIntakeSchema {
     optional?: IntakeField[];
     examples?: string[];
     promptTemplate?: (params: Record<string, unknown>, userInput: string) => string;
+    useUserInputAsPrompt?: boolean;
 }
 
 interface AgentIntakeSchema {
@@ -72,7 +73,7 @@ function action(
     name: string,
     description: string,
     required: IntakeField[],
-    options: Pick<ActionIntakeSchema, "optional" | "examples" | "promptTemplate"> = {}
+    options: Pick<ActionIntakeSchema, "optional" | "examples" | "promptTemplate" | "useUserInputAsPrompt"> = {}
 ): ActionIntakeSchema {
     return { action: name, description, required, ...options };
 }
@@ -99,6 +100,7 @@ const FIELDS = {
     body: field("body", "body", "string", "What should the body say?"),
     query: field("query", "query", "string", "What should I search for?"),
     prompt: field("prompt", "full prompt", "string", "What exactly should the agent do?"),
+    planMarkdown: field("planMarkdown", "travel plan content", "string", "Which travel plan should I send?", "travel plan content", false),
     url: field("url", "URL", "string", "Which URL should I use?"),
     origin: field("origin", "origin", "string", "Where should this start?"),
     destination: field("destination", "destination", "string", "Where should this end?"),
@@ -148,10 +150,13 @@ const AGENT_INTAKE_SCHEMAS: Record<string, AgentIntakeSchema> = {
             action("reply_email", "Reply to a Gmail email.", [field("email_reference", "email reference", "string", "Which email should I reply to?"), FIELDS.body]),
             action("mark_as_read", "Mark a Gmail email as read.", [field("email_reference", "email reference", "string", "Which email should I mark?")]),
             action("list_files", "List Drive files.", []),
+            action("list_pdf_files", "List Drive PDF files.", [FIELDS.query]),
             action("search_files", "Search Drive files.", [FIELDS.query]),
             action("read_file", "Read a contextual Drive file.", [field("file_reference", "file reference", "string", "Which Drive file should I use?")]),
+            action("list_events", "List Calendar events.", []),
             action("create_event", "Create a Google Calendar event.", [FIELDS.title, FIELDS.date, FIELDS.time]),
             action("create_meet", "Create a Google Meet meeting.", [FIELDS.title, FIELDS.date, FIELDS.time]),
+            action("list_tasks", "List Google tasks.", []),
             action("create_task", "Create a Google task.", [FIELDS.title]),
             action("web_search", "Search the web.", [FIELDS.query]),
         ],
@@ -184,7 +189,8 @@ const AGENT_INTAKE_SCHEMAS: Record<string, AgentIntakeSchema> = {
                 promptTemplate: (params, userInput) => promptFromParams("Plan a trip using these confirmed details:", params, userInput),
             }),
             action("send_plan_email", "Email a travel plan.", [FIELDS.recipientEmail], {
-                optional: [field("threadId", "travel plan thread ID", "string", "Which existing travel plan should I send?", "threadId", false), FIELDS.subject],
+                optional: [field("threadId", "travel plan thread ID", "string", "Which existing travel plan should I send?", "threadId", false), FIELDS.subject, FIELDS.planMarkdown],
+                useUserInputAsPrompt: false,
             }),
         ],
     },
@@ -648,7 +654,7 @@ function buildParameters(schema: ActionIntakeSchema, output: LlmWorkspaceIntakeO
     if (!params.prompt && schema.promptTemplate) {
         params.prompt = schema.promptTemplate(params, userInput);
     }
-    if (!params.prompt) params.prompt = userInput;
+    if (schema.useUserInputAsPrompt !== false && !params.prompt) params.prompt = userInput;
     if (!params.parameters) params.parameters = userInput;
     if (!params.query && typeof params.prompt === "string") params.query = params.prompt;
     return params;
@@ -660,6 +666,16 @@ function fallbackClarification(agentId: string, suggestedAction: string): Worksp
         getActionSchema(agentId, suggestedAction) ||
         getSchema(agentId).actions[0];
     const missingFields = actionSchema.required;
+    if (missingFields.length === 0) {
+        return {
+            ok: true,
+            status: "ready",
+            action: actionSchema.action,
+            values: {},
+            missingFields: [],
+            reasoningSummary: "Gemini intake unavailable; schema fallback determined no required input.",
+        };
+    }
     const questions = missingFields.map((item, index) => `${index + 1}. ${item.question}`);
     const content = [
         `I can use ${agent?.name || agentId}, but I need a few details before I run the agent.`,
