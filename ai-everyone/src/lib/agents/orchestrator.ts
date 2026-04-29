@@ -55,6 +55,10 @@ const AGENT_ALIASES: Record<string, string> = {
     "shop genie": "shopgenie-agent",
     travel: "travel-halper-agent",
     trip: "travel-halper-agent",
+    cyber: "cyber-soc-agent",
+    "cyber soc": "cyber-soc-agent",
+    "soc agent": "cyber-soc-agent",
+    cybersoc: "cyber-soc-agent",
 };
 
 function compactWhitespace(value: string): string {

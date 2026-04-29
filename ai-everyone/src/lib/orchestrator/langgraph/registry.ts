@@ -64,6 +64,7 @@ export const AGENT_ENDPOINTS: Record<string, string> = {
     "travel-halper-agent": "/travelhalper/action",
     "devika-engineer-agent": "/devika/action",
     "data-analyst-agent": "/dataanalyst/action",
+    "cyber-soc-agent": "/cybersoc/action",
 };
 
 const EXTRA_ACTIONS: Record<string, Record<string, AgentActionCapability>> = {
@@ -165,6 +166,7 @@ const DEFAULT_REQUIRED_BY_ACTION: Record<string, string[]> = {
     token_estimate: ["prompt"],
     monitor: ["data"],
     autonomous: ["goal"],
+    analyze_log: ["log"],
 };
 
 const ACTIONS_WITH_PROMPT_FALLBACK = new Set([
@@ -209,6 +211,7 @@ function makeAliases(agent: AgentCatalogEntry): string[] {
     if (agent.id === "emergency-response-agent") base.push("emergency agent", "emergency response", "medical emergency agent");
     if (agent.id === "day-planner-agent") base.push("day planner", "daily planner", "planner agent");
     if (agent.id === "dashboard-designer-agent") base.push("dashboard designer", "dashboard designer agent");
+    if (agent.id === "cyber-soc-agent") base.push("cyber soc", "cyber soc agent", "soc agent", "security operations center");
 
     return Array.from(new Set(base.map((alias) => normalizeForMatch(alias)).filter(Boolean)));
 }
@@ -590,6 +593,16 @@ export function chooseActionForAgent(agentId: string, lower: string): string {
             if (/\b(capabilities|can you do)\b/.test(lower)) return "list_capabilities";
             if (/\b(anomaly|monitor|detect)\b/.test(lower)) return "monitor";
             return "autonomous";
+        case "cyber-soc-agent":
+            if (/\b(capabilities|can you do|help|actions)\b/.test(lower)) return "list_capabilities";
+            if (/\b(channel|channels)\b/.test(lower)) return "list_windows_channels";
+            if (/\b(history|past|previous|recent analyses)\b/.test(lower)) return "get_history";
+            if (/\b(dashboard|overview|stats|metrics)\b/.test(lower)) return "dashboard_overview";
+            if (/\b(fetch|get|show|list)\b/.test(lower) && /\b(log|logs|windows)\b/.test(lower)) return "fetch_windows_logs";
+            if (/\b(analy[sz]e|investigate|triage)\b/.test(lower) && /\b(log|logs|windows|event)\b/.test(lower)) {
+                return /\b(windows|event|realtime)\b/.test(lower) ? "analyze_windows_logs" : "analyze_log";
+            }
+            return "analyze_log";
         case "dia-helper-agent":
             if (/\b(update|edit|change|add|more detail|details)\b/.test(lower)) return "update_diagram";
             return "generate_diagram";
@@ -852,6 +865,11 @@ export function deterministicRoute(userInput: string, context?: ConversationCont
     if (/\b(course|learner|lms|training|assignment)\b/.test(lower)) {
         const action = chooseActionForAgent("lms-agent", lower);
         return simpleIntent("lms-agent", action, text, "Matched an LMS request.", enrichParameters("lms-agent", action, text, {}));
+    }
+
+    if (/\b(cyber|soc|security log|windows event|event log|threat|ioc|virustotal|mitre)\b/.test(lower)) {
+        const action = chooseActionForAgent("cyber-soc-agent", lower);
+        return simpleIntent("cyber-soc-agent", action, text, "Matched a Cyber SOC request.", enrichParameters("cyber-soc-agent", action, text, {}));
     }
 
     if (/\b(construction|house plan|plot|contractor|architect|floor plan)\b/.test(lower)) {

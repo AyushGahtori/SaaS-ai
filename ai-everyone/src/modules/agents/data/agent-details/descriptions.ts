@@ -230,6 +230,13 @@ export const agentDescriptionLines: Record<string, string[]> = {
     "It is built for quality checks, unusual movement, and next-question discovery.",
     "Best for anomaly detection, metric review, and dataset triage.",
   ],
+  "cyber-soc-agent": [
+    "Analyze suspicious security events inside a dedicated SOC-style workspace.",
+    "It can inspect raw logs, fetch Windows event streams, and summarize threat signals.",
+    "Use it when triage needs IOCs, MITRE context, and a risk-oriented explanation.",
+    "It also exposes dashboard, history, and channel views for repeat incident review.",
+    "Best for security triage, Windows event review, and fast incident analysis.",
+  ],
   "building-construction-agent": [
     "Plan home construction with plot details, budget, and vendor context.",
     "It can recommend layouts, estimate costs, and suggest nearby service options.",

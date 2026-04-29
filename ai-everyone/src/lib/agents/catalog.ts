@@ -625,6 +625,30 @@ export const AGENT_CATALOG: AgentCatalogEntry[] = [
         tags: ["software-engineering", "planning", "debugging", "deployment", "reporting"],
         requiresConnection: false,
     },
+    {
+        id: "cyber-soc-agent",
+        name: "Cyber SOC Agent",
+        description:
+            "Analyze security logs, inspect Windows event streams, review dashboard metrics, and surface threat intelligence in a dedicated SOC workspace.",
+        actions: [
+            "analyze_log",
+            "fetch_windows_logs",
+            "analyze_windows_logs",
+            "get_history",
+            "list_windows_channels",
+            "dashboard_overview",
+            "list_capabilities",
+        ],
+        examplePrompts: [
+            "Analyze this suspicious Windows log and tell me the likely threat",
+            "Fetch the latest Security and System Windows event logs",
+            "Open the Cyber SOC dashboard and show recent high-risk findings",
+        ],
+        provider: "internal",
+        category: "security",
+        tags: ["security", "soc", "threat-detection", "windows-logs", "incident-response"],
+        requiresConnection: false,
+    },
 ];
 
 export const AGENT_BUNDLES: AgentBundle[] = [

@@ -32,6 +32,7 @@ export const agentUseCases: Record<string, string[]> = {
   "ats-agent": ["Resume analysis", "Interview prep", "Candidate comparison"],
   "lms-agent": ["Learner progress", "Course health", "Compliance checks"],
   "data-analyst-agent": ["Anomaly detection", "Data quality", "Metric insight"],
+  "cyber-soc-agent": ["Threat triage", "Windows log review", "IOC analysis"],
   "building-construction-agent": ["Home layout", "Cost estimate", "Vendor planning"],
   "devika-engineer-agent": ["Architecture plans", "Bug strategy", "Deployment readiness"],
 };

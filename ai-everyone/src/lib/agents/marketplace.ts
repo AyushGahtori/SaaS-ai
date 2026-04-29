@@ -340,6 +340,14 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 724,
     },
+    "cyber-soc-agent": {
+        iconUrl: makeMonogramIcon("SOC", "#7f1d1d", "#991b1b"),
+        installCount: 1500,
+        rating: 4.8,
+        createdAt: "2026-04-29T00:00:00.000Z",
+        isFeatured: false,
+        trendingScore: 723,
+    },
 };
 
 function makeDefaultAgentMeta(agent: AgentCatalogEntry) {

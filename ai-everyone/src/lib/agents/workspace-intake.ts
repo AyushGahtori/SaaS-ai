@@ -442,6 +442,29 @@ const AGENT_INTAKE_SCHEMAS: Record<string, AgentIntakeSchema> = {
             action("autonomous", "Run autonomous analysis.", [field("data", "dataset or data description", "string", "What data should I analyze?"), field("goal", "analysis goal", "string", "What should I answer?")]),
         ],
     },
+    "cyber-soc-agent": {
+        agentId: "cyber-soc-agent",
+        purpose: "Security log analysis, Windows event retrieval, dashboard review, and SOC history.",
+        actions: [
+            action("analyze_log", "Analyze a security log.", [field("log", "security log", "string", "Paste the suspicious log or event text you want analyzed.")]),
+            action("fetch_windows_logs", "Fetch Windows event logs.", [], {
+                optional: [
+                    field("limit", "log count", "number", "How many log entries should I fetch?", "log count", false),
+                    field("channels", "Windows channels", "string[]", "Which Windows channels should I use?", "Windows channels", false),
+                ],
+            }),
+            action("analyze_windows_logs", "Fetch and analyze Windows logs.", [], {
+                optional: [
+                    field("limit", "log count", "number", "How many log entries should I analyze?", "log count", false),
+                    field("channels", "Windows channels", "string[]", "Which Windows channels should I analyze?", "Windows channels", false),
+                ],
+            }),
+            action("get_history", "Show prior SOC analyses.", []),
+            action("list_windows_channels", "List Windows log channels.", []),
+            action("dashboard_overview", "Open SOC dashboard overview.", []),
+            action("list_capabilities", "List Cyber SOC capabilities.", []),
+        ],
+    },
     "building-construction-agent": {
         agentId: "building-construction-agent",
         purpose: "Construction plans, cost estimates, layouts, and vendor guidance.",
