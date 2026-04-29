@@ -620,6 +620,7 @@ export function chooseActionForAgent(agentId: string, lower: string): string {
             if (/\b(human|manager|complaint|escalate|support)\b/.test(lower)) return "request_human_help";
             if (/\b(current order|order summary|cart|what did i order|show order)\b/.test(lower)) return "get_order_summary";
             if (/\b(log|analytics|session state|history)\b/.test(lower)) return "get_session_analytics";
+            if (/\bsuggest(?:ion)?\s+for\b|\bsuggest(?:\s+\w+){0,4}\s+items?\b/.test(lower)) return "suggest_items";
             if (/\b(recommend|suggest|pair with|popular|chef)\b/.test(lower)) return "get_recommendations";
             if (/\b(item details|details for|tell me about|ingredients|price of|what is)\b/.test(lower)) return "get_item_details";
             if (/\b(search|find)\b/.test(lower) && /\b(menu|dish|food|item|drink|dessert)\b/.test(lower)) return "search_menu";
@@ -764,11 +765,11 @@ export function enrichParameters(agentId: string, action: string, text: string, 
         else if (/\bvegan\b/.test(lower)) next.dietaryFilter = next.dietaryFilter || "vegan";
         else if (/\bgluten[- ]?free\b/.test(lower)) next.dietaryFilter = next.dietaryFilter || "gluten-free";
 
-        if (/\bappetizer|starter\b/.test(lower)) next.category = next.category || "appetizers";
-        else if (/\bmain|entree\b/.test(lower)) next.category = next.category || "mains";
-        else if (/\bsalad\b/.test(lower)) next.category = next.category || "salads";
-        else if (/\bbeverage|drink|chai|lassi\b/.test(lower)) next.category = next.category || "beverages";
-        else if (/\bdessert|sweet|gulab jamun|rasmalai\b/.test(lower)) next.category = next.category || "desserts";
+        if (/\b(?:appetizer|starter)\b/.test(lower)) next.category = next.category || "appetizers";
+        else if (/\b(?:main|entree)\b/.test(lower)) next.category = next.category || "mains";
+        else if (/\b(?:salad)\b/.test(lower)) next.category = next.category || "salads";
+        else if (/\b(?:beverage|drink|chai|lassi)\b/.test(lower)) next.category = next.category || "beverages";
+        else if (/\b(?:dessert|sweet|gulab jamun|rasmalai)\b/.test(lower)) next.category = next.category || "desserts";
     }
     if (agentId === "emergency-response-agent") {
         next.description = next.description || text;
