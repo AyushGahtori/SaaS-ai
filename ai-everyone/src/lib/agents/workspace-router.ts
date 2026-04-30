@@ -352,6 +352,45 @@ function detectOutOfScope(agent: AgentCapability, text: string): WorkspaceRouteB
     return null;
 }
 
+const RESTAURANT_ACTIONS_REQUIRING_MENU = new Set<string>([
+    "run_restaurant_concierge",
+    "browse_menu",
+    "search_menu",
+    "get_item_details",
+    "get_recommendations",
+    "get_order_summary",
+    "suggest_items",
+]);
+
+function getRestaurantMenuItemsFromContext(context: ConversationContext): Array<Record<string, unknown>> {
+    const memory = asRecord(context.agent_workspace_memory);
+    const restaurantMemory = asRecord(memory.restaurant_concierge);
+    const rows = restaurantMemory.menu_items;
+    if (!Array.isArray(rows)) return [];
+    return rows
+        .map((item) => asRecord(item))
+        .filter((item) => asString(item.name).length > 0);
+}
+
+function isRestaurantMenuSetupQuestion(lower: string): boolean {
+    return (
+        /\b(where|how)\b.{0,40}\b(add|upload|put|enter|save)\b.{0,40}\b(menu|items?)\b/.test(lower) ||
+        /\b(menu|items?)\b.{0,40}\b(empty|blank|missing|not available|not showing)\b/.test(lower) ||
+        /\bwhere\b.{0,30}\bmenu\b/.test(lower)
+    );
+}
+
+function buildRestaurantMenuSetupInstruction(): string {
+    return [
+        "Your restaurant menu is not configured in this chat yet.",
+        "",
+        "To add it:",
+        '1. Click "Add Menu Items" beside "New Restaurant Concierge Agent Chat".',
+        "2. Fill item name, pricing, what it contains, and description.",
+        "3. Save menu items, then ask for browsing, recommendations, or ordering.",
+    ].join("\n");
+}
+
 function buildState(input: {
     userId: string;
     chatId: string;
@@ -391,6 +430,12 @@ function buildState(input: {
 }
 
 function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, unknown> {
+    const restaurantMenuItems =
+        state.route.target_agent === "restaurant-concierge-agent"
+            ? getRestaurantMenuItemsFromContext(state.conversation_context)
+            : [];
+    const restaurantMemory = asRecord(state.conversation_context.agent_workspace_memory);
+    const restaurantSnapshot = asRecord(restaurantMemory.restaurant_concierge);
     const params = {
         ...state.route.parameters,
         ...(state.resolved_entities.message_id
@@ -398,6 +443,17 @@ function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, u
                 message_id: state.resolved_entities.message_id,
                 row_index: state.resolved_entities.row_index,
             }
+            : {}),
+        ...(restaurantMenuItems.length > 0
+            ? {
+                workspace_menu_items: restaurantMenuItems,
+                workspace_menu_item_count: restaurantMenuItems.length,
+            }
+            : {}),
+        ...(state.route.target_agent === "restaurant-concierge-agent" &&
+            restaurantSnapshot.order_snapshot &&
+            typeof restaurantSnapshot.order_snapshot === "object"
+            ? { workspace_order_snapshot: restaurantSnapshot.order_snapshot }
             : {}),
     };
 
@@ -443,8 +499,45 @@ export async function resolveAgentWorkspaceRequest(
         chatId: input.chatId,
         recentMessages: input.recentMessages,
     });
+    const restaurantMenuItems =
+        input.agentId === "restaurant-concierge-agent"
+            ? getRestaurantMenuItemsFromContext(conversationContext)
+            : [];
+
+    if (input.agentId === "restaurant-concierge-agent" && isRestaurantMenuSetupQuestion(normalizedInput)) {
+        return {
+            ok: false,
+            status: "needs_clarification",
+            content: buildRestaurantMenuSetupInstruction(),
+            meta: {
+                selected_agent: input.agentId,
+                selected_action: "browse_menu",
+                missing_fields: ["menu_items"],
+                intake_gate: "restaurant_workspace_menu_setup_guidance",
+            },
+        };
+    }
 
     const route = chooseWorkspaceRoute(input.agentId, normalizedInput, conversationContext);
+    if (
+        input.agentId === "restaurant-concierge-agent" &&
+        restaurantMenuItems.length === 0 &&
+        route.target_action &&
+        RESTAURANT_ACTIONS_REQUIRING_MENU.has(route.target_action)
+    ) {
+        return {
+            ok: false,
+            status: "needs_clarification",
+            content: buildRestaurantMenuSetupInstruction(),
+            meta: {
+                selected_agent: input.agentId,
+                selected_action: route.target_action,
+                missing_fields: ["menu_items"],
+                intake_gate: "restaurant_workspace_menu_required_before_action",
+            },
+        };
+    }
+
     const suggestedAction = route.target_action || agent.defaultAction;
     const intake = await resolveWorkspaceIntakeWithLlm({
         agentId: input.agentId,
@@ -472,6 +565,23 @@ export async function resolveAgentWorkspaceRequest(
     }
 
     const action = intake.action;
+    if (
+        input.agentId === "restaurant-concierge-agent" &&
+        restaurantMenuItems.length === 0 &&
+        RESTAURANT_ACTIONS_REQUIRING_MENU.has(action)
+    ) {
+        return {
+            ok: false,
+            status: "needs_clarification",
+            content: buildRestaurantMenuSetupInstruction(),
+            meta: {
+                selected_agent: input.agentId,
+                selected_action: action,
+                missing_fields: ["menu_items"],
+                intake_gate: "restaurant_workspace_menu_required_after_intake",
+            },
+        };
+    }
     route.target_action = action;
     const actionCapability = getActionCapability(input.agentId, action);
     if (!actionCapability) {

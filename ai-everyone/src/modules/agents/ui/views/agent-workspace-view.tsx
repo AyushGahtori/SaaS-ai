@@ -2,8 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Bot, Loader2, MessageSquarePlus, Sparkles } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import {
+  ArrowLeft,
+  Bot,
+  Loader2,
+  MessageSquarePlus,
+  PencilLine,
+  Plus,
+  Save,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { getAgentById, type Agent } from "@/lib/firestore-agents";
 import { getAgentCatalogEntry } from "@/lib/agents/catalog";
@@ -22,6 +32,14 @@ interface AgentStateResponse {
   installedAgentIds: string[];
   accessibleAgentIds: string[];
   connectedBundleIds: string[];
+}
+
+interface RestaurantMenuRow {
+  id: string;
+  name: string;
+  price: string;
+  contains: string;
+  description: string;
 }
 
 async function getAuthHeaders() {
@@ -95,6 +113,7 @@ const RESTAURANT_ACTION_PROMPTS: Record<string, string> = {
 
 const RESTAURANT_RUNTIME_NOTES = [
   "This workspace stays locked to one restaurant ordering session, so order state and edits persist across messages.",
+  "Use the Add Menu Items button beside the new chat button to define name, pricing, contents, and description for every menu item.",
   "Use the controls here for menu browsing, order review, recommendations, resets, and escalation without switching agents.",
   "The normal chat card stays compact, while the workspace conversation can expose session logs, actions, and richer order context.",
 ];
@@ -124,6 +143,16 @@ function formatFieldLabel(label: string): string {
   return label.replace(/\s+/g, " ").trim();
 }
 
+function createRestaurantMenuRow(seed?: Partial<Omit<RestaurantMenuRow, "id">>): RestaurantMenuRow {
+  return {
+    id: `menu_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    name: seed?.name || "",
+    price: seed?.price || "",
+    contains: seed?.contains || "",
+    description: seed?.description || "",
+  };
+}
+
 type WorkspaceActionCard = {
   action: string;
   description: string;
@@ -141,6 +170,7 @@ interface AgentActionControlsSectionProps {
   quickFlows: string[];
   isAccessible: boolean;
   sendWorkspacePrompt: (prompt: string, forceNewChat?: boolean) => Promise<void>;
+  prepareWorkspacePrompt?: (prompt: string) => void;
   formatActionLabel: (action: string) => string;
   formatFieldLabel: (label: string) => string;
   actionPrompts: Record<string, string>;
@@ -157,6 +187,7 @@ function AgentActionControlsSection({
   quickFlows,
   isAccessible,
   sendWorkspacePrompt,
+  prepareWorkspacePrompt,
   formatActionLabel,
   formatFieldLabel,
   actionPrompts,
@@ -196,10 +227,14 @@ function AgentActionControlsSection({
                   {example ? (
                     <button
                       disabled={!isAccessible}
-                      onClick={() => void sendWorkspacePrompt(example, true)}
+                      onClick={() =>
+                        prepareWorkspacePrompt
+                          ? prepareWorkspacePrompt(example)
+                          : void sendWorkspacePrompt(example, true)
+                      }
                       className="rounded-lg border border-primary/26 bg-primary/12 px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      Use example
+                      {prepareWorkspacePrompt ? "Edit example" : "Use example"}
                     </button>
                   ) : null}
                 </div>
@@ -274,7 +309,11 @@ function AgentActionControlsSection({
               <button
                 key={prompt}
                 disabled={!isAccessible}
-                onClick={() => void sendWorkspacePrompt(prompt, true)}
+                onClick={() =>
+                  prepareWorkspacePrompt
+                    ? prepareWorkspacePrompt(prompt)
+                    : void sendWorkspacePrompt(prompt, true)
+                }
                 className="rounded-xl border border-white/10 bg-black/18 px-4 py-3 text-left text-sm leading-6 text-white/72 transition hover:border-primary/28 hover:bg-primary/12 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {prompt}
@@ -288,12 +327,12 @@ function AgentActionControlsSection({
 }
 
 export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const {
     activeChatId,
     messages,
     createNewChat,
+    ensureActiveChat,
     sendMessage,
     setWorkspaceScope,
     workspaceScope,
@@ -303,6 +342,13 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAccessible, setIsAccessible] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isMenuEditorOpen, setIsMenuEditorOpen] = useState(false);
+  const [isMenuLoading, setIsMenuLoading] = useState(false);
+  const [isMenuSaving, setIsMenuSaving] = useState(false);
+  const [menuRows, setMenuRows] = useState<RestaurantMenuRow[]>([createRestaurantMenuRow()]);
+  const [menuFeedback, setMenuFeedback] = useState<string | null>(null);
+  const [promptEditorDraft, setPromptEditorDraft] = useState("");
+  const [isPromptEditorOpen, setIsPromptEditorOpen] = useState(false);
   const consumedPromptRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -379,6 +425,7 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
     () => (agent?.id === "shelfie-grocery-agent" ? intakeSchema?.actions || [] : []),
     [agent, intakeSchema]
   );
+  const isRestaurantWorkspace = agent?.id === "restaurant-concierge-agent";
   const workspaceNotes = useMemo(
     () =>
       agent?.id === "devika-engineer-agent"
@@ -403,6 +450,132 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
     [agent, isAccessible, sendMessage, setWorkspaceScope, workspaceScope]
   );
 
+  const upsertMenuRow = useCallback((rowId: string, key: keyof RestaurantMenuRow, value: string) => {
+    setMenuRows((prev) =>
+      prev.map((row) => (row.id === rowId ? { ...row, [key]: value } : row))
+    );
+  }, []);
+
+  const removeMenuRow = useCallback((rowId: string) => {
+    setMenuRows((prev) => {
+      const next = prev.filter((row) => row.id !== rowId);
+      return next.length > 0 ? next : [createRestaurantMenuRow()];
+    });
+  }, []);
+
+  const loadRestaurantMenuMemory = useCallback(
+    async (chatId: string) => {
+      if (!agent || agent.id !== "restaurant-concierge-agent") return;
+      setIsMenuLoading(true);
+      setMenuFeedback(null);
+      try {
+        const response = await fetch(
+          `/api/agents/${encodeURIComponent(agent.id)}/workspace/menu?chatId=${encodeURIComponent(chatId)}`,
+          {
+            method: "GET",
+            headers: await getAuthHeaders(),
+          }
+        );
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to load restaurant menu memory.");
+        }
+        const data = (await response.json()) as {
+          menu_items?: Array<{ name?: string; price?: number; contains?: string; description?: string }>;
+        };
+        const rows = (data.menu_items || []).map((item) =>
+          createRestaurantMenuRow({
+            name: item.name || "",
+            price:
+              typeof item.price === "number" && Number.isFinite(item.price)
+                ? String(item.price)
+                : "",
+            contains: item.contains || "",
+            description: item.description || "",
+          })
+        );
+        setMenuRows(rows.length > 0 ? rows : [createRestaurantMenuRow()]);
+      } catch (error) {
+        setMenuFeedback(error instanceof Error ? error.message : "Failed to load menu memory.");
+      } finally {
+        setIsMenuLoading(false);
+      }
+    },
+    [agent]
+  );
+
+  const openRestaurantMenuEditor = useCallback(async () => {
+    if (!agent || agent.id !== "restaurant-concierge-agent") return;
+    const chatId = activeChatId || (await ensureActiveChat({ seedTitle: "Restaurant menu setup" }));
+    if (!chatId) {
+      setMenuFeedback("Create a chat session first, then add your menu.");
+      setIsMenuEditorOpen(true);
+      return;
+    }
+    setIsMenuEditorOpen(true);
+    await loadRestaurantMenuMemory(chatId);
+  }, [activeChatId, agent, ensureActiveChat, loadRestaurantMenuMemory]);
+
+  const saveRestaurantMenuMemory = useCallback(async () => {
+    if (!agent || agent.id !== "restaurant-concierge-agent") return;
+    const chatId = activeChatId || (await ensureActiveChat({ seedTitle: "Restaurant menu setup" }));
+    if (!chatId) {
+      setMenuFeedback("Unable to create a chat session for this menu.");
+      return;
+    }
+
+    const menuItems = menuRows
+      .map((row) => ({
+        name: row.name.trim(),
+        price: Number(row.price),
+        contains: row.contains.trim(),
+        description: row.description.trim(),
+      }))
+      .filter((row) => row.name.length > 0);
+
+    setIsMenuSaving(true);
+    setMenuFeedback(null);
+    try {
+      const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/workspace/menu`, {
+        method: "PUT",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({
+          chatId,
+          menu_items: menuItems,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save restaurant menu memory.");
+      }
+      setMenuFeedback(
+        menuItems.length > 0
+          ? `Saved ${menuItems.length} menu item${menuItems.length > 1 ? "s" : ""}.`
+          : "Menu cleared for this chat."
+      );
+      await loadRestaurantMenuMemory(chatId);
+    } catch (error) {
+      setMenuFeedback(error instanceof Error ? error.message : "Failed to save restaurant menu.");
+    } finally {
+      setIsMenuSaving(false);
+    }
+  }, [activeChatId, agent, ensureActiveChat, loadRestaurantMenuMemory, menuRows]);
+
+  const prepareRestaurantPrompt = useCallback((prompt: string) => {
+    setPromptEditorDraft(prompt);
+    setIsPromptEditorOpen(true);
+  }, []);
+
+  const sendEditedRestaurantPrompt = useCallback(
+    async (forceNewChat = false) => {
+      const prompt = promptEditorDraft.trim();
+      if (!prompt) return;
+      await sendWorkspacePrompt(prompt, forceNewChat);
+      setIsPromptEditorOpen(false);
+    },
+    [promptEditorDraft, sendWorkspacePrompt]
+  );
+
   useEffect(() => {
     const prompt = searchParams.get("prompt");
     if (!prompt || !agent || !isAccessible) return;
@@ -411,6 +584,11 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
     createNewChat();
     void sendWorkspacePrompt(prompt, true);
   }, [agent, createNewChat, isAccessible, searchParams, sendWorkspacePrompt]);
+
+  useEffect(() => {
+    if (!isRestaurantWorkspace || !isMenuEditorOpen || !activeChatId) return;
+    void loadRestaurantMenuMemory(activeChatId);
+  }, [activeChatId, isMenuEditorOpen, isRestaurantWorkspace, loadRestaurantMenuMemory]);
 
   if (isLoading) {
     return (
@@ -467,19 +645,135 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
                 </Link>
               </div>
 
-              <button
-                onClick={createNewChat}
-                className="inline-flex items-center gap-2 rounded-lg border border-primary/26 bg-primary/14 px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary/22"
-              >
-                <MessageSquarePlus className="h-4 w-4" />
-                New {agent.name} Chat
-              </button>
+              <div className="flex items-center gap-2">
+                {isRestaurantWorkspace ? (
+                  <button
+                    disabled={!isAccessible}
+                    onClick={() => void openRestaurantMenuEditor()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-amber-400/24 bg-amber-400/12 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-400/18 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <PencilLine className="h-4 w-4" />
+                    Add Menu Items
+                  </button>
+                ) : null}
+
+                <button
+                  onClick={createNewChat}
+                  className="inline-flex items-center gap-2 rounded-lg border border-primary/26 bg-primary/14 px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary/22"
+                >
+                  <MessageSquarePlus className="h-4 w-4" />
+                  New {agent.name} Chat
+                </button>
+              </div>
             </div>
 
             {!isAccessible ? (
               <div className="rounded-2xl border border-amber-400/20 bg-amber-400/8 p-4 text-sm text-amber-100">
                 Install and connect {agent.name} from the marketplace before using this workspace.
               </div>
+            ) : null}
+
+            {isRestaurantWorkspace && isMenuEditorOpen ? (
+              <section className="rounded-2xl border border-amber-400/26 bg-amber-400/8 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-100/90">
+                      Restaurant Menu Memory
+                    </h2>
+                    <p className="mt-1 text-sm text-amber-100/78">
+                      These menu items stay scoped to this restaurant agent chat.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setMenuRows((prev) => [...prev, createRestaurantMenuRow()])}
+                      className="inline-flex items-center gap-1 rounded-lg border border-white/16 bg-white/[0.08] px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/[0.14]"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add row
+                    </button>
+                    <button
+                      disabled={isMenuSaving || isMenuLoading}
+                      onClick={() => void saveRestaurantMenuMemory()}
+                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-400/28 bg-emerald-500/16 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/22 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {isMenuSaving ? "Saving..." : "Save menu"}
+                    </button>
+                  </div>
+                </div>
+
+                {menuFeedback ? (
+                  <p className="mt-3 rounded-lg border border-white/12 bg-black/18 px-3 py-2 text-xs text-white/78">
+                    {menuFeedback}
+                  </p>
+                ) : null}
+
+                <div className="mt-4 overflow-x-auto rounded-xl border border-white/10">
+                  <table className="min-w-full text-left text-xs text-white/82">
+                    <thead className="bg-black/28 text-[11px] uppercase tracking-[0.12em] text-white/58">
+                      <tr>
+                        <th className="px-3 py-2">Menu name</th>
+                        <th className="px-3 py-2">Pricing</th>
+                        <th className="px-3 py-2">What it contains</th>
+                        <th className="px-3 py-2">Description</th>
+                        <th className="px-3 py-2 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {menuRows.map((row) => (
+                        <tr key={row.id} className="border-t border-white/8 bg-black/18">
+                          <td className="px-3 py-2 align-top">
+                            <input
+                              value={row.name}
+                              onChange={(event) => upsertMenuRow(row.id, "name", event.target.value)}
+                              className="w-44 rounded-md border border-white/12 bg-black/28 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                              placeholder="Paneer Tikka"
+                            />
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <input
+                              value={row.price}
+                              onChange={(event) => upsertMenuRow(row.id, "price", event.target.value)}
+                              className="w-24 rounded-md border border-white/12 bg-black/28 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                              placeholder="299"
+                            />
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <input
+                              value={row.contains}
+                              onChange={(event) => upsertMenuRow(row.id, "contains", event.target.value)}
+                              className="w-56 rounded-md border border-white/12 bg-black/28 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                              placeholder="Paneer, yogurt, spices"
+                            />
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <input
+                              value={row.description}
+                              onChange={(event) => upsertMenuRow(row.id, "description", event.target.value)}
+                              className="w-72 rounded-md border border-white/12 bg-black/28 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                              placeholder="Clay-oven grilled starter."
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right align-top">
+                            <button
+                              onClick={() => removeMenuRow(row.id)}
+                              className="inline-flex items-center gap-1 rounded-md border border-white/14 bg-white/[0.06] px-2 py-1.5 text-[11px] text-white/78 transition hover:bg-white/[0.12]"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {isMenuLoading ? (
+                  <p className="mt-3 text-xs text-white/62">Loading menu memory...</p>
+                ) : null}
+              </section>
             ) : null}
 
             <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(99,102,241,0.16),rgba(8,10,18,0.94)_44%,rgba(14,165,233,0.10))] p-6 shadow-[0_22px_70px_rgb(0_0_0/42%)]">
@@ -554,7 +848,11 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
                     <button
                       key={prompt}
                       disabled={!isAccessible}
-                      onClick={() => void sendWorkspacePrompt(prompt, true)}
+                      onClick={() =>
+                        isRestaurantWorkspace
+                          ? prepareRestaurantPrompt(prompt)
+                          : void sendWorkspacePrompt(prompt, true)
+                      }
                       className="rounded-xl border border-white/8 bg-black/20 px-4 py-3 text-left text-sm leading-6 text-white/74 transition hover:border-primary/30 hover:bg-primary/12 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       {prompt}
@@ -571,6 +869,51 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
                 ))}
               </div>
             </section>
+
+            {isRestaurantWorkspace && isPromptEditorOpen ? (
+              <section className="rounded-2xl border border-violet-400/24 bg-violet-500/8 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-violet-100/90">
+                      Edit Prompt Before Send
+                    </h2>
+                    <p className="mt-1 text-sm text-violet-100/74">
+                      Edit quantities and details, then send the command when ready.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setIsPromptEditorOpen(false)}
+                    className="rounded-lg border border-white/12 bg-white/[0.05] px-3 py-2 text-xs font-semibold text-white/76 transition hover:bg-white/[0.12]"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <textarea
+                  value={promptEditorDraft}
+                  onChange={(event) => setPromptEditorDraft(event.target.value)}
+                  className="mt-3 h-24 w-full rounded-xl border border-white/10 bg-black/24 px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                  placeholder="Add 1 chicken biryani and 1 mango lassi to my order."
+                />
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    disabled={!promptEditorDraft.trim() || !isAccessible}
+                    onClick={() => void sendEditedRestaurantPrompt(false)}
+                    className="rounded-lg border border-primary/30 bg-primary/16 px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary/24 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    Send in current chat
+                  </button>
+                  <button
+                    disabled={!promptEditorDraft.trim() || !isAccessible}
+                    onClick={() => void sendEditedRestaurantPrompt(true)}
+                    className="rounded-lg border border-amber-400/30 bg-amber-400/14 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    Start new chat and send
+                  </button>
+                </div>
+              </section>
+            ) : null}
 
             {devikaActions.length ? (
               <AgentActionControlsSection
@@ -613,6 +956,7 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
                 ]}
                 isAccessible={isAccessible}
                 sendWorkspacePrompt={sendWorkspacePrompt}
+                prepareWorkspacePrompt={prepareRestaurantPrompt}
                 formatActionLabel={formatActionLabel}
                 formatFieldLabel={formatFieldLabel}
                 actionPrompts={RESTAURANT_ACTION_PROMPTS}

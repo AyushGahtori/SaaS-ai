@@ -965,6 +965,16 @@ function buildLlmPrompt(params: {
         content: message.content,
         agentId: message.agentId,
     }));
+    const workspaceMemory = params.context.agent_workspace_memory || {};
+    const restaurantWorkspaceRule =
+        params.agentId === "restaurant-concierge-agent"
+            ? [
+                  "If the user asks where to add menu items, where to upload menu data, or says the menu is empty, explain this exact UX flow:",
+                  '1) Click "Add Menu Items" beside "New Restaurant Concierge Agent Chat".',
+                  "2) Fill menu item name, pricing, contains, and description.",
+                  "3) Save menu items, then continue ordering in this same workspace chat.",
+              ].join("\n")
+            : "";
 
     return [
         "You are the structured intake controller for a locked Pian agent workspace.",
@@ -978,11 +988,13 @@ function buildLlmPrompt(params: {
         "Use status=ready only when all required fields for the selected action are present and normalized.",
         "Use status=needs_clarification when required fields are missing; ask only for missing fields.",
         "Use status=out_of_scope only when the request cannot be handled by the locked agent.",
+        restaurantWorkspaceRule,
         "If this is a repair attempt for wrong keys, wrong JSON shape, or wrong value types, fix the JSON internally. Do not ask the user again unless the actual information is missing or ambiguous.",
         `Suggested action from deterministic UI context: ${params.suggestedAction}. You may change it only to another action in the locked agent schema.`,
         `Agent capability summary:\n${renderWorkspaceCapabilitiesText(params.agentId, params.agentName)}`,
         `Agent action schema:\n${stringifyForPrompt(schema)}`,
         `Recent conversation:\n${stringifyForPrompt(recentMessages)}`,
+        `Workspace memory snapshot:\n${stringifyForPrompt(workspaceMemory)}`,
         `Current user message:\n${params.userInput}`,
         params.repair
             ? `Your previous output failed backend validation. Fix it or ask a clarification.\nValidation error: ${params.repair.validationError}\nInvalid output:\n${stringifyForPrompt(params.repair.invalidOutput)}`

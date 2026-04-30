@@ -1,4 +1,5 @@
 import { adminDb } from "@/lib/firebase-admin";
+import { readRestaurantWorkspaceMemoryFromChatRecord } from "@/lib/agents/restaurant-workspace-memory.server";
 import type {
     ConversationContext,
     IndexedEntity,
@@ -264,6 +265,30 @@ function findLastReferencedEntity(tasksNewestFirst: Record<string, unknown>[]): 
     return null;
 }
 
+function extractRestaurantSnapshotsFromTasks(tasksNewestFirst: Record<string, unknown>[]): {
+    order_snapshot: Record<string, unknown> | null;
+    session_snapshot: Record<string, unknown> | null;
+} {
+    for (const task of tasksNewestFirst) {
+        if (asString(task.agentId) !== "restaurant-concierge-agent") continue;
+        const output = asRecord(task.agentOutput);
+        const result = asRecord(output.result);
+
+        const order = asRecord(result.order);
+        const session = asRecord(result.session);
+
+        return {
+            order_snapshot: Object.keys(order).length > 0 ? order : null,
+            session_snapshot: Object.keys(session).length > 0 ? session : null,
+        };
+    }
+
+    return {
+        order_snapshot: null,
+        session_snapshot: null,
+    };
+}
+
 export async function loadConversationContext(params: {
     userId: string;
     chatId: string;
@@ -279,8 +304,19 @@ export async function loadConversationContext(params: {
         }));
 
     let taskRows: Record<string, unknown>[] = [];
+    let chatMemory: Record<string, unknown> = {};
     if (params.chatId) {
         try {
+            const chatSnapshot = await adminDb
+                .collection("users")
+                .doc(params.userId)
+                .collection("chats")
+                .doc(params.chatId)
+                .get();
+            if (chatSnapshot.exists) {
+                chatMemory = asRecord(chatSnapshot.data());
+            }
+
             const snapshot = await adminDb
                 .collection("agentTasks")
                 .where("chatId", "==", params.chatId)
@@ -301,12 +337,22 @@ export async function loadConversationContext(params: {
     const recent_agent_outputs = buildRecentAgentOutputs(taskRows);
     const entity_index = buildEntityIndex(taskRows);
     const lastTask = taskRows[0];
+    const restaurantMemory = readRestaurantWorkspaceMemoryFromChatRecord(chatMemory);
+    const restaurantSnapshots = extractRestaurantSnapshotsFromTasks(taskRows);
 
     return {
         recent_messages: recentMessages,
         recent_agent_tasks,
         recent_agent_outputs,
         entity_index,
+        agent_workspace_memory: {
+            restaurant_concierge: {
+                menu_items: restaurantMemory.menu_items,
+                updated_at: restaurantMemory.updated_at,
+                order_snapshot: restaurantSnapshots.order_snapshot,
+                session_snapshot: restaurantSnapshots.session_snapshot,
+            },
+        },
         last_agent_id: lastTask ? asString(lastTask.agentId) : undefined,
         last_action: lastTask
             ? asString(asRecord(lastTask.agentInput).action) || asString(asRecord(lastTask.agentOutput).action)

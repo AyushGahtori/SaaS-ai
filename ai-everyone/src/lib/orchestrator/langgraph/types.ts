@@ -55,6 +55,19 @@ export interface ConversationContext {
         todo_tasks: IndexedEntity[];
         generic_items: IndexedEntity[];
     };
+    agent_workspace_memory?: {
+        restaurant_concierge?: {
+            menu_items?: Array<{
+                name?: string;
+                price?: number;
+                contains?: string;
+                description?: string;
+            }>;
+            updated_at?: string | null;
+            order_snapshot?: Record<string, unknown> | null;
+            session_snapshot?: Record<string, unknown> | null;
+        };
+    };
     last_agent_id?: string;
     last_action?: string;
     last_referenced_entity?: IndexedEntity | null;
