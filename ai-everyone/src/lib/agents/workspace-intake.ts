@@ -117,6 +117,9 @@ const FIELDS = {
     dietaryFilter: field("dietaryFilter", "dietary filter", "string", "Which dietary filter should I apply?"),
     reason: field("reason", "reason", "string", "Why should I escalate this to a human teammate?"),
     prompt: field("prompt", "full prompt", "string", "What exactly should the agent do?"),
+    buyingDate: field("buying_date", "buying date", "string", "What is the buying date?"),
+    endDate: field("end_date", "end date", "string", "Until what date should this grocery plan last?"),
+    lastsForDays: field("lasts_for_days", "duration in days", "number", "How many days should this grocery plan last?", "duration in days", false),
     planMarkdown: field("planMarkdown", "travel plan content", "string", "Which travel plan should I send?", "travel plan content", false),
     url: field("url", "URL", "string", "Which URL should I use?"),
     origin: field("origin", "origin", "string", "Where should this start?"),
@@ -215,7 +218,8 @@ const AGENT_INTAKE_SCHEMAS: Record<string, AgentIntakeSchema> = {
         agentId: "shelfie-grocery-agent",
         purpose: "Conversational grocery planning with persistent sessions, history retrieval, and scoped reset controls.",
         actions: [
-            action("run_shelfie_grocery_agent", "Run Shelfie grocery conversation.", [FIELDS.prompt], {
+            action("run_shelfie_grocery_agent", "Run Shelfie grocery conversation.", [FIELDS.prompt, FIELDS.buyingDate, FIELDS.endDate], {
+                optional: [FIELDS.lastsForDays],
                 examples: [
                     "Plan a weekly grocery list for two adults with high-protein meals.",
                     "Continue my list and swap dairy items for lactose-free alternatives.",
@@ -965,6 +969,28 @@ function buildLlmPrompt(params: {
         content: message.content,
         agentId: message.agentId,
     }));
+    const workspaceMemory = params.context.agent_workspace_memory || {};
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const restaurantWorkspaceRule =
+        params.agentId === "restaurant-concierge-agent"
+            ? [
+                  "If the user asks where to add menu items, where to upload menu data, or says the menu is empty, explain this exact UX flow:",
+                  '1) Click "Add Menu Items" beside "New Restaurant Concierge Agent Chat".',
+                  "2) Fill menu item name, pricing, contains, and description.",
+                  "3) Save menu items, then continue ordering in this same workspace chat.",
+              ].join("\n")
+            : "";
+    const shelfieWorkspaceRule =
+        params.agentId === "shelfie-grocery-agent"
+            ? [
+                  "For Shelfie grocery memory updates, capture and normalize: buying_date and either end_date or lasts_for_days.",
+                  "If the user gives lasts_for_days (example: 4 days), compute end_date from buying_date.",
+                  "If buying_date is missing, ask for it explicitly.",
+                  "If end_date and lasts_for_days are both missing, ask for one of them explicitly.",
+                  "Track item-level state fields when present: purchased (true/false) and finished (true/false).",
+                  `Use this date as reference for relative dates like 'today': ${todayIso}.`,
+              ].join("\n")
+            : "";
 
     return [
         "You are the structured intake controller for a locked Pian agent workspace.",
@@ -978,11 +1004,14 @@ function buildLlmPrompt(params: {
         "Use status=ready only when all required fields for the selected action are present and normalized.",
         "Use status=needs_clarification when required fields are missing; ask only for missing fields.",
         "Use status=out_of_scope only when the request cannot be handled by the locked agent.",
+        restaurantWorkspaceRule,
+        shelfieWorkspaceRule,
         "If this is a repair attempt for wrong keys, wrong JSON shape, or wrong value types, fix the JSON internally. Do not ask the user again unless the actual information is missing or ambiguous.",
         `Suggested action from deterministic UI context: ${params.suggestedAction}. You may change it only to another action in the locked agent schema.`,
         `Agent capability summary:\n${renderWorkspaceCapabilitiesText(params.agentId, params.agentName)}`,
         `Agent action schema:\n${stringifyForPrompt(schema)}`,
         `Recent conversation:\n${stringifyForPrompt(recentMessages)}`,
+        `Workspace memory snapshot:\n${stringifyForPrompt(workspaceMemory)}`,
         `Current user message:\n${params.userInput}`,
         params.repair
             ? `Your previous output failed backend validation. Fix it or ask a clarification.\nValidation error: ${params.repair.validationError}\nInvalid output:\n${stringifyForPrompt(params.repair.invalidOutput)}`

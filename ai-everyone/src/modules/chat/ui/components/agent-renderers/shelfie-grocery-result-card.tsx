@@ -32,8 +32,17 @@ export function ShelfieGroceryResultCard({ result }: ShelfieGroceryResultCardPro
     const history = asArray(payload.history);
     const sessions = asArray(payload.sessions);
     const actions = Array.isArray(payload.actions) ? payload.actions.map((item) => asString(item, "")).filter(Boolean) : [];
+    const failureText = `${summary} ${responseText}`.toLowerCase();
+    const isFailure =
+        failureText.includes("cannot fulfill") ||
+        failureText.includes("unable to") ||
+        failureText.includes("failed") ||
+        failureText.includes("error");
 
     const badge =
+        isFailure
+            ? "Failed"
+            :
         resultType === "shelfie_capabilities_result"
             ? "Capabilities"
             : resultType === "shelfie_history_result"
@@ -45,6 +54,9 @@ export function ShelfieGroceryResultCard({ result }: ShelfieGroceryResultCardPro
                         : "Conversation";
 
     const icon =
+        isFailure
+            ? <RefreshCcw className="h-3.5 w-3.5" />
+            :
         badge === "Capabilities"
             ? <Sparkles className="h-3.5 w-3.5" />
             : badge === "History"
@@ -60,7 +72,13 @@ export function ShelfieGroceryResultCard({ result }: ShelfieGroceryResultCardPro
                     <p className="text-sm font-semibold text-white">Shelfie Grocery Agent</p>
                     <p className="text-[11px] uppercase tracking-wide text-white/55">{resultType.replaceAll("_", " ")}</p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/12 px-2.5 py-1 text-xs text-emerald-200">
+                <span
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
+                        isFailure
+                            ? "border-red-500/35 bg-red-500/14 text-red-200"
+                            : "border-emerald-500/30 bg-emerald-500/12 text-emerald-200"
+                    }`}
+                >
                     {icon}
                     {badge}
                 </span>

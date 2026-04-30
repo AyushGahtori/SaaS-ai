@@ -352,6 +352,98 @@ function detectOutOfScope(agent: AgentCapability, text: string): WorkspaceRouteB
     return null;
 }
 
+const RESTAURANT_ACTIONS_REQUIRING_MENU = new Set<string>([
+    "run_restaurant_concierge",
+    "browse_menu",
+    "search_menu",
+    "get_item_details",
+    "get_recommendations",
+    "get_order_summary",
+    "suggest_items",
+]);
+const SHELFIE_ACTIONS_USING_MEMORY = new Set<string>([
+    "run_shelfie_grocery_agent",
+    "get_history",
+    "list_sessions",
+    "reset_session",
+]);
+
+function getRestaurantMenuItemsFromContext(context: ConversationContext): Array<Record<string, unknown>> {
+    const memory = asRecord(context.agent_workspace_memory);
+    const restaurantMemory = asRecord(memory.restaurant_concierge);
+    const rows = restaurantMemory.menu_items;
+    if (!Array.isArray(rows)) return [];
+    return rows
+        .map((item) => asRecord(item))
+        .filter((item) => asString(item.name).length > 0);
+}
+
+function isRestaurantMenuSetupQuestion(lower: string): boolean {
+    return (
+        /\b(where|how)\b.{0,40}\b(add|upload|put|enter|save)\b.{0,40}\b(menu|items?)\b/.test(lower) ||
+        /\b(menu|items?)\b.{0,40}\b(empty|blank|missing|not available|not showing)\b/.test(lower) ||
+        /\bwhere\b.{0,30}\bmenu\b/.test(lower)
+    );
+}
+
+function buildRestaurantMenuSetupInstruction(): string {
+    return [
+        "Your restaurant menu is not configured in this chat yet.",
+        "",
+        "To add it:",
+        '1. Click "Add Menu Items" beside "New Restaurant Concierge Agent Chat".',
+        "2. Fill item name, pricing, what it contains, and description.",
+        "3. Save menu items, then ask for browsing, recommendations, or ordering.",
+    ].join("\n");
+}
+
+function isShelfieMemorySetupQuestion(lower: string): boolean {
+    return (
+        /\b(where|how)\b.{0,40}\b(add|save|store|put|enter|manage)\b.{0,40}\b(grocery|list|memory)\b/.test(lower) ||
+        /\b(grocery|list|memory)\b.{0,40}\b(empty|blank|missing)\b/.test(lower)
+    );
+}
+
+function buildShelfieMemorySetupInstruction(): string {
+    return [
+        "Shelfie grocery memory for this chat is managed from the dedicated workspace panel.",
+        "",
+        "To set it up:",
+        '1. Click "Grocery Memory" beside "New Shelfie Grocery Agent Chat".',
+        "2. Add buying date, end date, and your grocery items.",
+        "3. Mark purchased and finished states per item, then save.",
+    ].join("\n");
+}
+
+function getShelfieMemoryFromContext(context: ConversationContext): Array<Record<string, unknown>> {
+    const memory = asRecord(context.agent_workspace_memory);
+    const shelfieMemory = asRecord(memory.shelfie_grocery);
+    const rows = shelfieMemory.grocery_memory;
+    if (!Array.isArray(rows)) return [];
+    return rows.map((item) => asRecord(item));
+}
+
+function getLatestShelfieDateWindow(context: ConversationContext): { buying_date?: string; end_date?: string } {
+    const entries = getShelfieMemoryFromContext(context);
+    if (entries.length === 0) return {};
+    const latest = entries[0];
+    const buyingDate = asString(latest.buying_date);
+    const endDate = asString(latest.end_date);
+    return {
+        ...(buyingDate ? { buying_date: buyingDate } : {}),
+        ...(endDate ? { end_date: endDate } : {}),
+    };
+}
+
+function buildShelfieDateClarification(): string {
+    return [
+        "Before I update your grocery list, I need the date window.",
+        "",
+        "1. What is the buying date?",
+        "2. Until what date should this grocery list last (or how many days)?",
+    ].join("\n");
+}
+
 function buildState(input: {
     userId: string;
     chatId: string;
@@ -391,12 +483,39 @@ function buildState(input: {
 }
 
 function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, unknown> {
+    const restaurantMenuItems =
+        state.route.target_agent === "restaurant-concierge-agent"
+            ? getRestaurantMenuItemsFromContext(state.conversation_context)
+            : [];
+    const restaurantMemory = asRecord(state.conversation_context.agent_workspace_memory);
+    const restaurantSnapshot = asRecord(restaurantMemory.restaurant_concierge);
+    const shelfieMemoryEntries =
+        state.route.target_agent === "shelfie-grocery-agent"
+            ? getShelfieMemoryFromContext(state.conversation_context)
+            : [];
     const params = {
         ...state.route.parameters,
         ...(state.resolved_entities.message_id
             ? {
                 message_id: state.resolved_entities.message_id,
                 row_index: state.resolved_entities.row_index,
+            }
+            : {}),
+        ...(restaurantMenuItems.length > 0
+            ? {
+                workspace_menu_items: restaurantMenuItems,
+                workspace_menu_item_count: restaurantMenuItems.length,
+            }
+            : {}),
+        ...(state.route.target_agent === "restaurant-concierge-agent" &&
+            restaurantSnapshot.order_snapshot &&
+            typeof restaurantSnapshot.order_snapshot === "object"
+            ? { workspace_order_snapshot: restaurantSnapshot.order_snapshot }
+            : {}),
+        ...(state.route.target_agent === "shelfie-grocery-agent" && shelfieMemoryEntries.length > 0
+            ? {
+                workspace_grocery_memory: shelfieMemoryEntries,
+                workspace_grocery_memory_count: shelfieMemoryEntries.length,
             }
             : {}),
     };
@@ -443,8 +562,62 @@ export async function resolveAgentWorkspaceRequest(
         chatId: input.chatId,
         recentMessages: input.recentMessages,
     });
+    const restaurantMenuItems =
+        input.agentId === "restaurant-concierge-agent"
+            ? getRestaurantMenuItemsFromContext(conversationContext)
+            : [];
+    const shelfieMemoryEntries =
+        input.agentId === "shelfie-grocery-agent"
+            ? getShelfieMemoryFromContext(conversationContext)
+            : [];
+
+    if (input.agentId === "restaurant-concierge-agent" && isRestaurantMenuSetupQuestion(normalizedInput)) {
+        return {
+            ok: false,
+            status: "needs_clarification",
+            content: buildRestaurantMenuSetupInstruction(),
+            meta: {
+                selected_agent: input.agentId,
+                selected_action: "browse_menu",
+                missing_fields: ["menu_items"],
+                intake_gate: "restaurant_workspace_menu_setup_guidance",
+            },
+        };
+    }
+    if (input.agentId === "shelfie-grocery-agent" && isShelfieMemorySetupQuestion(normalizedInput)) {
+        return {
+            ok: false,
+            status: "needs_clarification",
+            content: buildShelfieMemorySetupInstruction(),
+            meta: {
+                selected_agent: input.agentId,
+                selected_action: "run_shelfie_grocery_agent",
+                missing_fields: ["grocery_memory"],
+                intake_gate: "shelfie_workspace_memory_setup_guidance",
+            },
+        };
+    }
 
     const route = chooseWorkspaceRoute(input.agentId, normalizedInput, conversationContext);
+    if (
+        input.agentId === "restaurant-concierge-agent" &&
+        restaurantMenuItems.length === 0 &&
+        route.target_action &&
+        RESTAURANT_ACTIONS_REQUIRING_MENU.has(route.target_action)
+    ) {
+        return {
+            ok: false,
+            status: "needs_clarification",
+            content: buildRestaurantMenuSetupInstruction(),
+            meta: {
+                selected_agent: input.agentId,
+                selected_action: route.target_action,
+                missing_fields: ["menu_items"],
+                intake_gate: "restaurant_workspace_menu_required_before_action",
+            },
+        };
+    }
+
     const suggestedAction = route.target_action || agent.defaultAction;
     const intake = await resolveWorkspaceIntakeWithLlm({
         agentId: input.agentId,
@@ -472,7 +645,35 @@ export async function resolveAgentWorkspaceRequest(
     }
 
     const action = intake.action;
+    if (
+        input.agentId === "restaurant-concierge-agent" &&
+        restaurantMenuItems.length === 0 &&
+        RESTAURANT_ACTIONS_REQUIRING_MENU.has(action)
+    ) {
+        return {
+            ok: false,
+            status: "needs_clarification",
+            content: buildRestaurantMenuSetupInstruction(),
+            meta: {
+                selected_agent: input.agentId,
+                selected_action: action,
+                missing_fields: ["menu_items"],
+                intake_gate: "restaurant_workspace_menu_required_after_intake",
+            },
+        };
+    }
     route.target_action = action;
+    if (
+        input.agentId === "shelfie-grocery-agent" &&
+        SHELFIE_ACTIONS_USING_MEMORY.has(action) &&
+        !route.parameters.workspace_grocery_memory
+    ) {
+        const shelfieMemory = getShelfieMemoryFromContext(conversationContext);
+        if (shelfieMemory.length > 0) {
+            route.parameters.workspace_grocery_memory = shelfieMemory;
+            route.parameters.workspace_grocery_memory_count = shelfieMemory.length;
+        }
+    }
     const actionCapability = getActionCapability(input.agentId, action);
     if (!actionCapability) {
         return {
@@ -495,6 +696,32 @@ export async function resolveAgentWorkspaceRequest(
             reasoning: intake.reasoningSummary,
         },
     };
+    if (input.agentId === "shelfie-grocery-agent" && action === "run_shelfie_grocery_agent") {
+        const fallbackWindow = getLatestShelfieDateWindow(conversationContext);
+        if (!isPresent(route.parameters.buying_date) && fallbackWindow.buying_date) {
+            route.parameters.buying_date = fallbackWindow.buying_date;
+        }
+        if (!isPresent(route.parameters.end_date) && fallbackWindow.end_date) {
+            route.parameters.end_date = fallbackWindow.end_date;
+        }
+
+        if (!isPresent(route.parameters.buying_date) || !isPresent(route.parameters.end_date)) {
+            return {
+                ok: false,
+                status: "needs_clarification",
+                content: buildShelfieDateClarification(),
+                meta: {
+                    selected_agent: input.agentId,
+                    selected_action: action,
+                    missing_fields: [
+                        ...(!isPresent(route.parameters.buying_date) ? ["buying_date"] : []),
+                        ...(!isPresent(route.parameters.end_date) ? ["end_date_or_duration"] : []),
+                    ],
+                    intake_gate: "shelfie_date_window_required_before_execution",
+                },
+            };
+        }
+    }
     if (input.agentId === "travel-halper-agent" && action === "send_plan_email") {
         const recentPlan = getLatestTravelPlan(conversationContext);
         if (recentPlan && !isPresent(route.parameters.planMarkdown)) {
@@ -603,6 +830,10 @@ export async function resolveAgentWorkspaceRequest(
     });
 
     const agentRequest = buildAgentRequest(state);
+    if (input.agentId === "shelfie-grocery-agent" && shelfieMemoryEntries.length > 0) {
+        agentRequest.workspace_grocery_memory = shelfieMemoryEntries;
+        agentRequest.workspace_grocery_memory_count = shelfieMemoryEntries.length;
+    }
     const reason = compactString(route.route_reason, 240);
 
     return {

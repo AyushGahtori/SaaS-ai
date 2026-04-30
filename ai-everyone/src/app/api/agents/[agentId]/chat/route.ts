@@ -25,6 +25,11 @@ interface AgentChatBody {
     attachments?: Array<Record<string, unknown>>;
 }
 
+const DEFAULT_WORKSPACE_GEMINI_MODEL =
+    process.env.GEMINI_MODEL_FLASH ||
+    process.env.GEMINI_MODEL_FLASH_LITE ||
+    "gemini-3-flash-preview";
+
 function streamEvents(events: Array<{ event: string; data: Record<string, unknown> }>) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -75,6 +80,10 @@ export async function POST(
         const body = (await req.json()) as AgentChatBody;
         const messages = Array.isArray(body.messages) ? body.messages : [];
         const chatId = body.chatId;
+        const requestedModel = typeof body.model === "string" ? body.model.trim() : "";
+        const workspaceModel = requestedModel.toLowerCase().includes("gemini")
+            ? requestedModel
+            : DEFAULT_WORKSPACE_GEMINI_MODEL;
         const lastUserMessage =
             [...messages].reverse().find((message) => message.role === "user")?.content || "";
 
@@ -127,8 +136,8 @@ export async function POST(
             chatId,
             agentId,
             userInput: lastUserMessage,
-            model: body.model,
-            llmProvider: body.model?.toLowerCase().includes("gemini") ? "gemini" : "ollama",
+            model: workspaceModel,
+            llmProvider: "gemini",
             installedAgentIds,
             accessibleAgentIds,
             recentMessages: messages.map((message) => ({

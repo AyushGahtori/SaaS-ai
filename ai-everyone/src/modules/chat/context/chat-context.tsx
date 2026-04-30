@@ -76,6 +76,7 @@ interface ChatContextValue {
     loadChats: (scopeOverride?: ChatWorkspaceScope) => Promise<void>;
     setWorkspaceScope: (scope: ChatWorkspaceScope) => void;
     createNewChat: () => void;
+    ensureActiveChat: (options?: { seedTitle?: string }) => Promise<string | null>;
     selectChat: (chatId: string) => Promise<void>;
     sendMessage: (
         content: string,
@@ -406,6 +407,42 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setMessages([]);
         setError(null);
     }, []);
+
+    const ensureActiveChat = useCallback(
+        async (options?: { seedTitle?: string }): Promise<string | null> => {
+            if (!uid) return null;
+            if (activeChatIdRef.current) return activeChatIdRef.current;
+
+            const currentWorkspaceScope = workspaceScopeRef.current;
+            const seedTitle = options?.seedTitle?.trim();
+            const title =
+                seedTitle ||
+                (currentWorkspaceScope.type === "agent"
+                    ? `${currentWorkspaceScope.agentName} workspace`
+                    : "New Chat");
+
+            const newChat = await createChat(
+                uid,
+                title,
+                currentWorkspaceScope.type === "agent"
+                    ? {
+                          workspaceType: "agent",
+                          agentId: currentWorkspaceScope.agentId,
+                          agentName: currentWorkspaceScope.agentName,
+                      }
+                    : { workspaceType: "global" }
+            );
+
+            activeChatIdRef.current = newChat.id;
+            messagesRef.current = [];
+            messagesByChatRef.current[newChat.id] = [];
+            setActiveChatId(newChat.id);
+            setMessages([]);
+            setChats((prev) => [newChat, ...prev]);
+            return newChat.id;
+        },
+        [uid]
+    );
 
     const setWorkspaceScope = useCallback(
         (scope: ChatWorkspaceScope) => {
@@ -1029,6 +1066,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         loadChats,
         setWorkspaceScope,
         createNewChat,
+        ensureActiveChat,
         selectChat,
         sendMessage,
         stopGeneration,
