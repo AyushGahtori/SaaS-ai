@@ -8,6 +8,7 @@ import {
   Bot,
   Loader2,
   MessageSquarePlus,
+  NotebookPen,
   PencilLine,
   Plus,
   Save,
@@ -40,6 +41,23 @@ interface RestaurantMenuRow {
   price: string;
   contains: string;
   description: string;
+}
+
+interface ShelfieMemoryItemRow {
+  id: string;
+  name: string;
+  quantity: string;
+  purchased: boolean;
+  finished: boolean;
+}
+
+interface ShelfieMemoryEntryRow {
+  id: string;
+  title: string;
+  buyingDate: string;
+  endDate: string;
+  notes: string;
+  items: ShelfieMemoryItemRow[];
 }
 
 async function getAuthHeaders() {
@@ -128,6 +146,7 @@ const SHELFIE_ACTION_PROMPTS: Record<string, string> = {
 
 const SHELFIE_RUNTIME_NOTES = [
   "Shelfie keeps a session timeline so grocery planning can continue over multiple conversations.",
+  "Store grocery cycles with buying date, end date, and item-level purchased/finished state for each chat.",
   "Redis cache and persistent history are used for fast recall, with safe fallbacks when infrastructure is unavailable.",
   "Use history and reset controls when you want to branch into a fresh shopping plan without losing other sessions.",
 ];
@@ -150,6 +169,29 @@ function createRestaurantMenuRow(seed?: Partial<Omit<RestaurantMenuRow, "id">>):
     price: seed?.price || "",
     contains: seed?.contains || "",
     description: seed?.description || "",
+  };
+}
+
+function createShelfieItemRow(seed?: Partial<Omit<ShelfieMemoryItemRow, "id">>): ShelfieMemoryItemRow {
+  return {
+    id: `shelfie_item_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    name: seed?.name || "",
+    quantity: seed?.quantity || "",
+    purchased: Boolean(seed?.purchased),
+    finished: Boolean(seed?.finished),
+  };
+}
+
+function createShelfieEntryRow(
+  seed?: Partial<Omit<ShelfieMemoryEntryRow, "id" | "items">> & { items?: ShelfieMemoryItemRow[] }
+): ShelfieMemoryEntryRow {
+  return {
+    id: `shelfie_entry_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    title: seed?.title || "Weekly grocery",
+    buyingDate: seed?.buyingDate || "",
+    endDate: seed?.endDate || "",
+    notes: seed?.notes || "",
+    items: seed?.items?.length ? seed.items : [createShelfieItemRow()],
   };
 }
 
@@ -347,6 +389,13 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
   const [isMenuSaving, setIsMenuSaving] = useState(false);
   const [menuRows, setMenuRows] = useState<RestaurantMenuRow[]>([createRestaurantMenuRow()]);
   const [menuFeedback, setMenuFeedback] = useState<string | null>(null);
+  const [isShelfieMemoryOpen, setIsShelfieMemoryOpen] = useState(false);
+  const [isShelfieLoading, setIsShelfieLoading] = useState(false);
+  const [isShelfieSaving, setIsShelfieSaving] = useState(false);
+  const [shelfieFeedback, setShelfieFeedback] = useState<string | null>(null);
+  const [shelfieEntries, setShelfieEntries] = useState<ShelfieMemoryEntryRow[]>([
+    createShelfieEntryRow(),
+  ]);
   const [promptEditorDraft, setPromptEditorDraft] = useState("");
   const [isPromptEditorOpen, setIsPromptEditorOpen] = useState(false);
   const consumedPromptRef = useRef<string | null>(null);
@@ -426,6 +475,7 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
     [agent, intakeSchema]
   );
   const isRestaurantWorkspace = agent?.id === "restaurant-concierge-agent";
+  const isShelfieWorkspace = agent?.id === "shelfie-grocery-agent";
   const workspaceNotes = useMemo(
     () =>
       agent?.id === "devika-engineer-agent"
@@ -462,6 +512,38 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
       return next.length > 0 ? next : [createRestaurantMenuRow()];
     });
   }, []);
+
+  const upsertShelfieEntry = useCallback(
+    (entryId: string, key: keyof Omit<ShelfieMemoryEntryRow, "id" | "items">, value: string) => {
+      setShelfieEntries((prev) =>
+        prev.map((entry) => (entry.id === entryId ? { ...entry, [key]: value } : entry))
+      );
+    },
+    []
+  );
+
+  const upsertShelfieItem = useCallback(
+    (
+      entryId: string,
+      itemId: string,
+      key: keyof Omit<ShelfieMemoryItemRow, "id">,
+      value: string | boolean
+    ) => {
+      setShelfieEntries((prev) =>
+        prev.map((entry) =>
+          entry.id !== entryId
+            ? entry
+            : {
+                ...entry,
+                items: entry.items.map((item) =>
+                  item.id === itemId ? { ...item, [key]: value } : item
+                ),
+              }
+        )
+      );
+    },
+    []
+  );
 
   const loadRestaurantMenuMemory = useCallback(
     async (chatId: string) => {
@@ -576,6 +658,121 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
     [promptEditorDraft, sendWorkspacePrompt]
   );
 
+  const loadShelfieMemory = useCallback(
+    async (chatId: string) => {
+      if (!agent || agent.id !== "shelfie-grocery-agent") return;
+      setIsShelfieLoading(true);
+      setShelfieFeedback(null);
+      try {
+        const response = await fetch(
+          `/api/agents/${encodeURIComponent(agent.id)}/workspace/shelfie-memory?chatId=${encodeURIComponent(chatId)}`,
+          {
+            method: "GET",
+            headers: await getAuthHeaders(),
+          }
+        );
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to load Shelfie memory.");
+        }
+        const data = (await response.json()) as {
+          grocery_memory?: Array<{
+            id?: string;
+            title?: string;
+            buying_date?: string;
+            end_date?: string;
+            notes?: string;
+            items?: Array<{
+              name?: string;
+              quantity?: string;
+              purchased?: boolean;
+              finished?: boolean;
+            }>;
+          }>;
+        };
+        const entries = (data.grocery_memory || []).map((entry) =>
+          createShelfieEntryRow({
+            title: entry.title || "Weekly grocery",
+            buyingDate: entry.buying_date || "",
+            endDate: entry.end_date || "",
+            notes: entry.notes || "",
+            items:
+              (entry.items || []).map((item) =>
+                createShelfieItemRow({
+                  name: item.name || "",
+                  quantity: item.quantity || "",
+                  purchased: Boolean(item.purchased),
+                  finished: Boolean(item.finished),
+                })
+              ) || [createShelfieItemRow()],
+          })
+        );
+        setShelfieEntries(entries.length > 0 ? entries : [createShelfieEntryRow()]);
+      } catch (error) {
+        setShelfieFeedback(error instanceof Error ? error.message : "Failed to load Shelfie memory.");
+      } finally {
+        setIsShelfieLoading(false);
+      }
+    },
+    [agent]
+  );
+
+  const openShelfieMemory = useCallback(async () => {
+    if (!agent || agent.id !== "shelfie-grocery-agent") return;
+    const chatId = activeChatId || (await ensureActiveChat({ seedTitle: "Shelfie grocery memory" }));
+    setIsShelfieMemoryOpen(true);
+    if (chatId) {
+      await loadShelfieMemory(chatId);
+    }
+  }, [activeChatId, agent, ensureActiveChat, loadShelfieMemory]);
+
+  const saveShelfieMemory = useCallback(async () => {
+    if (!agent || agent.id !== "shelfie-grocery-agent") return;
+    const chatId = activeChatId || (await ensureActiveChat({ seedTitle: "Shelfie grocery memory" }));
+    if (!chatId) {
+      setShelfieFeedback("Unable to resolve chat for Shelfie memory.");
+      return;
+    }
+    const payload = shelfieEntries.map((entry) => ({
+      id: entry.id,
+      title: entry.title.trim(),
+      buying_date: entry.buyingDate.trim(),
+      end_date: entry.endDate.trim(),
+      notes: entry.notes.trim(),
+      items: entry.items
+        .map((item) => ({
+          name: item.name.trim(),
+          quantity: item.quantity.trim(),
+          purchased: item.purchased,
+          finished: item.finished,
+        }))
+        .filter((item) => item.name.length > 0),
+    }));
+
+    setIsShelfieSaving(true);
+    setShelfieFeedback(null);
+    try {
+      const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/workspace/shelfie-memory`, {
+        method: "PUT",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({
+          chatId,
+          grocery_memory: payload,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save Shelfie memory.");
+      }
+      setShelfieFeedback("Shelfie memory saved for this chat.");
+      await loadShelfieMemory(chatId);
+    } catch (error) {
+      setShelfieFeedback(error instanceof Error ? error.message : "Failed to save Shelfie memory.");
+    } finally {
+      setIsShelfieSaving(false);
+    }
+  }, [activeChatId, agent, ensureActiveChat, loadShelfieMemory, shelfieEntries]);
+
   useEffect(() => {
     const prompt = searchParams.get("prompt");
     if (!prompt || !agent || !isAccessible) return;
@@ -589,6 +786,11 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
     if (!isRestaurantWorkspace || !isMenuEditorOpen || !activeChatId) return;
     void loadRestaurantMenuMemory(activeChatId);
   }, [activeChatId, isMenuEditorOpen, isRestaurantWorkspace, loadRestaurantMenuMemory]);
+
+  useEffect(() => {
+    if (!isShelfieWorkspace || !isShelfieMemoryOpen || !activeChatId) return;
+    void loadShelfieMemory(activeChatId);
+  }, [activeChatId, isShelfieMemoryOpen, isShelfieWorkspace, loadShelfieMemory]);
 
   if (isLoading) {
     return (
@@ -654,6 +856,16 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
                   >
                     <PencilLine className="h-4 w-4" />
                     Add Menu Items
+                  </button>
+                ) : null}
+                {isShelfieWorkspace ? (
+                  <button
+                    disabled={!isAccessible}
+                    onClick={() => void openShelfieMemory()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/24 bg-emerald-500/12 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/18 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <NotebookPen className="h-4 w-4" />
+                    Grocery Memory
                   </button>
                 ) : null}
 
@@ -772,6 +984,152 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
 
                 {isMenuLoading ? (
                   <p className="mt-3 text-xs text-white/62">Loading menu memory...</p>
+                ) : null}
+              </section>
+            ) : null}
+
+            {isShelfieWorkspace && isShelfieMemoryOpen ? (
+              <section className="rounded-2xl border border-emerald-400/24 bg-emerald-500/8 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-100/90">
+                      Shelfie Grocery Memory
+                    </h2>
+                    <p className="mt-1 text-sm text-emerald-100/78">
+                      Persisted per user and per Shelfie chat: buying date, end date, and purchased/finished item status.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShelfieEntries((prev) => [...prev, createShelfieEntryRow()])}
+                      className="inline-flex items-center gap-1 rounded-lg border border-white/16 bg-white/[0.08] px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/[0.14]"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add grocery cycle
+                    </button>
+                    <button
+                      disabled={isShelfieSaving || isShelfieLoading}
+                      onClick={() => void saveShelfieMemory()}
+                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-400/30 bg-emerald-500/16 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/24 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {isShelfieSaving ? "Saving..." : "Save memory"}
+                    </button>
+                  </div>
+                </div>
+
+                {shelfieFeedback ? (
+                  <p className="mt-3 rounded-lg border border-white/12 bg-black/18 px-3 py-2 text-xs text-white/80">
+                    {shelfieFeedback}
+                  </p>
+                ) : null}
+
+                <div className="mt-4 space-y-4">
+                  {shelfieEntries.map((entry) => (
+                    <div key={entry.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                      <div className="grid gap-2 md:grid-cols-4">
+                        <input
+                          value={entry.title}
+                          onChange={(event) => upsertShelfieEntry(entry.id, "title", event.target.value)}
+                          className="rounded-md border border-white/12 bg-black/28 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                          placeholder="Weekly grocery"
+                        />
+                        <input
+                          value={entry.buyingDate}
+                          onChange={(event) => upsertShelfieEntry(entry.id, "buyingDate", event.target.value)}
+                          className="rounded-md border border-white/12 bg-black/28 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                          placeholder="Buying date (YYYY-MM-DD)"
+                        />
+                        <input
+                          value={entry.endDate}
+                          onChange={(event) => upsertShelfieEntry(entry.id, "endDate", event.target.value)}
+                          className="rounded-md border border-white/12 bg-black/28 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                          placeholder="End date (YYYY-MM-DD)"
+                        />
+                        <input
+                          value={entry.notes}
+                          onChange={(event) => upsertShelfieEntry(entry.id, "notes", event.target.value)}
+                          className="rounded-md border border-white/12 bg-black/28 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                          placeholder="Notes"
+                        />
+                      </div>
+
+                      <div className="mt-3 overflow-x-auto rounded-lg border border-white/10">
+                        <table className="min-w-full text-left text-xs text-white/82">
+                          <thead className="bg-black/30 text-[11px] uppercase tracking-[0.12em] text-white/56">
+                            <tr>
+                              <th className="px-3 py-2">Item</th>
+                              <th className="px-3 py-2">Quantity</th>
+                              <th className="px-3 py-2">Purchased</th>
+                              <th className="px-3 py-2">Finished</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {entry.items.map((item) => (
+                              <tr key={item.id} className="border-t border-white/8">
+                                <td className="px-3 py-2">
+                                  <input
+                                    value={item.name}
+                                    onChange={(event) =>
+                                      upsertShelfieItem(entry.id, item.id, "name", event.target.value)
+                                    }
+                                    className="w-44 rounded-md border border-white/12 bg-black/28 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                                    placeholder="Eggs"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input
+                                    value={item.quantity}
+                                    onChange={(event) =>
+                                      upsertShelfieItem(entry.id, item.id, "quantity", event.target.value)
+                                    }
+                                    className="w-36 rounded-md border border-white/12 bg-black/28 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/35 focus:border-primary/35"
+                                    placeholder="2 dozen"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.purchased}
+                                    onChange={(event) =>
+                                      upsertShelfieItem(entry.id, item.id, "purchased", event.target.checked)
+                                    }
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.finished}
+                                    onChange={(event) =>
+                                      upsertShelfieItem(entry.id, item.id, "finished", event.target.checked)
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <button
+                        onClick={() =>
+                          setShelfieEntries((prev) =>
+                            prev.map((row) =>
+                              row.id !== entry.id
+                                ? row
+                                : { ...row, items: [...row.items, createShelfieItemRow()] }
+                            )
+                          )
+                        }
+                        className="mt-2 rounded-md border border-white/14 bg-white/[0.06] px-2 py-1 text-[11px] text-white/78 transition hover:bg-white/[0.12]"
+                      >
+                        Add item row
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {isShelfieLoading ? (
+                  <p className="mt-3 text-xs text-white/62">Loading Shelfie memory...</p>
                 ) : null}
               </section>
             ) : null}

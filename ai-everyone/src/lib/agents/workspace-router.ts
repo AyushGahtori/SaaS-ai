@@ -361,6 +361,12 @@ const RESTAURANT_ACTIONS_REQUIRING_MENU = new Set<string>([
     "get_order_summary",
     "suggest_items",
 ]);
+const SHELFIE_ACTIONS_USING_MEMORY = new Set<string>([
+    "run_shelfie_grocery_agent",
+    "get_history",
+    "list_sessions",
+    "reset_session",
+]);
 
 function getRestaurantMenuItemsFromContext(context: ConversationContext): Array<Record<string, unknown>> {
     const memory = asRecord(context.agent_workspace_memory);
@@ -389,6 +395,32 @@ function buildRestaurantMenuSetupInstruction(): string {
         "2. Fill item name, pricing, what it contains, and description.",
         "3. Save menu items, then ask for browsing, recommendations, or ordering.",
     ].join("\n");
+}
+
+function isShelfieMemorySetupQuestion(lower: string): boolean {
+    return (
+        /\b(where|how)\b.{0,40}\b(add|save|store|put|enter|manage)\b.{0,40}\b(grocery|list|memory)\b/.test(lower) ||
+        /\b(grocery|list|memory)\b.{0,40}\b(empty|blank|missing)\b/.test(lower)
+    );
+}
+
+function buildShelfieMemorySetupInstruction(): string {
+    return [
+        "Shelfie grocery memory for this chat is managed from the dedicated workspace panel.",
+        "",
+        "To set it up:",
+        '1. Click "Grocery Memory" beside "New Shelfie Grocery Agent Chat".',
+        "2. Add buying date, end date, and your grocery items.",
+        "3. Mark purchased and finished states per item, then save.",
+    ].join("\n");
+}
+
+function getShelfieMemoryFromContext(context: ConversationContext): Array<Record<string, unknown>> {
+    const memory = asRecord(context.agent_workspace_memory);
+    const shelfieMemory = asRecord(memory.shelfie_grocery);
+    const rows = shelfieMemory.grocery_memory;
+    if (!Array.isArray(rows)) return [];
+    return rows.map((item) => asRecord(item));
 }
 
 function buildState(input: {
@@ -436,6 +468,10 @@ function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, u
             : [];
     const restaurantMemory = asRecord(state.conversation_context.agent_workspace_memory);
     const restaurantSnapshot = asRecord(restaurantMemory.restaurant_concierge);
+    const shelfieMemoryEntries =
+        state.route.target_agent === "shelfie-grocery-agent"
+            ? getShelfieMemoryFromContext(state.conversation_context)
+            : [];
     const params = {
         ...state.route.parameters,
         ...(state.resolved_entities.message_id
@@ -454,6 +490,12 @@ function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, u
             restaurantSnapshot.order_snapshot &&
             typeof restaurantSnapshot.order_snapshot === "object"
             ? { workspace_order_snapshot: restaurantSnapshot.order_snapshot }
+            : {}),
+        ...(state.route.target_agent === "shelfie-grocery-agent" && shelfieMemoryEntries.length > 0
+            ? {
+                workspace_grocery_memory: shelfieMemoryEntries,
+                workspace_grocery_memory_count: shelfieMemoryEntries.length,
+            }
             : {}),
     };
 
@@ -503,6 +545,10 @@ export async function resolveAgentWorkspaceRequest(
         input.agentId === "restaurant-concierge-agent"
             ? getRestaurantMenuItemsFromContext(conversationContext)
             : [];
+    const shelfieMemoryEntries =
+        input.agentId === "shelfie-grocery-agent"
+            ? getShelfieMemoryFromContext(conversationContext)
+            : [];
 
     if (input.agentId === "restaurant-concierge-agent" && isRestaurantMenuSetupQuestion(normalizedInput)) {
         return {
@@ -514,6 +560,19 @@ export async function resolveAgentWorkspaceRequest(
                 selected_action: "browse_menu",
                 missing_fields: ["menu_items"],
                 intake_gate: "restaurant_workspace_menu_setup_guidance",
+            },
+        };
+    }
+    if (input.agentId === "shelfie-grocery-agent" && isShelfieMemorySetupQuestion(normalizedInput)) {
+        return {
+            ok: false,
+            status: "needs_clarification",
+            content: buildShelfieMemorySetupInstruction(),
+            meta: {
+                selected_agent: input.agentId,
+                selected_action: "run_shelfie_grocery_agent",
+                missing_fields: ["grocery_memory"],
+                intake_gate: "shelfie_workspace_memory_setup_guidance",
             },
         };
     }
@@ -583,6 +642,17 @@ export async function resolveAgentWorkspaceRequest(
         };
     }
     route.target_action = action;
+    if (
+        input.agentId === "shelfie-grocery-agent" &&
+        SHELFIE_ACTIONS_USING_MEMORY.has(action) &&
+        !route.parameters.workspace_grocery_memory
+    ) {
+        const shelfieMemory = getShelfieMemoryFromContext(conversationContext);
+        if (shelfieMemory.length > 0) {
+            route.parameters.workspace_grocery_memory = shelfieMemory;
+            route.parameters.workspace_grocery_memory_count = shelfieMemory.length;
+        }
+    }
     const actionCapability = getActionCapability(input.agentId, action);
     if (!actionCapability) {
         return {
@@ -713,6 +783,10 @@ export async function resolveAgentWorkspaceRequest(
     });
 
     const agentRequest = buildAgentRequest(state);
+    if (input.agentId === "shelfie-grocery-agent" && shelfieMemoryEntries.length > 0) {
+        agentRequest.workspace_grocery_memory = shelfieMemoryEntries;
+        agentRequest.workspace_grocery_memory_count = shelfieMemoryEntries.length;
+    }
     const reason = compactString(route.route_reason, 240);
 
     return {

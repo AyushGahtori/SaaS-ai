@@ -67,6 +67,22 @@ export interface ConversationContext {
             order_snapshot?: Record<string, unknown> | null;
             session_snapshot?: Record<string, unknown> | null;
         };
+        shelfie_grocery?: {
+            grocery_memory?: Array<{
+                id?: string;
+                title?: string;
+                buying_date?: string;
+                end_date?: string;
+                notes?: string;
+                items?: Array<{
+                    name?: string;
+                    quantity?: string;
+                    purchased?: boolean;
+                    finished?: boolean;
+                }>;
+            }>;
+            updated_at?: string | null;
+        };
     };
     last_agent_id?: string;
     last_action?: string;

@@ -966,6 +966,7 @@ function buildLlmPrompt(params: {
         agentId: message.agentId,
     }));
     const workspaceMemory = params.context.agent_workspace_memory || {};
+    const todayIso = new Date().toISOString().slice(0, 10);
     const restaurantWorkspaceRule =
         params.agentId === "restaurant-concierge-agent"
             ? [
@@ -973,6 +974,17 @@ function buildLlmPrompt(params: {
                   '1) Click "Add Menu Items" beside "New Restaurant Concierge Agent Chat".',
                   "2) Fill menu item name, pricing, contains, and description.",
                   "3) Save menu items, then continue ordering in this same workspace chat.",
+              ].join("\n")
+            : "";
+    const shelfieWorkspaceRule =
+        params.agentId === "shelfie-grocery-agent"
+            ? [
+                  "For Shelfie grocery memory updates, capture and normalize: buying_date and either end_date or lasts_for_days.",
+                  "If the user gives lasts_for_days (example: 4 days), compute end_date from buying_date.",
+                  "If buying_date is missing, ask for it explicitly.",
+                  "If end_date and lasts_for_days are both missing, ask for one of them explicitly.",
+                  "Track item-level state fields when present: purchased (true/false) and finished (true/false).",
+                  `Use this date as reference for relative dates like 'today': ${todayIso}.`,
               ].join("\n")
             : "";
 
@@ -989,6 +1001,7 @@ function buildLlmPrompt(params: {
         "Use status=needs_clarification when required fields are missing; ask only for missing fields.",
         "Use status=out_of_scope only when the request cannot be handled by the locked agent.",
         restaurantWorkspaceRule,
+        shelfieWorkspaceRule,
         "If this is a repair attempt for wrong keys, wrong JSON shape, or wrong value types, fix the JSON internally. Do not ask the user again unless the actual information is missing or ambiguous.",
         `Suggested action from deterministic UI context: ${params.suggestedAction}. You may change it only to another action in the locked agent schema.`,
         `Agent capability summary:\n${renderWorkspaceCapabilitiesText(params.agentId, params.agentName)}`,

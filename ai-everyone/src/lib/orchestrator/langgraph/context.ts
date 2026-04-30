@@ -1,5 +1,6 @@
 import { adminDb } from "@/lib/firebase-admin";
 import { readRestaurantWorkspaceMemoryFromChatRecord } from "@/lib/agents/restaurant-workspace-memory.server";
+import { readShelfieWorkspaceMemoryFromChatRecord } from "@/lib/agents/shelfie-workspace-memory.server";
 import type {
     ConversationContext,
     IndexedEntity,
@@ -338,6 +339,7 @@ export async function loadConversationContext(params: {
     const entity_index = buildEntityIndex(taskRows);
     const lastTask = taskRows[0];
     const restaurantMemory = readRestaurantWorkspaceMemoryFromChatRecord(chatMemory);
+    const shelfieMemory = readShelfieWorkspaceMemoryFromChatRecord(chatMemory);
     const restaurantSnapshots = extractRestaurantSnapshotsFromTasks(taskRows);
 
     return {
@@ -351,6 +353,10 @@ export async function loadConversationContext(params: {
                 updated_at: restaurantMemory.updated_at,
                 order_snapshot: restaurantSnapshots.order_snapshot,
                 session_snapshot: restaurantSnapshots.session_snapshot,
+            },
+            shelfie_grocery: {
+                grocery_memory: shelfieMemory.grocery_memory,
+                updated_at: shelfieMemory.updated_at,
             },
         },
         last_agent_id: lastTask ? asString(lastTask.agentId) : undefined,
