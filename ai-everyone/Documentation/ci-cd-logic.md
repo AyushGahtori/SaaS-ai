@@ -19,6 +19,7 @@ Developer branches must start with one of these prefixes:
 aaron/
 agamya/
 naveen/
+gunjan/
 ```
 
 Examples:
@@ -27,6 +28,7 @@ Examples:
 aaron/fix-github-agent
 agamya/fix-linkedin-agent
 naveen/fix-agent-status
+gunjan/fix-seo-agent
 ```
 
 The helper maps those branches like this:
@@ -35,6 +37,7 @@ The helper maps those branches like this:
 aaron/*  -> Aaron backend
 agamya/* -> Agamya backend
 naveen/* -> Naveen backend
+gunjan/* -> Gunjan backend
 anything else -> production backend
 ```
 
@@ -162,9 +165,10 @@ So:
 
 ```txt
 Production GitHub agent -> 8006
-Aaron GitHub agent      -> 9006
-Agamya GitHub agent     -> 9106
-Naveen GitHub agent     -> 9206
+Aaron GitHub agent      -> 18006
+Agamya GitHub agent     -> 28006
+Naveen GitHub agent     -> 38006
+Gunjan GitHub agent     -> 48006
 ```
 
 The frontend does not call these ports directly in deployed environments.
@@ -175,6 +179,7 @@ Instead, it calls clean Nginx URLs:
 /api/aaron/github/action
 /api/agamya/github/action
 /api/naveen/github/action
+/api/gunjan/github/action
 ```
 
 Nginx then sends the request to the correct internal port.
@@ -208,6 +213,7 @@ Developer copies live in:
 /home/ubuntu/app-aaron
 /home/ubuntu/app-agamya
 /home/ubuntu/app-naveen
+/home/ubuntu/app-gunjan
 ```
 
 Each developer folder is a separate working copy of the same EC2 GitHub repository.
@@ -230,6 +236,7 @@ Bad:
 app-aaron/
 app-agamya/
 app-naveen/
+app-gunjan/
 ```
 
 The developer folders are deployment/runtime folders on the EC2 machine only.
@@ -260,15 +267,21 @@ Naveen service:
 naveen-github-agent.service
 ```
 
-Aaron's GitHub service uses port `9006`.
+Gunjan service:
+
+```txt
+gunjan-github-agent.service
+```
+
+Aaron's GitHub service uses port `18006`.
 
 Production GitHub service uses port `8006`.
 
 This is only a runtime/deployment difference.
 
-Aaron changing actual GitHub agent code should not mean production permanently changes to port `9006`.
+Aaron changing actual GitHub agent code should not mean production permanently changes to port `18006`.
 
-Production should only use `9006` if someone accidentally commits and merges Aaron-specific service configuration.
+Production should only use `18006` if someone accidentally commits and merges Aaron-specific service configuration.
 
 That should be avoided.
 
@@ -379,6 +392,7 @@ serviceAccountKey.json
 systemd/aaron-*.service
 systemd/agamya-*.service
 systemd/naveen-*.service
+systemd/gunjan-*.service
 ```
 
 This helps prevent accidental staging of files that should never be committed.
@@ -404,7 +418,7 @@ virtualenv folders
 logs
 developer-only service files
 developer-only Nginx config
-production config pointing to app-aaron, app-agamya, or app-naveen
+production config pointing to app-aaron, app-agamya, app-naveen, or app-gunjan
 ```
 
 So if Aaron accidentally stages this:

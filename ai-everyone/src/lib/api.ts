@@ -1,9 +1,10 @@
-export type AgentEnvironment = "prod" | "aaron" | "agamya" | "naveen";
+export type AgentEnvironment = "prod" | "aaron" | "agamya" | "naveen" | "gunjan";
 
 export const AGENT_ENVIRONMENTS: Exclude<AgentEnvironment, "prod">[] = [
     "aaron",
     "agamya",
     "naveen",
+    "gunjan",
 ];
 
 export const AGENT_BASE_PORTS: Record<string, number> = {
@@ -58,6 +59,7 @@ export function getDeveloper(branch = getBranchName()): AgentEnvironment {
     if (branch.startsWith("aaron/")) return "aaron";
     if (branch.startsWith("agamya/")) return "agamya";
     if (branch.startsWith("naveen/")) return "naveen";
+    if (branch.startsWith("gunjan/")) return "gunjan";
     return "prod";
 }
 
@@ -70,6 +72,7 @@ export function mapPort(basePort: number, dev = getDeveloper()): number {
     if (dev === "aaron") return basePort + 1000;
     if (dev === "agamya") return basePort + 1100;
     if (dev === "naveen") return basePort + 1200;
+    if (dev === "gunjan") return basePort + 1300;
     return basePort;
 }
 
