@@ -423,6 +423,27 @@ function getShelfieMemoryFromContext(context: ConversationContext): Array<Record
     return rows.map((item) => asRecord(item));
 }
 
+function getLatestShelfieDateWindow(context: ConversationContext): { buying_date?: string; end_date?: string } {
+    const entries = getShelfieMemoryFromContext(context);
+    if (entries.length === 0) return {};
+    const latest = entries[0];
+    const buyingDate = asString(latest.buying_date);
+    const endDate = asString(latest.end_date);
+    return {
+        ...(buyingDate ? { buying_date: buyingDate } : {}),
+        ...(endDate ? { end_date: endDate } : {}),
+    };
+}
+
+function buildShelfieDateClarification(): string {
+    return [
+        "Before I update your grocery list, I need the date window.",
+        "",
+        "1. What is the buying date?",
+        "2. Until what date should this grocery list last (or how many days)?",
+    ].join("\n");
+}
+
 function buildState(input: {
     userId: string;
     chatId: string;
@@ -675,6 +696,32 @@ export async function resolveAgentWorkspaceRequest(
             reasoning: intake.reasoningSummary,
         },
     };
+    if (input.agentId === "shelfie-grocery-agent" && action === "run_shelfie_grocery_agent") {
+        const fallbackWindow = getLatestShelfieDateWindow(conversationContext);
+        if (!isPresent(route.parameters.buying_date) && fallbackWindow.buying_date) {
+            route.parameters.buying_date = fallbackWindow.buying_date;
+        }
+        if (!isPresent(route.parameters.end_date) && fallbackWindow.end_date) {
+            route.parameters.end_date = fallbackWindow.end_date;
+        }
+
+        if (!isPresent(route.parameters.buying_date) || !isPresent(route.parameters.end_date)) {
+            return {
+                ok: false,
+                status: "needs_clarification",
+                content: buildShelfieDateClarification(),
+                meta: {
+                    selected_agent: input.agentId,
+                    selected_action: action,
+                    missing_fields: [
+                        ...(!isPresent(route.parameters.buying_date) ? ["buying_date"] : []),
+                        ...(!isPresent(route.parameters.end_date) ? ["end_date_or_duration"] : []),
+                    ],
+                    intake_gate: "shelfie_date_window_required_before_execution",
+                },
+            };
+        }
+    }
     if (input.agentId === "travel-halper-agent" && action === "send_plan_email") {
         const recentPlan = getLatestTravelPlan(conversationContext);
         if (recentPlan && !isPresent(route.parameters.planMarkdown)) {

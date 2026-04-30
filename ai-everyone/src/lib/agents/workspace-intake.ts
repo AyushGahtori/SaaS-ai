@@ -117,6 +117,9 @@ const FIELDS = {
     dietaryFilter: field("dietaryFilter", "dietary filter", "string", "Which dietary filter should I apply?"),
     reason: field("reason", "reason", "string", "Why should I escalate this to a human teammate?"),
     prompt: field("prompt", "full prompt", "string", "What exactly should the agent do?"),
+    buyingDate: field("buying_date", "buying date", "string", "What is the buying date?"),
+    endDate: field("end_date", "end date", "string", "Until what date should this grocery plan last?"),
+    lastsForDays: field("lasts_for_days", "duration in days", "number", "How many days should this grocery plan last?", "duration in days", false),
     planMarkdown: field("planMarkdown", "travel plan content", "string", "Which travel plan should I send?", "travel plan content", false),
     url: field("url", "URL", "string", "Which URL should I use?"),
     origin: field("origin", "origin", "string", "Where should this start?"),
@@ -215,7 +218,8 @@ const AGENT_INTAKE_SCHEMAS: Record<string, AgentIntakeSchema> = {
         agentId: "shelfie-grocery-agent",
         purpose: "Conversational grocery planning with persistent sessions, history retrieval, and scoped reset controls.",
         actions: [
-            action("run_shelfie_grocery_agent", "Run Shelfie grocery conversation.", [FIELDS.prompt], {
+            action("run_shelfie_grocery_agent", "Run Shelfie grocery conversation.", [FIELDS.prompt, FIELDS.buyingDate, FIELDS.endDate], {
+                optional: [FIELDS.lastsForDays],
                 examples: [
                     "Plan a weekly grocery list for two adults with high-protein meals.",
                     "Continue my list and swap dairy items for lactose-free alternatives.",
