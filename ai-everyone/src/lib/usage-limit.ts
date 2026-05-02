@@ -1,6 +1,6 @@
 import { adminDb } from "@/lib/firebase-admin";
 
-const DEFAULT_GENERAL_AI_LIMIT = 100;
+const DEFAULT_GENERAL_AI_LIMIT = process.env.NODE_ENV === "development" ? 100000 : 100;
 const BILLING_CYCLE_MS = 30 * 24 * 60 * 60 * 1000;
 
 function parseMonthlyAiLimit(): number {
@@ -27,8 +27,6 @@ function parseMonthlyAiLimit(): number {
 
     return Math.max(0, parsed);
 }
-
-const GENERAL_AI_LIMIT = parseMonthlyAiLimit();
 
 export class UsageLimitError extends Error {
     constructor() {
@@ -101,7 +99,7 @@ function resetIfExpired(
 }
 
 function assertWithinLimit(aiMessagesUsed: number): void {
-    if (aiMessagesUsed >= GENERAL_AI_LIMIT) {
+    if (aiMessagesUsed >= parseMonthlyAiLimit()) {
         throw new UsageLimitError();
     }
 }
