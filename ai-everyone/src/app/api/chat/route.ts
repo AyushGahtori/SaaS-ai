@@ -10,7 +10,13 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI, type Part } from "@google/genai";
+import {
+    GoogleGenAI,
+    MediaResolution,
+    Modality,
+    type LiveServerMessage,
+    type Part,
+} from "@google/genai";
 import { adminDb } from "@/lib/firebase-admin";
 import { isTriggerMessage, isPersonalContextQuery } from "@/lib/memory/trigger-detector";
 import { extractMemories } from "@/lib/memory/extractor";
@@ -24,6 +30,7 @@ import {
     getProviderConnection,
     getInstalledAgentIds,
 } from "@/lib/agents/user-access.server";
+import { getAgentCatalogEntry } from "@/lib/agents/catalog";
 import { isGeminiModel as isGeminiChatModel } from "@/lib/model-capabilities";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
 import {
@@ -80,6 +87,14 @@ const GEMINI_MODEL_ALIASES: Record<string, string> = {
     "gemini-3.1-flash-lite-preview":
         process.env.GEMINI_MODEL_FLASH_LITE || "gemini-3.1-flash-lite-preview",
 };
+
+const GEMINI_LIVE_VOICE_MODEL =
+    process.env.GEMINI_LIVE_VOICE_MODEL ||
+    process.env.GEMINI_VOICE_MODEL ||
+    "models/gemini-3.2-flash-live-preview";
+const GEMINI_LIVE_VOICE_FALLBACK_MODEL =
+    process.env.GEMINI_LIVE_VOICE_FALLBACK_MODEL || "gemini-3.1-flash-live-preview";
+const GEMINI_LIVE_VOICE_NAME = process.env.GEMINI_LIVE_VOICE_NAME || "Zephyr";
 
 function normalizeName(value: string): string {
     return value.toLowerCase().replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
@@ -205,6 +220,34 @@ Exception: if the user explicitly asks for Stara/Strata financial analysis on up
 If some files are missing or invalid, continue with valid files and clearly mention which files were skipped.`;
 
     return [attachmentDirective, personaContext].filter(Boolean).join("\n\n");
+}
+
+function buildAgentAccessContext(
+    installedAgentIds: string[],
+    accessibleAgentIds: string[]
+): string {
+    const installed = installedAgentIds
+        .map((agentId) => {
+            const agent = getAgentCatalogEntry(agentId);
+            return agent ? `${agent.name} (${agent.id})` : agentId;
+        })
+        .sort((a, b) => a.localeCompare(b));
+
+    const accessible = accessibleAgentIds
+        .map((agentId) => {
+            const agent = getAgentCatalogEntry(agentId);
+            return agent ? `${agent.name} (${agent.id})` : agentId;
+        })
+        .sort((a, b) => a.localeCompare(b));
+
+    return [
+        "Current Pian agent access context:",
+        `Installed agents count: ${installedAgentIds.length}`,
+        installed.length > 0 ? `Installed agents: ${installed.join(", ")}` : "Installed agents: none",
+        `Accessible agents count: ${accessibleAgentIds.length}`,
+        accessible.length > 0 ? `Accessible agents: ${accessible.join(", ")}` : "Accessible agents: none",
+        "If the user asks how many agents are installed or which agents are available, answer from this context.",
+    ].join("\n");
 }
 
 function normalizeFailedAttachments(raw: unknown): ChatFailedAttachment[] {
@@ -776,6 +819,376 @@ async function streamOllamaChat(
     );
 }
 
+interface WavConversionOptions {
+    numChannels: number;
+    sampleRate: number;
+    bitsPerSample: number;
+}
+
+interface GeminiLiveVoiceResult {
+    content: string;
+    audioBase64: string;
+    audioMimeType: string;
+    model: string;
+}
+
+interface GeminiLiveAudioDelta {
+    audioBase64: string;
+    audioMimeType: string;
+    model: string;
+}
+
+function parseAudioMimeType(mimeType: string): WavConversionOptions {
+    const [fileType, ...params] = mimeType.split(";").map((item) => item.trim());
+    const [, format] = fileType.split("/");
+    const options: WavConversionOptions = {
+        numChannels: 1,
+        sampleRate: 24000,
+        bitsPerSample: 16,
+    };
+
+    if (format?.startsWith("L")) {
+        const bits = Number.parseInt(format.slice(1), 10);
+        if (Number.isFinite(bits)) {
+            options.bitsPerSample = bits;
+        }
+    }
+
+    for (const param of params) {
+        const [key, value] = param.split("=").map((item) => item.trim());
+        if (key === "rate") {
+            const sampleRate = Number.parseInt(value, 10);
+            if (Number.isFinite(sampleRate)) {
+                options.sampleRate = sampleRate;
+            }
+        }
+    }
+
+    return options;
+}
+
+function createWavHeader(dataLength: number, options: WavConversionOptions): Buffer {
+    const { numChannels, sampleRate, bitsPerSample } = options;
+    const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+    const blockAlign = (numChannels * bitsPerSample) / 8;
+    const buffer = Buffer.alloc(44);
+
+    buffer.write("RIFF", 0);
+    buffer.writeUInt32LE(36 + dataLength, 4);
+    buffer.write("WAVE", 8);
+    buffer.write("fmt ", 12);
+    buffer.writeUInt32LE(16, 16);
+    buffer.writeUInt16LE(1, 20);
+    buffer.writeUInt16LE(numChannels, 22);
+    buffer.writeUInt32LE(sampleRate, 24);
+    buffer.writeUInt32LE(byteRate, 28);
+    buffer.writeUInt16LE(blockAlign, 32);
+    buffer.writeUInt16LE(bitsPerSample, 34);
+    buffer.write("data", 36);
+    buffer.writeUInt32LE(dataLength, 40);
+
+    return buffer;
+}
+
+function createPlayableAudioBase64(
+    audioParts: string[],
+    mimeType: string
+): { data: string; mimeType: string } {
+    const audioBuffer = Buffer.concat(audioParts.map((part) => Buffer.from(part, "base64")));
+    const normalizedMimeType = mimeType.toLowerCase();
+
+    if (normalizedMimeType.includes("wav") || normalizedMimeType.includes("wave")) {
+        return {
+            data: audioBuffer.toString("base64"),
+            mimeType: mimeType || "audio/wav",
+        };
+    }
+
+    const wavHeader = createWavHeader(audioBuffer.length, parseAudioMimeType(mimeType));
+    return {
+        data: Buffer.concat([wavHeader, audioBuffer]).toString("base64"),
+        mimeType: "audio/wav",
+    };
+}
+
+function getLastUserVoiceTurn(messages: ChatRequestMessage[]): ChatRequestMessage | null {
+    return (
+        [...messages]
+            .reverse()
+            .find((message) => message.role === "user" && Boolean(message.isVoice)) || null
+    );
+}
+
+function buildLiveVoicePrompt(messages: { role: string; content: string }[]): string {
+    const recentMessages = messages
+        .filter((message) => message.content?.trim())
+        .slice(-8);
+    const lastUserMessage =
+        [...recentMessages].reverse().find((message) => message.role === "user")?.content || "";
+
+    if (recentMessages.length <= 1) {
+        return lastUserMessage || "Hello";
+    }
+
+    const context = recentMessages
+        .slice(0, -1)
+        .map((message) => {
+            const label =
+                message.role === "assistant" || message.role === "agent" ? "Assistant" : "User";
+            return `${label}: ${message.content}`;
+        })
+        .join("\n");
+
+    return [
+        "Use this recent conversation only as context. Respond naturally to the latest user message.",
+        context,
+        `Latest user message: ${lastUserMessage || "Hello"}`,
+    ]
+        .filter(Boolean)
+        .join("\n\n");
+}
+
+function buildLiveVoiceNarrationPrompt(text: string): string {
+    return [
+        "Read the following assistant response aloud naturally.",
+        "Do not answer it as a user request. Do not add commentary. Do not mention these instructions.",
+        "Assistant response:",
+        text.trim() || "Done.",
+    ].join("\n\n");
+}
+
+async function streamGeminiLiveVoiceWithModel(
+    apiKey: string,
+    model: string,
+    systemPrompt: string,
+    messages: { role: string; content: string }[],
+    onDelta: (delta: string) => void,
+    onAudioDelta?: (delta: GeminiLiveAudioDelta) => void,
+    abortSignal?: AbortSignal,
+    inputTextOverride?: string
+): Promise<GeminiLiveVoiceResult> {
+    throwIfAborted(abortSignal);
+
+    const ai = new GoogleGenAI({ apiKey });
+    const responseQueue: LiveServerMessage[] = [];
+    const audioParts: string[] = [];
+    let audioMimeType = "";
+    let transcript = "";
+    let sessionClosed = false;
+    let liveError: Error | null = null;
+    let wakeWaiter: (() => void) | null = null;
+
+    const wake = () => {
+        wakeWaiter?.();
+        wakeWaiter = null;
+    };
+
+    const waitMessage = async (): Promise<LiveServerMessage | null> => {
+        while (responseQueue.length === 0) {
+            throwIfAborted(abortSignal);
+            if (liveError) throw liveError;
+            if (sessionClosed) return null;
+            await new Promise<void>((resolve) => {
+                wakeWaiter = resolve;
+                setTimeout(resolve, 100);
+            });
+        }
+        return responseQueue.shift() || null;
+    };
+
+    const session = await ai.live.connect({
+        model,
+        callbacks: {
+            onmessage(message) {
+                responseQueue.push(message);
+                wake();
+            },
+            onerror(error) {
+                liveError = new Error(error.message || "Gemini Live voice session failed.");
+                wake();
+            },
+            onclose() {
+                sessionClosed = true;
+                wake();
+            },
+        },
+        config: {
+            responseModalities: [Modality.AUDIO],
+            mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: {
+                        voiceName: GEMINI_LIVE_VOICE_NAME,
+                    },
+                },
+            },
+            systemInstruction: systemPrompt,
+            outputAudioTranscription: {},
+            contextWindowCompression: {
+                slidingWindow: {},
+            },
+        },
+    });
+
+    const closeSession = () => {
+        try {
+            session.close();
+        } catch {
+            // Ignore close races; the Live API may already have closed the socket.
+        }
+    };
+
+    const abortListener = () => closeSession();
+    abortSignal?.addEventListener("abort", abortListener, { once: true });
+
+    try {
+        session.sendRealtimeInput({
+            text: inputTextOverride || buildLiveVoicePrompt(messages),
+        });
+
+        while (true) {
+            const message = await waitMessage();
+            if (!message) break;
+            throwIfAborted(abortSignal);
+
+            const serverContent = message.serverContent;
+            const outputTranscript = serverContent?.outputTranscription?.text || "";
+            if (outputTranscript) {
+                transcript += outputTranscript;
+                onDelta(outputTranscript);
+            }
+
+            for (const part of serverContent?.modelTurn?.parts || []) {
+                if (part.inlineData?.data) {
+                    audioParts.push(part.inlineData.data);
+                    audioMimeType = part.inlineData.mimeType || audioMimeType;
+                    onAudioDelta?.({
+                        audioBase64: part.inlineData.data,
+                        audioMimeType,
+                        model,
+                    });
+                }
+
+                if (part.text && !outputTranscript) {
+                    transcript += part.text;
+                    onDelta(part.text);
+                }
+            }
+
+            if (serverContent?.turnComplete) {
+                break;
+            }
+        }
+    } finally {
+        abortSignal?.removeEventListener("abort", abortListener);
+        closeSession();
+    }
+
+    if (audioParts.length === 0) {
+        throw new Error("Gemini Live did not return audio for this voice turn.");
+    }
+
+    const playableAudio = createPlayableAudioBase64(audioParts, audioMimeType);
+    return {
+        content: transcript.trim() || "Voice response generated.",
+        audioBase64: playableAudio.data,
+        audioMimeType: playableAudio.mimeType,
+        model,
+    };
+}
+
+async function streamGeminiLiveVoice(
+    apiKey: string,
+    systemPrompt: string,
+    messages: { role: string; content: string }[],
+    onDelta: (delta: string) => void,
+    onAudioDelta?: (delta: GeminiLiveAudioDelta) => void,
+    abortSignal?: AbortSignal
+): Promise<GeminiLiveVoiceResult> {
+    try {
+        return await streamGeminiLiveVoiceWithModel(
+            apiKey,
+            GEMINI_LIVE_VOICE_MODEL,
+            systemPrompt,
+            messages,
+            onDelta,
+            onAudioDelta,
+            abortSignal
+        );
+    } catch (error) {
+        if (
+            GEMINI_LIVE_VOICE_FALLBACK_MODEL === GEMINI_LIVE_VOICE_MODEL ||
+            abortSignal?.aborted
+        ) {
+            throw error;
+        }
+
+        console.warn("[GeminiLiveVoice] primary model failed; retrying fallback", {
+            primaryModel: GEMINI_LIVE_VOICE_MODEL,
+            fallbackModel: GEMINI_LIVE_VOICE_FALLBACK_MODEL,
+            error,
+        });
+
+        return streamGeminiLiveVoiceWithModel(
+            apiKey,
+            GEMINI_LIVE_VOICE_FALLBACK_MODEL,
+            systemPrompt,
+            messages,
+            onDelta,
+            onAudioDelta,
+            abortSignal
+        );
+    }
+}
+
+async function streamGeminiLiveSpeech(
+    apiKey: string,
+    systemPrompt: string,
+    text: string,
+    onAudioDelta?: (delta: GeminiLiveAudioDelta) => void,
+    abortSignal?: AbortSignal
+): Promise<GeminiLiveVoiceResult> {
+    const messages = [{ role: "assistant", content: text }];
+    const inputText = buildLiveVoiceNarrationPrompt(text);
+
+    try {
+        return await streamGeminiLiveVoiceWithModel(
+            apiKey,
+            GEMINI_LIVE_VOICE_MODEL,
+            systemPrompt,
+            messages,
+            () => {},
+            onAudioDelta,
+            abortSignal,
+            inputText
+        );
+    } catch (error) {
+        if (
+            GEMINI_LIVE_VOICE_FALLBACK_MODEL === GEMINI_LIVE_VOICE_MODEL ||
+            abortSignal?.aborted
+        ) {
+            throw error;
+        }
+
+        console.warn("[GeminiLiveSpeech] primary model failed; retrying fallback", {
+            primaryModel: GEMINI_LIVE_VOICE_MODEL,
+            fallbackModel: GEMINI_LIVE_VOICE_FALLBACK_MODEL,
+            error,
+        });
+
+        return streamGeminiLiveVoiceWithModel(
+            apiKey,
+            GEMINI_LIVE_VOICE_FALLBACK_MODEL,
+            systemPrompt,
+            messages,
+            () => {},
+            onAudioDelta,
+            abortSignal,
+            inputText
+        );
+    }
+}
+
 async function streamGeminiChat(
     apiKey: string,
     model: string,
@@ -954,6 +1367,7 @@ export async function POST(req: NextRequest) {
             body.model || process.env.OLLAMA_DEFAULT_MODEL || "gemini-3-flash-preview";
         const normalizedAttachments = Array.isArray(attachments) ? attachments : [];
         const normalizedFailedAttachments = normalizeFailedAttachments(failedAttachments);
+        const isVoiceTurn = Boolean(getLastUserVoiceTurn(messages));
         const usingGemini = isGeminiChatModel(model);
         const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || "";
         const lastUserMessage =
@@ -1067,42 +1481,96 @@ export async function POST(req: NextRequest) {
         if (orchestrationResult?.handled) {
             await commitUsageSlot(uid);
             const encoder = new TextEncoder();
+            const upstreamAbortController = new AbortController();
+            let streamClosed = false;
             const stream = new ReadableStream({
                 start(controller) {
-                    const sendEvent = (event: string, data: Record<string, unknown>) => {
-                        controller.enqueue(
-                            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-                        );
+                    const safeClose = () => {
+                        if (streamClosed) return;
+                        streamClosed = true;
+                        try {
+                            controller.close();
+                        } catch {
+                            // Ignore close races when the browser aborts the stream.
+                        }
                     };
 
-                    if (orchestrationResult.content) {
-                        sendEvent("text", { content: orchestrationResult.content });
-                    }
+                    const sendEvent = (event: string, data: Record<string, unknown>): boolean => {
+                        if (streamClosed) return false;
+                        try {
+                            controller.enqueue(
+                                encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+                            );
+                            return true;
+                        } catch {
+                            streamClosed = true;
+                            upstreamAbortController.abort();
+                            return false;
+                        }
+                    };
 
-                    if (
-                        orchestrationResult.type === "agent_task" &&
-                        orchestrationResult.taskId &&
-                        orchestrationResult.agentId
-                    ) {
-                        const payload = {
-                            type: "agent_task",
-                            taskId: orchestrationResult.taskId,
-                            agentId: orchestrationResult.agentId,
-                            status: orchestrationResult.status,
-                            ...(orchestrationResult.result ? { result: orchestrationResult.result } : {}),
-                            content: orchestrationResult.content,
-                            ...(orchestrationResult.meta ? { meta: orchestrationResult.meta } : {}),
-                        };
-                        sendEvent("agent_task", payload);
-                        sendEvent("done", payload);
-                    } else {
-                        sendEvent("done", {
-                            type: "chat",
-                            content: orchestrationResult.content,
-                            ...(orchestrationResult.meta ? { meta: orchestrationResult.meta } : {}),
-                        });
+                    const speakHandledVoiceResult = async () => {
+                        if (!isVoiceTurn || !orchestrationResult.content?.trim()) return;
+                        if (orchestrationResult.type === "agent_task") return;
+                        if (!geminiApiKey) return;
+
+                        try {
+                            await streamGeminiLiveSpeech(
+                                geminiApiKey,
+                                "You are Pian's voice renderer. Speak the supplied assistant response clearly and naturally.",
+                                orchestrationResult.content,
+                                (delta) => {
+                                    sendEvent("audio_delta", { ...delta });
+                                },
+                                upstreamAbortController.signal
+                            );
+                        } catch (error) {
+                            if (!isAbortLikeError(error) && !upstreamAbortController.signal.aborted) {
+                                console.warn("[GeminiLiveSpeech] failed to narrate handled response", error);
+                            }
+                        }
+                    };
+
+                    const run = async () => {
+                        if (orchestrationResult.content) {
+                            sendEvent("text", { content: orchestrationResult.content });
+                        }
+
+                        await speakHandledVoiceResult();
+
+                        if (
+                            orchestrationResult.type === "agent_task" &&
+                            orchestrationResult.taskId &&
+                            orchestrationResult.agentId
+                        ) {
+                            const payload = {
+                                type: "agent_task",
+                                taskId: orchestrationResult.taskId,
+                                agentId: orchestrationResult.agentId,
+                                status: orchestrationResult.status,
+                                ...(orchestrationResult.result ? { result: orchestrationResult.result } : {}),
+                                content: orchestrationResult.content,
+                                ...(orchestrationResult.meta ? { meta: orchestrationResult.meta } : {}),
+                            };
+                            sendEvent("agent_task", payload);
+                            sendEvent("done", payload);
+                        } else {
+                            sendEvent("done", {
+                                type: "chat",
+                                content: orchestrationResult.content,
+                                ...(orchestrationResult.meta ? { meta: orchestrationResult.meta } : {}),
+                            });
+                        }
+                        safeClose();
+                    };
+
+                    void run();
+                },
+                cancel() {
+                    streamClosed = true;
+                    if (!upstreamAbortController.signal.aborted) {
+                        upstreamAbortController.abort();
                     }
-                    controller.close();
                 },
             });
 
@@ -1122,10 +1590,12 @@ export async function POST(req: NextRequest) {
                 { status: 500 }
             );
         }
+        const agentAccessContext = buildAgentAccessContext(installedAgentIds, accessibleAgentIds);
         const systemPrompt = shouldForceDirectAttachmentResponse
             ? buildDirectAttachmentPrompt(personaContext)
             : [
                 "You are Pian assistant. Answer directly in natural language. Agent orchestration is handled by a deterministic LangGraph runtime before this model call, so do not emit tool-routing JSON or <AGENT_INTENT> tags.",
+                agentAccessContext,
                 personaContext,
             ]
                 .filter(Boolean)
@@ -1205,8 +1675,15 @@ export async function POST(req: NextRequest) {
 
                         let attachmentFailuresForResponse = [...normalizedFailedAttachments];
 
-                        const assistantContent = usingGemini
-                            ? await (async () => {
+                        let voiceAudioPayload: {
+                            audioBase64: string;
+                            audioMimeType: string;
+                            model: string;
+                        } | null = null;
+
+                        let assistantContent: string;
+                        if (usingGemini) {
+                            assistantContent = await (async () => {
                                 const result = await streamGeminiChat(
                                     geminiApiKey,
                                     model,
@@ -1227,14 +1704,16 @@ export async function POST(req: NextRequest) {
                                     ];
                                 }
                                 return result.content;
-                            })()
-                            : await streamOllamaChat(
+                            })();
+                        } else {
+                            assistantContent = await streamOllamaChat(
                                 ollamaBaseUrls,
                                 model,
                                 messagesForModel,
                                 handleDelta,
                                 upstreamAbortController.signal
                             );
+                        }
                         await commitUsageSlot(uid);
 
                         const cleanContent = assistantContent
@@ -1252,9 +1731,41 @@ export async function POST(req: NextRequest) {
                             sendEvent("text", { content: combinedContent });
                         }
 
+                        if (isVoiceTurn && geminiApiKey && combinedContent) {
+                            try {
+                                const speechResult = await streamGeminiLiveSpeech(
+                                    geminiApiKey,
+                                    "You are Pian's voice renderer. Speak the supplied assistant response clearly and naturally.",
+                                    combinedContent,
+                                    (delta) => {
+                                        sendEvent("audio_delta", { ...delta });
+                                    },
+                                    upstreamAbortController.signal
+                                );
+                                voiceAudioPayload = {
+                                    audioBase64: speechResult.audioBase64,
+                                    audioMimeType: speechResult.audioMimeType,
+                                    model: speechResult.model,
+                                };
+                            } catch (error) {
+                                if (!isAbortLikeError(error) && !upstreamAbortController.signal.aborted) {
+                                    console.warn("[GeminiLiveSpeech] failed to narrate chat response", error);
+                                }
+                            }
+                        }
+
                         sendEvent("done", {
                             type: "chat",
                             content: combinedContent || streamedText || "No response received.",
+                            ...(voiceAudioPayload
+                                ? {
+                                    meta: {
+                                        runtime: "google_genai_live",
+                                        model: voiceAudioPayload.model,
+                                        audioMimeType: voiceAudioPayload.audioMimeType,
+                                    },
+                                }
+                                : {}),
                         });
                         safeClose();
                     } catch (error) {

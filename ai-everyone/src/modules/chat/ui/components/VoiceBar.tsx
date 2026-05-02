@@ -11,7 +11,14 @@ interface VoiceBarProps {
   onSendMessage: (
     text: string,
     isVoice: boolean
-  ) => Promise<{ type: string; content?: string; taskId?: string } | undefined>
+  ) => Promise<{
+    type: string
+    content?: string
+    taskId?: string
+    audioBase64?: string
+    audioMimeType?: string
+    meta?: Record<string, unknown>
+  } | undefined>
   onClose: () => void
   onFirstMessage?: () => void
 }
@@ -75,14 +82,23 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
   const [state, setState] = useState<VoiceBarState>('connecting')
   const [statusText, setStatusText] = useState('Starting...')
 
-  const { pendingVoiceResponse, setPendingVoiceResponse } = useChatContext()
+  const { activeChatId, pendingVoiceResponse, setPendingVoiceResponse } = useChatContext()
 
   const recognitionRef = useRef<any>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const audioSourcesRef = useRef<AudioBufferSourceNode[]>([])
+  const nextAudioTimeRef = useRef(0)
+  const playbackFinishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const heardStreamAudioRef = useRef(false)
+  const streamedVoiceTurnRef = useRef(false)
+  const lastStreamAudioAtRef = useRef(0)
   const isSpeakingRef = useRef(false)
   const isClosingRef = useRef(false)
   const interimTextRef = useRef('')
   const mountedRef = useRef(true)
   const genRef = useRef(0)
+  const activeChatIdRef = useRef(activeChatId)
+  const startListeningRef = useRef<() => void>(() => {})
 
   const onSendMessageRef = useRef(onSendMessage)
   const onCloseRef = useRef(onClose)
@@ -100,6 +116,10 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     onFirstMessageRef.current = onFirstMessage
   }, [onFirstMessage])
 
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId
+  }, [activeChatId])
+
   const pickVoice = () => {
     const all = speechSynthesis.getVoices()
     return (
@@ -110,6 +130,158 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     )
   }
 
+  const restartListeningAfterSpeech = () => {
+    if (!mountedRef.current || isClosingRef.current) return
+    isSpeakingRef.current = false
+    setTimeout(() => {
+      if (mountedRef.current && !isClosingRef.current) startListening()
+    }, 500)
+  }
+
+  const stopQueuedAudio = () => {
+    if (playbackFinishTimerRef.current) {
+      clearTimeout(playbackFinishTimerRef.current)
+      playbackFinishTimerRef.current = null
+    }
+    for (const source of audioSourcesRef.current) {
+      try {
+        source.stop()
+      } catch {}
+    }
+    audioSourcesRef.current = []
+    nextAudioTimeRef.current = 0
+  }
+
+  const scheduleListeningAfterStream = () => {
+    if (playbackFinishTimerRef.current) {
+      clearTimeout(playbackFinishTimerRef.current)
+      playbackFinishTimerRef.current = null
+    }
+
+    const ctx = audioContextRef.current
+    const delayMs = ctx
+      ? Math.max(450, Math.ceil((nextAudioTimeRef.current - ctx.currentTime + 0.35) * 1000))
+      : 800
+
+    playbackFinishTimerRef.current = setTimeout(() => {
+      playbackFinishTimerRef.current = null
+      if (!mountedRef.current || isClosingRef.current) return
+
+      heardStreamAudioRef.current = false
+      streamedVoiceTurnRef.current = false
+      isSpeakingRef.current = false
+      audioSourcesRef.current = []
+
+      startListeningRef.current()
+    }, delayMs)
+  }
+
+  const getAudioContext = () => {
+    if (!audioContextRef.current) {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+      audioContextRef.current = new AudioCtx()
+    }
+    return audioContextRef.current
+  }
+
+  const parseRawAudioMimeType = (mimeType = '') => {
+    const options = { sampleRate: 24000, bitsPerSample: 16, channels: 1 }
+    const [fileType, ...params] = mimeType.split(';').map((item) => item.trim())
+    const [, format] = fileType.split('/')
+
+    if (format?.startsWith('L')) {
+      const bits = Number.parseInt(format.slice(1), 10)
+      if (Number.isFinite(bits)) options.bitsPerSample = bits
+    }
+
+    for (const param of params) {
+      const [key, value] = param.split('=').map((item) => item.trim())
+      if (key === 'rate') {
+        const sampleRate = Number.parseInt(value, 10)
+        if (Number.isFinite(sampleRate)) options.sampleRate = sampleRate
+      }
+    }
+
+    return options
+  }
+
+  const decodeBase64Bytes = (base64: string) => {
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    return bytes
+  }
+
+  const playRawAudioChunk = (audioBase64: string, mimeType = '') => {
+    if (!mountedRef.current || isClosingRef.current || !audioBase64) return
+
+    const { sampleRate, bitsPerSample, channels } = parseRawAudioMimeType(mimeType)
+    if (bitsPerSample !== 16 || channels !== 1) return
+
+    isSpeakingRef.current = true
+    heardStreamAudioRef.current = true
+    streamedVoiceTurnRef.current = true
+    lastStreamAudioAtRef.current = Date.now()
+    setState('speaking')
+    setStatusText('Speaking...')
+
+    try {
+      recognitionRef.current?.abort()
+    } catch {}
+    speechSynthesis.cancel()
+
+    const ctx = getAudioContext()
+    void ctx.resume().catch(() => {})
+
+    const bytes = decodeBase64Bytes(audioBase64)
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    const frameCount = Math.floor(bytes.byteLength / 2)
+    const buffer = ctx.createBuffer(1, frameCount, sampleRate)
+    const channel = buffer.getChannelData(0)
+
+    for (let i = 0; i < frameCount; i++) {
+      channel[i] = Math.max(-1, Math.min(1, view.getInt16(i * 2, true) / 32768))
+    }
+
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(ctx.destination)
+    source.onended = () => {
+      audioSourcesRef.current = audioSourcesRef.current.filter((item) => item !== source)
+    }
+
+    const startAt = Math.max(ctx.currentTime + 0.03, nextAudioTimeRef.current || 0)
+    source.start(startAt)
+    nextAudioTimeRef.current = startAt + buffer.duration
+    audioSourcesRef.current.push(source)
+    scheduleListeningAfterStream()
+  }
+
+  const finishStreamingPlayback = () => {
+    scheduleListeningAfterStream()
+  }
+
+  const playAudioBase64 = (audioBase64: string, mimeType = 'audio/wav') => {
+    const bytes = decodeBase64Bytes(audioBase64)
+
+    const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }))
+    const audio = new Audio(url)
+    audio.onended = () => {
+      URL.revokeObjectURL(url)
+      restartListeningAfterSpeech()
+    }
+    audio.onerror = () => {
+      URL.revokeObjectURL(url)
+      restartListeningAfterSpeech()
+    }
+    void audio.play().catch(() => {
+      URL.revokeObjectURL(url)
+      restartListeningAfterSpeech()
+    })
+  }
+
   const hardClose = () => {
     if (isClosingRef.current) return
     isClosingRef.current = true
@@ -118,12 +290,15 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     try {
       recognitionRef.current?.abort()
     } catch {}
+    stopQueuedAudio()
     speechSynthesis.cancel()
     onCloseRef.current()
   }
 
-  const speakResponse = (text: string) => {
+  const speakResponse = (text: string, audioBase64?: string, audioMimeType?: string) => {
     if (!mountedRef.current || isClosingRef.current) return
+    if (!audioBase64 && streamedVoiceTurnRef.current) return
+    if (!audioBase64 && Date.now() - lastStreamAudioAtRef.current < 15000) return
 
     isSpeakingRef.current = true
     setState('speaking')
@@ -133,7 +308,13 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
       recognitionRef.current?.abort()
     } catch {}
 
+    stopQueuedAudio()
     speechSynthesis.cancel()
+
+    if (audioBase64) {
+      playAudioBase64(audioBase64, audioMimeType)
+      return
+    }
 
     const utter = new SpeechSynthesisUtterance(text)
     const voice = pickVoice()
@@ -144,24 +325,15 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     utter.volume = 1
 
     utter.onend = () => {
-      if (!mountedRef.current || isClosingRef.current) return
-      isSpeakingRef.current = false
-      setTimeout(() => {
-        if (mountedRef.current && !isClosingRef.current) startListening()
-      }, 500)
+      restartListeningAfterSpeech()
     }
 
     utter.onerror = () => {
-      isSpeakingRef.current = false
-      if (mountedRef.current && !isClosingRef.current) {
-        setTimeout(startListening, 500)
-      }
+      restartListeningAfterSpeech()
     }
 
     speechSynthesis.speak(utter)
   }
-
-  const startListeningRef = useRef<() => void>(() => {})
 
   const startListening = () => {
     if (!mountedRef.current || isClosingRef.current || isSpeakingRef.current) return
@@ -207,11 +379,18 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
 
     rec.onresult = (event: any) => {
       if (genRef.current !== myGen) return
-      let text = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        text += event.results[i][0].transcript
-        if (event.results[i].isFinal) interimTextRef.current = text
+
+      let fullTranscript = ''
+      let finalTranscript = ''
+      for (let i = 0; i < event.results.length; i++) {
+        const transcript = event.results[i][0]?.transcript || ''
+        fullTranscript += transcript
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript
+        }
       }
+
+      interimTextRef.current = (finalTranscript || fullTranscript).trim()
     }
 
     rec.onerror = (event: any) => {
@@ -227,6 +406,7 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
 
     rec.onend = () => {
       if (genRef.current !== myGen) return
+      recognitionRef.current = null
       if (!mountedRef.current || isClosingRef.current) return
 
       const said = interimTextRef.current.trim()
@@ -250,7 +430,12 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
 
       setState('thinking')
       setStatusText('Processing...')
+      heardStreamAudioRef.current = false
+      streamedVoiceTurnRef.current = false
+      stopQueuedAudio()
       onFirstMessageRef.current?.()
+
+      const voiceRequestStartedAt = Date.now()
 
       onSendMessageRef.current(said, true)
         .then((responseData) => {
@@ -287,7 +472,24 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
               }
             })
           } else {
-            speakResponse(responseData.content || "I'm not sure what to say.")
+            if (responseData.meta?.voiceAudioStreamed === true) {
+              finishStreamingPlayback()
+              return
+            }
+
+            const streamedDuringThisTurn =
+              streamedVoiceTurnRef.current ||
+              lastStreamAudioAtRef.current >= voiceRequestStartedAt - 250
+
+            if (heardStreamAudioRef.current || streamedDuringThisTurn) {
+              finishStreamingPlayback()
+              return
+            }
+            speakResponse(
+              responseData.content || "I'm not sure what to say.",
+              responseData.audioBase64,
+              responseData.audioMimeType
+            )
           }
         })
         .catch(() => {
@@ -303,6 +505,18 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
   startListeningRef.current = startListening
 
   useEffect(() => {
+    const onAudioDelta = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        chatId?: string
+        audioBase64?: string
+        audioMimeType?: string
+      }>).detail
+
+      if (!detail?.audioBase64) return
+      if (detail.chatId && detail.chatId !== activeChatIdRef.current) return
+      playRawAudioChunk(detail.audioBase64, detail.audioMimeType)
+    }
+
     const onReturn = () => {
       if (!mountedRef.current || isClosingRef.current || isSpeakingRef.current) return
 
@@ -321,10 +535,12 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
       if (document.visibilityState === 'visible') onReturn()
     }
 
+    window.addEventListener('pian:voice-audio-delta', onAudioDelta)
     window.addEventListener('focus', onReturn)
     document.addEventListener('visibilitychange', onVisibility)
 
     return () => {
+      window.removeEventListener('pian:voice-audio-delta', onAudioDelta)
       window.removeEventListener('focus', onReturn)
       document.removeEventListener('visibilitychange', onVisibility)
     }
@@ -352,7 +568,10 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
       try {
         recognitionRef.current?.abort()
       } catch {}
+      stopQueuedAudio()
       speechSynthesis.cancel()
+      void audioContextRef.current?.close().catch(() => {})
+      audioContextRef.current = null
     }
   }, [])
 
@@ -360,6 +579,10 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     if (pendingVoiceResponse && mountedRef.current && !isClosingRef.current) {
       const timer = setTimeout(() => {
         if (mountedRef.current && !isClosingRef.current) {
+          if (Date.now() - lastStreamAudioAtRef.current < 15000) {
+            setPendingVoiceResponse(null)
+            return
+          }
           speakResponse(pendingVoiceResponse)
           setPendingVoiceResponse(null)
         }
