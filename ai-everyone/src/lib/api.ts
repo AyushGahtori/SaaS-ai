@@ -42,7 +42,13 @@ export const AGENT_BASE_PORTS: Record<string, number> = {
     "devika-engineer-agent": 8041,
     "data-analyst-agent": 8042,
     "cyber-soc-agent": 8043,
+    "restaurant-concierge-agent": 8044,
     "shelfie-grocery-agent": 8045,
+    "leadgen-agent": 8050,
+    "marketing-agent": 8051,
+    "aria-podcast-agent": 8052,
+    "pr-copilot-review-agent": 8053,
+    "pian-labs-alos-agent": 8054,
 };
 
 export function getBranchName(): string {

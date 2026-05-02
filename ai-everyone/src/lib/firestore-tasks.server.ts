@@ -399,6 +399,11 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "data-analyst-agent": process.env.DATA_ANALYST_AGENT_URL,
         "cyber-soc-agent": process.env.CYBER_SOC_AGENT_URL,
         "shelfie-grocery-agent": process.env.SHELFIE_GROCERY_AGENT_URL,
+        "leadgen-agent": process.env.LEADGEN_AGENT_URL,
+        "marketing-agent": process.env.MARKETING_AGENT_URL,
+        "aria-podcast-agent": process.env.ARIA_PODCAST_AGENT_URL,
+        "pr-copilot-review-agent": process.env.PR_COPILOT_REVIEW_AGENT_URL,
+        "pian-labs-alos-agent": process.env.PIAN_LABS_ALOS_AGENT_URL,
     };
     const agentServerUrl =
         resolveAgentServerUrl(ENV_AGENT_URL_MAP[task.agentId], task.agentId);

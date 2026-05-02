@@ -9,6 +9,11 @@ export const agentUseCases: Record<string, string[]> = {
   "travel-halper-agent": ["Trip planning", "Flight research", "Hotel shortlist"],
   "shelfie-grocery-agent": ["Weekly grocery planning", "Session-based shopping lists", "Diet-aware list optimization"],
   "restaurant-concierge-agent": ["Menu browsing", "Food ordering", "Order edits", "Delivery or pickup"],
+  "leadgen-agent": ["Prospecting", "Lead enrichment", "Sales research"],
+  "marketing-agent": ["Campaign generation", "Creative iteration", "Product analysis"],
+  "aria-podcast-agent": ["Podcast scripts", "Host conversations", "Voice-ready audio"],
+  "pr-copilot-review-agent": ["PR review", "Static analysis", "Webhook checks"],
+  "pian-labs-alos-agent": ["Shipment operations", "Route checks", "Logistics records"],
   "emergency-response-agent": ["Urgency triage", "Hospital lookup", "Emergency escalation"],
   "strata-agent": ["Financial review", "Trend analysis", "Decision insights"],
   "dia-helper-agent": ["System diagrams", "Product flows", "Figma handoff"],
@@ -38,4 +43,3 @@ export const agentUseCases: Record<string, string[]> = {
   "building-construction-agent": ["Home layout", "Cost estimate", "Vendor planning"],
   "devika-engineer-agent": ["Architecture plans", "Bug strategy", "Deployment readiness"],
 };
-

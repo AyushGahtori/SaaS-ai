@@ -9,6 +9,11 @@ export const agentExamplePrompts: Record<string, string> = {
   "travel-halper-agent": "Plan a three-day Delhi to Goa trip with flights, budget hotels, and a shareable itinerary.",
   "shelfie-grocery-agent": "Plan a weekly high-protein grocery list for two adults and continue it in the same session tomorrow.",
   "restaurant-concierge-agent": "Show me the menu, recommend a vegetarian main, and add 2 paneer dishes with pickup.",
+  "leadgen-agent": "Find 25 B2B SaaS founders in Bengaluru who recently raised seed funding and score the strongest leads.",
+  "marketing-agent": "Create a launch campaign for an AI sales copilot with social posts, poster copy, and positioning.",
+  "aria-podcast-agent": "Draft a 5 minute podcast episode script about AI agents helping small businesses.",
+  "pr-copilot-review-agent": "Dry-run review AyushGahtori/SaaS-ai PR 42 and summarize the top findings.",
+  "pian-labs-alos-agent": "Summarize shipment records and check the Delhi to Mumbai route status for operational risk.",
   "emergency-response-agent": "I have severe chest pain and dizziness. Assess urgency and help me find the next safest step.",
   "strata-agent": "Open Stara for AAPL and explain the biggest revenue and margin trends from the latest data.",
   "dia-helper-agent": "Create a Mermaid data-flow diagram for a SaaS signup flow with auth, billing, and onboarding.",
@@ -38,4 +43,3 @@ export const agentExamplePrompts: Record<string, string> = {
   "building-construction-agent": "Plan a 3BHK home on a 30x40 plot with a rough budget and layout recommendations.",
   "devika-engineer-agent": "Plan the architecture for a multi-tenant SaaS billing module and list implementation steps.",
 };
-

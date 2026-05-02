@@ -69,6 +69,41 @@ export const agentDescriptionLines: Record<string, string[]> = {
     "It keeps order state, upsell prompts, and human escalation in one scoped agent flow.",
     "Best for menu discovery, multi-item ordering, order edits, and handoff-ready restaurant support.",
   ],
+  "leadgen-agent": [
+    "Run prospecting workflows from a natural-language target profile.",
+    "It can research companies, enrich lead details, score prospects, and store results for later inspection.",
+    "Use it when sales research needs a reusable session instead of a one-off answer.",
+    "It keeps conversation history and lead records available through the agent tools.",
+    "Best for market-specific lead lists, enrichment, and follow-up research.",
+  ],
+  "marketing-agent": [
+    "Generate campaign ideas, product analysis, creative copy, and poster-oriented marketing output.",
+    "It keeps marketing sessions and generated content together so campaigns can be continued.",
+    "Use it when a product or launch needs strategy plus reusable creative variants.",
+    "It can work with product images, brand context, and provider-aware model switching.",
+    "Best for launch campaigns, social copy, content variants, and creative iteration.",
+  ],
+  "aria-podcast-agent": [
+    "Create podcast scripts, host conversational sessions, and turn text into voice-ready audio.",
+    "It supports host and creator modes so the same agent can brainstorm or produce structured episodes.",
+    "Use it when an idea needs to become a show outline, interview flow, or spoken segment.",
+    "It keeps session history and mode state for continuing podcast work over time.",
+    "Best for creator scripts, podcast interviews, voiceover drafts, and episode planning.",
+  ],
+  "pr-copilot-review-agent": [
+    "Review GitHub pull requests with a code-review workflow built around diffs and static checks.",
+    "It can dry-run findings, run Bandit and Flake8, inspect PR context, and report review comments.",
+    "Use it when a pull request needs automated review before a human pass.",
+    "It also exposes webhook readiness so GitHub events can trigger review flows.",
+    "Best for PR triage, security linting, Python review, and comment preparation.",
+  ],
+  "pian-labs-alos-agent": [
+    "Operate logistics data for shipments, vehicles, warehouses, routes, and weather-aware checks.",
+    "It can describe entities, list records, summarize operations, and update or create records.",
+    "Use it when a logistics request needs structured records plus operational reasoning.",
+    "It can estimate routes and inspect weather signals for shipment decisions.",
+    "Best for shipment summaries, fleet status, warehouse records, and route risk checks.",
+  ],
   "emergency-response-agent": [
     "Assess urgent medical situations and guide next response steps.",
     "It can estimate severity, collect critical context, and activate escalation.",
@@ -266,4 +301,3 @@ export const agentDescriptionLines: Record<string, string[]> = {
     "Best for project planning, bug investigation, and production handoff.",
   ],
 };
-
