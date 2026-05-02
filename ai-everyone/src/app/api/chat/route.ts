@@ -5,7 +5,7 @@
  *
  * - Verifies the Firebase ID token from the Authorization header
  * - Streams normal Ollama text responses incrementally
- * - Routes agent work through the deterministic LangGraph orchestrator
+ * - Routes agent work through a parent-LLM orchestration loop
  * - Preserves the existing persona + memory pipeline
  */
 
@@ -1594,7 +1594,7 @@ export async function POST(req: NextRequest) {
         const systemPrompt = shouldForceDirectAttachmentResponse
             ? buildDirectAttachmentPrompt(personaContext)
             : [
-                "You are Pian assistant. Answer directly in natural language. Agent orchestration is handled by a deterministic LangGraph runtime before this model call, so do not emit tool-routing JSON or <AGENT_INTENT> tags.",
+                "You are Pian assistant. Answer directly in natural language. Parent-LLM orchestration may already have handled any agent routing before this model call, so do not emit tool-routing JSON or <AGENT_INTENT> tags.",
                 agentAccessContext,
                 personaContext,
             ]

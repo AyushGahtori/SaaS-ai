@@ -1,6 +1,4 @@
-import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { adminDb } from "@/lib/firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
 import { createAgentTask, executeAgentTaskAndReadBack } from "@/lib/firestore-tasks.server";
 import {
     getAccessibleAgentIds,
@@ -15,10 +13,13 @@ import { loadConversationContext } from "./context";
 import {
     getActionCapability,
     getAgentCapability,
-    deterministicRoute,
 } from "./registry";
-import { formatEntityChoices, resolveContextualEntities } from "./resolver";
-import { compactString, normalizeForMatch, normalizeInput } from "./text";
+import { resolveContextualEntities, formatEntityChoices } from "./resolver";
+import {
+    repairRouteWithParentLlm,
+    routeWithParentLlm,
+} from "./llm-router";
+import { compactString, normalizeInput } from "./text";
 import type {
     FailureState,
     LangGraphOrchestrationInput,
@@ -26,6 +27,11 @@ import type {
     LangGraphOrchestrationState,
     ValidationState,
 } from "./types";
+
+const MAX_REPAIR_ATTEMPTS = Math.max(
+    0,
+    Number(process.env.PARENT_ORCHESTRATOR_REPAIR_ATTEMPTS || 2)
+);
 
 const emptyValidation: ValidationState = {
     is_valid: false,
@@ -102,30 +108,6 @@ function isPresent(value: unknown): boolean {
     return true;
 }
 
-function asString(value: unknown): string {
-    return typeof value === "string" ? value.trim() : "";
-}
-
-function firstAttachmentPayload(attachments?: Array<Record<string, unknown>>): Record<string, unknown> {
-    const attachment = attachments?.find((item) => asString(item.dataBase64));
-    if (!attachment) return {};
-
-    const dataBase64 = asString(attachment.dataBase64);
-    const mimeType = asString(attachment.mimeType);
-    const name = asString(attachment.name);
-    const payload: Record<string, unknown> = {
-        file_data_url: dataBase64,
-        file_name: name,
-        file_type: mimeType,
-    };
-
-    if (mimeType.startsWith("image/")) payload.image_base64 = dataBase64;
-    if (mimeType.startsWith("audio/")) payload.audio_base64 = dataBase64;
-    if (mimeType.includes("csv") || name.toLowerCase().endsWith(".csv")) payload.csv = dataBase64;
-
-    return payload;
-}
-
 function inferAgentErrorStatus(
     rawStatus: string,
     result: Record<string, unknown> | undefined
@@ -134,22 +116,64 @@ function inferAgentErrorStatus(
         rawStatus === "queued" ||
         rawStatus === "running" ||
         rawStatus === "success" ||
-        rawStatus === "partial_success" ||
-        rawStatus === "action_required" ||
-        rawStatus === "needs_input"
+        rawStatus === "partial_success"
     ) {
         return null;
     }
 
     const text = compactString(result?.error || result?.summary || result?.message || "", 900).toLowerCase();
-    if (text.includes("timed out") || text.includes("timeout") || text.includes("temporarily") || text.includes("429") || text.includes("503") || text.includes("504")) {
-        return failure("retryable_agent_error", "The selected agent hit a retryable runtime issue. Please retry in a moment.", true);
+    if (
+        text.includes("timed out") ||
+        text.includes("timeout") ||
+        text.includes("temporarily") ||
+        text.includes("429") ||
+        text.includes("503") ||
+        text.includes("504")
+    ) {
+        return failure(
+            "retryable_agent_error",
+            "I tried that agent, but it hit a temporary runtime issue. Please try again in a moment.",
+            true
+        );
     }
-    if (text.includes("access denied") || text.includes("provider connection") || text.includes("auth") || text.includes("token")) {
-        return failure("provider_error", "The selected agent needs a valid provider connection before it can run.", false);
+    if (
+        text.includes("access denied") ||
+        text.includes("provider connection") ||
+        text.includes("auth") ||
+        text.includes("token")
+    ) {
+        return failure(
+            "provider_error",
+            "That agent needs a valid provider connection before it can run.",
+            false
+        );
     }
-    if (text.includes("cannot connect") || text.includes("econnrefused") || text.includes("fetch failed")) {
-        return failure("infrastructure_error", "The agent runtime could not be reached. Please check the EC2 agent service health.", true);
+    if (
+        text.includes("cannot connect") ||
+        text.includes("econnrefused") ||
+        text.includes("fetch failed")
+    ) {
+        return failure(
+            "infrastructure_error",
+            "I could not reach the agent service right now. Please try again in a moment.",
+            true
+        );
+    }
+    if (rawStatus === "needs_input") {
+        return failure(
+            "needs_clarification",
+            compactString(result?.summary || result?.message || "", 700) ||
+                "I need one more detail before I can continue.",
+            false
+        );
+    }
+    if (rawStatus === "action_required") {
+        return failure(
+            "provider_error",
+            compactString(result?.summary || result?.message || "", 700) ||
+                "This action needs an additional account or permission step before I can continue.",
+            false
+        );
     }
     return failure("failed", "The selected agent returned a failure.", false);
 }
@@ -205,7 +229,7 @@ function buildClarificationForValidation(state: LangGraphOrchestrationState): st
     }
 
     if (state.validation.missing_fields.length > 0) {
-        return `I can use ${agentName}, but I need: ${state.validation.missing_fields.join(", ")}.`;
+        return `I can use ${agentName}, but I still need: ${state.validation.missing_fields.join(", ")}.`;
     }
 
     if (state.failure?.message) return state.failure.message;
@@ -215,8 +239,7 @@ function buildClarificationForValidation(state: LangGraphOrchestrationState): st
 function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, unknown> {
     const params = {
         ...state.route.parameters,
-        ...firstAttachmentPayload(state.attachments),
-        ...(state.resolved_entities.message_id
+        ...(state.resolved_entities.message_id && !state.route.parameters.message_id
             ? {
                 message_id: state.resolved_entities.message_id,
                 row_index: state.resolved_entities.row_index,
@@ -232,7 +255,7 @@ function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, u
         conversation_context: state.conversation_context,
         resolved_entities: state.resolved_entities,
         orchestration: {
-            engine: "langgraph",
+            engine: "parent_llm",
             route: state.route,
             validation: state.validation,
         },
@@ -265,78 +288,31 @@ function buildInlineAgentFinalResponse(state: LangGraphOrchestrationState): stri
     return `I completed the ${action.replace(/_/g, " ")} request.`;
 }
 
-function detectWrongAgentMismatch(state: LangGraphOrchestrationState): FailureState | null {
-    const lower = normalizeForMatch(state.user_input);
-    const agentId = state.route.target_agent;
-    const explicitAgent = state.route.parameters.explicit_agent_mention;
+function applyEntityResolution(state: LangGraphOrchestrationState): LangGraphOrchestrationState {
+    if (!state.route.is_agent_request) return state;
 
-    if (
-        agentId === "google-agent" &&
-        !explicitAgent &&
-        /\b(fundraising|fundraise|funds?|investors?|seed investors?|vc|venture capital|pitch deck|term sheet|outreach email)\b/.test(lower)
-    ) {
-        return failure(
-            "validation_error",
-            "This is an investor/fundraising workflow, so I will not run Gmail for it. Please use Fund Agent for investor search and outreach."
-        );
-    }
-
-    if (
-        agentId === "shopgenie-agent" &&
-        /\b(gtm|go to market|go-to-market|positioning|audience|channels?|market plan|company url)\b/.test(lower)
-    ) {
-        return failure(
-            "validation_error",
-            "This is a go-to-market strategy request, so I will not run ShopGenie for it. Please use Smart GTM Agent."
-        );
-    }
-
-    if (
-        agentId !== "emergency-response-agent" &&
-        /\b(heart attack|stroke|chest pain|can't breathe|cannot breathe|severe injury|emergency|sos|ambulance|unconscious)\b/.test(lower)
-    ) {
-        return failure(
-            "validation_error",
-            "This looks like an emergency request, so I will not route it to a generic agent. Use Emergency Response Agent for emergency triage."
-        );
-    }
-
-    return null;
-}
-
-const StateAnnotation = Annotation.Root({
-    user_input: Annotation<string>(),
-    normalized_input: Annotation<string>(),
-    chat_id: Annotation<string>(),
-    user_id: Annotation<string>(),
-    model: Annotation<string | undefined>(),
-    llm_provider: Annotation<string | undefined>(),
-    installed_agent_ids: Annotation<string[]>(),
-    accessible_agent_ids: Annotation<string[]>(),
-    attachments: Annotation<Array<Record<string, unknown>> | undefined>(),
-    conversation_context: Annotation<LangGraphOrchestrationState["conversation_context"]>(),
-    route: Annotation<LangGraphOrchestrationState["route"]>(),
-    resolved_entities: Annotation<LangGraphOrchestrationState["resolved_entities"]>(),
-    validation: Annotation<ValidationState>(),
-    agent_request: Annotation<Record<string, unknown>>(),
-    agent_response: Annotation<Record<string, unknown> | null>(),
-    created_task: Annotation<LangGraphOrchestrationState["created_task"]>(),
-    final_response: Annotation<string>(),
-    status: Annotation<LangGraphOrchestrationState["status"]>(),
-    failure: Annotation<FailureState | null>(),
-    metadata: Annotation<Record<string, unknown>>(),
-    dry_run: Annotation<boolean | undefined>(),
-});
-
-type GraphState = typeof StateAnnotation.State;
-
-async function inputNode(state: GraphState): Promise<Partial<GraphState>> {
+    const resolved = resolveContextualEntities(state);
     return {
-        normalized_input: normalizeInput(state.user_input),
+        ...state,
+        resolved_entities: resolved,
+        route: {
+            ...state.route,
+            parameters: {
+                ...state.route.parameters,
+                ...(resolved.message_id && !state.route.parameters.message_id
+                    ? {
+                        message_id: resolved.message_id,
+                        row_index: resolved.row_index,
+                    }
+                    : {}),
+            },
+        },
     };
 }
 
-async function contextLoaderNode(state: GraphState): Promise<Partial<GraphState>> {
+async function loadStateContext(
+    state: LangGraphOrchestrationState
+): Promise<LangGraphOrchestrationState> {
     const [installedAgentIds, accessibleAgentIds, conversationContext] = await Promise.all([
         state.installed_agent_ids.length > 0
             ? Promise.resolve(state.installed_agent_ids)
@@ -352,73 +328,82 @@ async function contextLoaderNode(state: GraphState): Promise<Partial<GraphState>
     ]);
 
     return {
+        ...state,
+        normalized_input: normalizeInput(state.user_input),
         installed_agent_ids: installedAgentIds,
         accessible_agent_ids: accessibleAgentIds,
         conversation_context: conversationContext,
     };
 }
 
-async function deterministicRouterNode(state: GraphState): Promise<Partial<GraphState>> {
-    const route = deterministicRoute(
-        state.normalized_input || state.user_input,
-        state.conversation_context
-    );
-    const attachmentPayload = firstAttachmentPayload(state.attachments);
-    const routeWithAttachments = Object.keys(attachmentPayload).length
-        ? {
-            ...route,
-            parameters: {
-                ...route.parameters,
-                ...attachmentPayload,
-            },
-        }
-        : route;
-    console.info("[LangGraphRoute]", {
-        chatId: state.chat_id,
-        userId: state.user_id,
-        userInput: compactString(state.user_input, 500),
-        targetAgent: routeWithAttachments.target_agent,
-        targetAction: routeWithAttachments.target_action,
-        confidence: routeWithAttachments.route_confidence,
-        reason: routeWithAttachments.route_reason,
-        explicitAgentMention: routeWithAttachments.parameters.explicit_agent_mention || null,
-        correctionAgentMention: routeWithAttachments.parameters.correction_agent_mention || null,
+async function runParentRoutePlanning(
+    state: LangGraphOrchestrationState
+): Promise<LangGraphOrchestrationState> {
+    const decision = await routeWithParentLlm({
+        userInput: state.user_input,
+        model: state.model,
+        llmProvider: state.llm_provider,
+        installedAgentIds: state.installed_agent_ids,
+        accessibleAgentIds: state.accessible_agent_ids,
+        conversationContext: state.conversation_context,
     });
+
+    if (!decision) {
+        return {
+            ...state,
+            status: "infrastructure_error",
+            failure: failure(
+                "infrastructure_error",
+                "I could not start the parent orchestration model right now. Please try again."
+            ),
+            final_response:
+                "I could not start the parent orchestration model right now. Please try again.",
+        };
+    }
+
+    if (decision.decision === "direct_chat") {
+        return {
+            ...state,
+            route: decision.route,
+            status: "not_agent",
+        };
+    }
+
+    if (decision.decision === "respond") {
+        return {
+            ...state,
+            route: decision.route,
+            status: decision.responseStatus,
+            final_response: decision.assistantResponse,
+            failure:
+                decision.responseStatus === "not_agent"
+                    ? null
+                    : failure(
+                        decision.responseStatus,
+                        decision.assistantResponse || "I could not complete that request right now."
+                    ),
+        };
+    }
+
     return {
-        route: routeWithAttachments,
-        status: routeWithAttachments.is_agent_request ? "success" : "not_agent",
+        ...state,
+        route: decision.route,
+        status: "success",
     };
 }
 
-async function entityResolverNode(state: GraphState): Promise<Partial<GraphState>> {
-    if (!state.route.is_agent_request) return {};
-    const resolved = resolveContextualEntities(state);
-    return {
-        resolved_entities: resolved,
-        route: {
-            ...state.route,
-            parameters: {
-                ...state.route.parameters,
-                ...(resolved.message_id
-                    ? {
-                        message_id: resolved.message_id,
-                        row_index: resolved.row_index,
-                    }
-                    : {}),
-            },
-        },
-    };
-}
-
-async function validationNode(state: GraphState): Promise<Partial<GraphState>> {
+async function validateRoute(
+    state: LangGraphOrchestrationState
+): Promise<LangGraphOrchestrationState> {
     if (!state.route.is_agent_request || !state.route.target_agent || !state.route.target_action) {
         return {
+            ...state,
             status: "not_agent",
             validation: {
                 is_valid: false,
                 missing_fields: [],
                 clarification_needed: false,
-                reason: "No deterministic agent route matched.",
+                reason: "No parent-LLM agent route matched.",
             },
         };
     }
@@ -426,6 +411,7 @@ async function validationNode(state: GraphState): Promise<Partial<GraphState>> {
     const agent = getAgentCapability(state.route.target_agent);
     if (!agent) {
         return {
+            ...state,
             status: "validation_error",
             validation: {
                 is_valid: false,
@@ -433,12 +419,16 @@ async function validationNode(state: GraphState): Promise<Partial<GraphState>> {
                 clarification_needed: true,
                 reason: `Unknown agent: ${state.route.target_agent}`,
             },
-            failure: failure("validation_error", `I could not find a registered agent named ${state.route.target_agent}.`),
+            failure: failure(
+                "validation_error",
+                `I could not find a registered agent named ${state.route.target_agent}.`
+            ),
         };
     }
 
     if (!state.installed_agent_ids.includes(agent.id)) {
         return {
+            ...state,
             status: "needs_clarification",
             validation: {
                 is_valid: false,
@@ -456,6 +446,7 @@ async function validationNode(state: GraphState): Promise<Partial<GraphState>> {
 
     if (!state.accessible_agent_ids.includes(agent.id)) {
         return {
+            ...state,
             status: "needs_clarification",
             validation: {
                 is_valid: false,
@@ -474,6 +465,7 @@ async function validationNode(state: GraphState): Promise<Partial<GraphState>> {
     const action = getActionCapability(agent.id, state.route.target_action);
     if (!action) {
         return {
+            ...state,
             status: "validation_error",
             validation: {
                 is_valid: false,
@@ -481,21 +473,10 @@ async function validationNode(state: GraphState): Promise<Partial<GraphState>> {
                 clarification_needed: true,
                 reason: `${agent.id} does not support ${state.route.target_action}.`,
             },
-            failure: failure("validation_error", `${agent.name} does not support action "${state.route.target_action}".`),
-        };
-    }
-
-    const mismatchFailure = detectWrongAgentMismatch(state as LangGraphOrchestrationState);
-    if (mismatchFailure) {
-        return {
-            status: "validation_error",
-            validation: {
-                is_valid: false,
-                missing_fields: ["correct_agent"],
-                clarification_needed: true,
-                reason: mismatchFailure.message,
-            },
-            failure: mismatchFailure,
+            failure: failure(
+                "validation_error",
+                `${agent.name} does not support action "${state.route.target_action}".`
+            ),
         };
     }
 
@@ -507,6 +488,7 @@ async function validationNode(state: GraphState): Promise<Partial<GraphState>> {
         const candidates = state.resolved_entities.candidate_entities || [];
         if (!state.resolved_entities.message_id && candidates.length > 1) {
             return {
+                ...state,
                 status: "multiple_matches_found",
                 validation: {
                     is_valid: false,
@@ -519,12 +501,13 @@ async function validationNode(state: GraphState): Promise<Partial<GraphState>> {
 
         if (!state.resolved_entities.message_id) {
             return {
+                ...state,
                 status: "no_match_found",
                 validation: {
                     is_valid: false,
                     missing_fields: ["message_id"],
                     clarification_needed: true,
-                    reason: "No deterministic Gmail row matched the reference.",
+                    reason: "No Gmail row matched the reference.",
                 },
             };
         }
@@ -533,6 +516,7 @@ async function validationNode(state: GraphState): Promise<Partial<GraphState>> {
     const missingFields = action.required.filter((field) => !isPresent(state.route.parameters[field]));
     if (missingFields.length > 0) {
         return {
+            ...state,
             status: "needs_clarification",
             validation: {
                 is_valid: false,
@@ -551,28 +535,88 @@ async function validationNode(state: GraphState): Promise<Partial<GraphState>> {
     };
 
     return {
+        ...state,
         status: "success",
         validation,
+        failure: null,
         agent_request: buildAgentRequest({
-            ...(state as LangGraphOrchestrationState),
+            ...state,
             validation,
         }),
     };
 }
 
-function afterValidation(state: GraphState): "agentExecution" | "response" {
-    if (state.validation.is_valid && state.status === "success") return "agentExecution";
-    return "response";
+function buildRepairValidationError(state: LangGraphOrchestrationState): string {
+    if (state.failure?.message) return state.failure.message;
+    if (state.validation.reason) return state.validation.reason;
+    if (state.validation.missing_fields.length > 0) {
+        return `Missing required field(s): ${state.validation.missing_fields.join(", ")}`;
+    }
+    return `Validation failed with status ${state.status}.`;
 }
 
-async function agentExecutionNode(state: GraphState): Promise<Partial<GraphState>> {
-    if (!state.route.target_agent || !state.route.target_action) return {};
+async function repairInvalidRouteIfPossible(
+    state: LangGraphOrchestrationState
+): Promise<LangGraphOrchestrationState> {
+    if (state.validation.is_valid || !state.route.is_agent_request) return state;
+
+    let workingState = state;
+    for (let attempt = 1; attempt <= MAX_REPAIR_ATTEMPTS; attempt += 1) {
+        const repair = await repairRouteWithParentLlm({
+            userInput: workingState.user_input,
+            model: workingState.model,
+            llmProvider: workingState.llm_provider,
+            installedAgentIds: workingState.installed_agent_ids,
+            accessibleAgentIds: workingState.accessible_agent_ids,
+            conversationContext: workingState.conversation_context,
+            currentRoute: workingState.route,
+            agentResponse: null,
+            validationError: buildRepairValidationError(workingState),
+            attempt,
+        });
+
+        if (!repair) return workingState;
+
+        if (repair.decision === "retry" && repair.route) {
+            workingState = applyEntityResolution({
+                ...workingState,
+                route: repair.route,
+                validation: emptyValidation,
+                failure: null,
+                final_response: "",
+                status: "success",
+            });
+            workingState = await validateRoute(workingState);
+            if (workingState.validation.is_valid) return workingState;
+            continue;
+        }
+
+        return {
+            ...workingState,
+            status: repair.responseStatus,
+            final_response: repair.assistantResponse,
+            failure: failure(
+                repair.responseStatus,
+                repair.assistantResponse || buildClarificationForValidation(workingState)
+            ),
+        };
+    }
+
+    return workingState;
+}
+
+async function executeCurrentRoute(
+    state: LangGraphOrchestrationState
+): Promise<LangGraphOrchestrationState> {
+    if (!state.route.target_agent || !state.route.target_action) return state;
 
     const agentName = getAgentCatalogEntry(state.route.target_agent)?.name || state.route.target_agent;
-    const agentRequest = state.agent_request.action ? state.agent_request : buildAgentRequest(state as LangGraphOrchestrationState);
+    const agentRequest =
+        state.agent_request.action ? state.agent_request : buildAgentRequest(state);
 
     if (state.dry_run) {
         return {
+            ...state,
             agent_request: agentRequest,
             agent_response: {
                 status: "success",
@@ -593,7 +637,7 @@ async function agentExecutionNode(state: GraphState): Promise<Partial<GraphState
             action: state.route.target_action,
             parameters: state.route.parameters,
             reasoning: state.route.route_reason,
-            routing_source: "langgraph",
+            routing_source: "parent_llm",
             route: state.route,
             resolved_entities: state.resolved_entities,
         };
@@ -605,7 +649,7 @@ async function agentExecutionNode(state: GraphState): Promise<Partial<GraphState
             parentLLMRequest,
             agentInput: agentRequest,
             flow: {
-                orchestration: "langgraph",
+                orchestration: "parent_llm",
                 route: state.route,
                 resolved_entities: state.resolved_entities,
                 validation: state.validation,
@@ -621,8 +665,9 @@ async function agentExecutionNode(state: GraphState): Promise<Partial<GraphState
                 error: "AGENT_OUTPUT_MISSING",
             };
 
-        if (shouldInlineGmailSummaryResponse(state as LangGraphOrchestrationState)) {
+        if (shouldInlineGmailSummaryResponse(state)) {
             return {
+                ...state,
                 created_task: {
                     ...task,
                     status: refreshedStatus as typeof task.status,
@@ -640,18 +685,29 @@ async function agentExecutionNode(state: GraphState): Promise<Partial<GraphState
         }
 
         return {
+            ...state,
             created_task: {
                 ...task,
                 status: refreshedStatus as typeof task.status,
                 agentOutput: refreshedOutput,
             },
             agent_response: refreshedOutput,
-            status: refreshedStatus === "failed" ? "failed" : "success",
-            failure: null,
+            status:
+                refreshedStatus === "success" || refreshedStatus === "partial_success"
+                    ? "success"
+                    : refreshedStatus === "needs_input"
+                        ? "needs_clarification"
+                        : refreshedStatus === "action_required"
+                            ? "provider_error"
+                            : refreshedStatus === "running" || refreshedStatus === "queued"
+                                ? "success"
+                                : "failed",
+            failure: inferAgentErrorStatus(refreshedStatus, refreshedOutput),
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown orchestration execution error.";
         return {
+            ...state,
             status: "infrastructure_error",
             failure: failure(
                 "infrastructure_error",
@@ -666,63 +722,117 @@ async function agentExecutionNode(state: GraphState): Promise<Partial<GraphState
     }
 }
 
-async function failureClassifierNode(state: GraphState): Promise<Partial<GraphState>> {
-    if (!state.validation.is_valid || !state.agent_response) return {};
-    if (state.failure) return {};
-
-    const rawStatus =
-        (typeof state.created_task?.status === "string" ? state.created_task.status : "") ||
-        (typeof state.agent_response.status === "string" ? state.agent_response.status : "");
-    const agentFailure = inferAgentErrorStatus(rawStatus, state.agent_response);
-    if (!agentFailure) return {};
-
-    return {
-        status: agentFailure.code,
-        failure: agentFailure,
-    };
+function deriveUserFacingAgentMessage(state: LangGraphOrchestrationState): string {
+    return (
+        compactString(
+            state.agent_response?.summary ||
+            state.agent_response?.message ||
+            state.agent_response?.error ||
+            "",
+            1200
+        ) ||
+        state.failure?.message ||
+        "I could not complete that request right now."
+    );
 }
 
-async function responseNode(state: GraphState): Promise<Partial<GraphState>> {
-    if (state.status === "not_agent") {
-        return { final_response: "" };
-    }
+async function executeWithRepairLoop(
+    state: LangGraphOrchestrationState
+): Promise<LangGraphOrchestrationState> {
+    let workingState = state;
 
-    if (state.metadata.render_as_chat === true && state.agent_response) {
+    for (let attempt = 0; attempt <= MAX_REPAIR_ATTEMPTS; attempt += 1) {
+        workingState = {
+            ...workingState,
+            agent_request: buildAgentRequest(workingState),
+        };
+        workingState = await executeCurrentRoute(workingState);
+
+        const rawStatus =
+            (typeof workingState.created_task?.status === "string" ? workingState.created_task.status : "") ||
+            (typeof workingState.agent_response?.status === "string" ? workingState.agent_response.status : "");
+
+        if (
+            rawStatus === "success" ||
+            rawStatus === "partial_success" ||
+            (!rawStatus && workingState.status === "success")
+        ) {
+            return workingState;
+        }
+
+        if (attempt >= MAX_REPAIR_ATTEMPTS) {
+            return {
+                ...workingState,
+                final_response:
+                    workingState.final_response || deriveUserFacingAgentMessage(workingState),
+            };
+        }
+
+        const repair = await repairRouteWithParentLlm({
+            userInput: workingState.user_input,
+            model: workingState.model,
+            llmProvider: workingState.llm_provider,
+            installedAgentIds: workingState.installed_agent_ids,
+            accessibleAgentIds: workingState.accessible_agent_ids,
+            conversationContext: workingState.conversation_context,
+            currentRoute: workingState.route,
+            agentResponse: workingState.agent_response,
+            attempt: attempt + 1,
+        });
+
+        if (!repair) {
+            return {
+                ...workingState,
+                final_response:
+                    workingState.final_response || deriveUserFacingAgentMessage(workingState),
+            };
+        }
+
+        if (repair.decision === "retry" && repair.route) {
+            workingState = applyEntityResolution({
+                ...workingState,
+                route: repair.route,
+                validation: {
+                    is_valid: true,
+                    missing_fields: [],
+                    clarification_needed: false,
+                    reason: "Parent LLM repaired the route after an agent error.",
+                },
+                failure: null,
+                final_response: "",
+                status: "success",
+                metadata: {
+                    ...workingState.metadata,
+                    repair_attempts: attempt + 1,
+                },
+            });
+            continue;
+        }
+
         return {
-            final_response: buildInlineAgentFinalResponse(state as LangGraphOrchestrationState),
+            ...workingState,
+            status: repair.responseStatus,
+            final_response:
+                repair.assistantResponse || deriveUserFacingAgentMessage(workingState),
+            failure: failure(
+                repair.responseStatus,
+                repair.assistantResponse || deriveUserFacingAgentMessage(workingState)
+            ),
         };
     }
 
-    if (state.failure && state.status !== "success" && !state.created_task) {
-        return { final_response: state.failure.message };
-    }
-
-    if (!state.validation.is_valid) {
-        return {
-            final_response: buildClarificationForValidation(state as LangGraphOrchestrationState),
-        };
-    }
-
-    const agentName = state.route.target_agent
-        ? getAgentCatalogEntry(state.route.target_agent)?.name || state.route.target_agent
-        : "Agent";
-    const content =
-        `Delegating to ${agentName}.\n\n` +
-        `Action: ${state.route.target_action}` +
-        (state.route.route_reason ? `\n\nReasoning: ${state.route.route_reason}` : "");
-
-    return { final_response: content };
+    return workingState;
 }
 
-async function persistenceNode(state: GraphState): Promise<Partial<GraphState>> {
+async function persistTaskFlow(state: LangGraphOrchestrationState): Promise<void> {
     const taskId = state.created_task?.taskId;
-    if (!taskId || state.dry_run) return {};
+    if (!taskId || state.dry_run) return;
 
     try {
         await adminDb.collection("agentTasks").doc(taskId).set(
             {
                 flow: {
-                    orchestration: "langgraph",
+                    orchestration: "parent_llm",
                     status: state.status,
                     route: state.route,
                     resolved_entities: state.resolved_entities,
@@ -734,41 +844,70 @@ async function persistenceNode(state: GraphState): Promise<Partial<GraphState>> 
             { merge: true }
         );
     } catch (error) {
-        console.error("[LangGraphPersistence] failed to persist task flow:", error);
+        console.error("[ParentLlmPersistence] failed to persist task flow:", error);
     }
-    return {};
 }
 
-const graph = new StateGraph(StateAnnotation)
-    .addNode("input", inputNode)
-    .addNode("contextLoader", contextLoaderNode)
-    .addNode("deterministicRouter", deterministicRouterNode)
-    .addNode("entityResolver", entityResolverNode)
-    .addNode("validate", validationNode)
-    .addNode("agentExecution", agentExecutionNode)
-    .addNode("classifyFailure", failureClassifierNode)
-    .addNode("response", responseNode)
-    .addNode("persistence", persistenceNode)
-    .addEdge(START, "input")
-    .addEdge("input", "contextLoader")
-    .addEdge("contextLoader", "deterministicRouter")
-    .addEdge("deterministicRouter", "entityResolver")
-    .addEdge("entityResolver", "validate")
-    .addConditionalEdges("validate", afterValidation, {
-        agentExecution: "agentExecution",
-        response: "response",
-    })
-    .addEdge("agentExecution", "classifyFailure")
-    .addEdge("classifyFailure", "response")
-    .addEdge("response", "persistence")
-    .addEdge("persistence", END)
-    .compile();
+async function orchestrate(
+    input: LangGraphOrchestrationInput
+): Promise<LangGraphOrchestrationState> {
+    let state = makeInitialState(input);
+    state = await loadStateContext(state);
+    state = await runParentRoutePlanning(state);
+
+    if (state.status !== "success" || !state.route.is_agent_request) {
+        return state;
+    }
+
+    state = applyEntityResolution(state);
+    state = await validateRoute(state);
+    state = await repairInvalidRouteIfPossible(state);
+
+    if (!state.validation.is_valid || state.status !== "success") {
+        if (!state.final_response) {
+            state.final_response = buildClarificationForValidation(state);
+        }
+        return state;
+    }
+
+    state = await executeWithRepairLoop(state);
+    await persistTaskFlow(state);
+
+    if (state.metadata.render_as_chat === true && state.agent_response) {
+        state.final_response = buildInlineAgentFinalResponse(state);
+        return state;
+    }
+
+    if (state.status !== "success") {
+        if (!state.final_response) {
+            state.final_response = deriveUserFacingAgentMessage(state);
+        }
+        return state;
+    }
+
+    const agentName = state.route.target_agent
+        ? getAgentCatalogEntry(state.route.target_agent)?.name || state.route.target_agent
+        : "Agent";
+    state.final_response =
+        compactString(
+            state.agent_response?.summary || state.agent_response?.message || "",
+            1200
+        ) ||
+        [
+            `Delegating to ${agentName}.`,
+            "",
+            `Action: ${state.route.target_action}`,
+            state.route.route_reason ? `\nReasoning: ${state.route.route_reason}` : "",
+        ]
+            .join("\n")
+            .trim();
+    return state;
+}
 
 export async function runLangGraphOrchestration(
     input: LangGraphOrchestrationInput
 ): Promise<LangGraphOrchestrationResult> {
-    const initialState = makeInitialState(input);
-    const state = (await graph.invoke(initialState)) as LangGraphOrchestrationState;
+    const state = await orchestrate(input);
 
     if (state.status === "not_agent") {
         return {
@@ -776,44 +915,6 @@ export async function runLangGraphOrchestration(
             type: "chat",
             content: "",
             status: state.status,
-            state,
-        };
-    }
-
-    if (!state.validation.is_valid) {
-        return {
-            handled: true,
-            type: "chat",
-            content: state.final_response,
-            status: state.status,
-            meta: {
-                kind: "orchestration_clarification",
-                route: state.route,
-                validation: state.validation,
-                resolved_entities: state.resolved_entities,
-                ...(state.metadata.install_meta && typeof state.metadata.install_meta === "object"
-                    ? (state.metadata.install_meta as Record<string, unknown>)
-                    : {}),
-            },
-            state,
-        };
-    }
-
-    const task = state.created_task;
-    if (!task && state.failure) {
-        return {
-            handled: true,
-            type: "chat",
-            content: state.final_response || state.failure.message,
-            status: state.status,
-            result: state.agent_response || undefined,
-            meta: {
-                kind: "orchestration_failure",
-                route: state.route,
-                resolved_entities: state.resolved_entities,
-                validation: state.validation,
-                failure: state.failure,
-            },
             state,
         };
     }
@@ -827,7 +928,7 @@ export async function runLangGraphOrchestration(
             result: state.agent_response || undefined,
             meta: {
                 kind: "inline_agent_response",
-                taskId: task?.taskId,
+                taskId: state.created_task?.taskId,
                 agentId: state.route.target_agent || undefined,
                 route: state.route,
                 resolved_entities: state.resolved_entities,
@@ -838,23 +939,67 @@ export async function runLangGraphOrchestration(
         };
     }
 
+    if (!state.validation.is_valid || state.status !== "success") {
+        return {
+            handled: true,
+            type: "chat",
+            content: state.final_response || buildClarificationForValidation(state),
+            status: state.status,
+            result: state.agent_response || undefined,
+            meta: {
+                kind: "parent_llm_response",
+                route: state.route,
+                resolved_entities: state.resolved_entities,
+                validation: state.validation,
+                failure: state.failure,
+                ...(state.metadata.install_meta && typeof state.metadata.install_meta === "object"
+                    ? (state.metadata.install_meta as Record<string, unknown>)
+                    : {}),
+            },
+            state,
+        };
+    }
+
+    if (state.dry_run || !state.created_task) {
+        return {
+            handled: true,
+            type: "chat",
+            content: state.final_response,
+            status: state.status,
+            result: state.agent_response || undefined,
+            meta: {
+                kind: "parent_llm_dry_run",
+                route: state.route,
+                resolved_entities: state.resolved_entities,
+                validation: state.validation,
+            },
+            state,
+        };
+    }
+
     return {
         handled: true,
         type: "agent_task",
         content: state.final_response,
-        status: task?.status || (state.agent_response?.status as string | undefined) || state.status,
-        taskId: task?.taskId,
+        status:
+            state.created_task.status ||
+            (state.agent_response?.status as string | undefined) ||
+            state.status,
+        taskId: state.created_task.taskId,
         agentId: state.route.target_agent || undefined,
         result: state.agent_response || undefined,
         meta: {
-            kind: "langgraph_agent_task",
+            kind: "parent_llm_agent_task",
             route: state.route,
             resolved_entities: state.resolved_entities,
             validation: state.validation,
             failure: state.failure,
+            repair_attempts: state.metadata.repair_attempts || 0,
         },
         state,
     };
 }
 
-export { graph as langGraphOrchestrator };
+export const langGraphOrchestrator = {
+    invoke: async (input: LangGraphOrchestrationInput) => orchestrate(input),
+};

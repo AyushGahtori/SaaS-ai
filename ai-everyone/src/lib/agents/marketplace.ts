@@ -364,46 +364,6 @@ const agentUiMeta: Record<
         isFeatured: false,
         trendingScore: 723,
     },
-    "leadgen-agent": {
-        iconUrl: makeMonogramIcon("Lead", "#116466", "#2c7a7b"),
-        installCount: 1320,
-        rating: 4.8,
-        createdAt: "2026-05-02T00:00:00.000Z",
-        isFeatured: false,
-        trendingScore: 728,
-    },
-    "marketing-agent": {
-        iconUrl: makeMonogramIcon("Mkt", "#7c3aed", "#2563eb"),
-        installCount: 1280,
-        rating: 4.8,
-        createdAt: "2026-05-02T00:00:00.000Z",
-        isFeatured: false,
-        trendingScore: 727,
-    },
-    "aria-podcast-agent": {
-        iconUrl: makeMonogramIcon("ARIA", "#0f766e", "#4f46e5"),
-        installCount: 1180,
-        rating: 4.7,
-        createdAt: "2026-05-02T00:00:00.000Z",
-        isFeatured: false,
-        trendingScore: 726,
-    },
-    "pr-copilot-review-agent": {
-        iconUrl: makeMonogramIcon("PR", "#1f2937", "#0f766e"),
-        installCount: 1120,
-        rating: 4.8,
-        createdAt: "2026-05-02T00:00:00.000Z",
-        isFeatured: false,
-        trendingScore: 725,
-    },
-    "pian-labs-alos-agent": {
-        iconUrl: makeMonogramIcon("ALOS", "#334155", "#15803d"),
-        installCount: 1040,
-        rating: 4.7,
-        createdAt: "2026-05-02T00:00:00.000Z",
-        isFeatured: false,
-        trendingScore: 724,
-    },
 };
 
 function makeDefaultAgentMeta(agent: AgentCatalogEntry) {

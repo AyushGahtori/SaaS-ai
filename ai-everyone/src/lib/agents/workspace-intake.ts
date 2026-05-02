@@ -1,5 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
 import { AGENT_CATALOG, getAgentCatalogEntry } from "@/lib/agents/catalog";
+import { generateModelJson } from "@/lib/llm/server-model";
 import { getAgentCapability } from "@/lib/orchestrator/langgraph/registry";
 import type { ConversationContext } from "@/lib/orchestrator/langgraph/types";
 
@@ -283,122 +283,6 @@ const AGENT_INTAKE_SCHEMAS: Record<string, AgentIntakeSchema> = {
                 ],
             }),
             action("list_capabilities", "List restaurant workspace capabilities.", []),
-        ],
-    },
-    "leadgen-agent": {
-        agentId: "leadgen-agent",
-        purpose: "B2B lead generation with search, enrichment, email discovery, scoring, storage, and session memory.",
-        actions: [
-            action("run_leadgen", "Find, enrich, score, and save leads.", [FIELDS.prompt], {
-                optional: [field("session_id", "session ID", "string", "Which LeadGen session should I use?", "session ID", false), field("limit", "lead count", "number", "How many leads should I target?", "lead count", false)],
-                examples: [
-                    "Find 25 seed-stage SaaS founders in Bengaluru.",
-                    "Find logistics decision makers in the US and score the strongest leads.",
-                ],
-            }),
-            action("list_leads", "List saved leads.", [], {
-                optional: [field("session_id", "session ID", "string", "Which LeadGen session should I inspect?", "session ID", false), field("limit", "lead limit", "number", "How many leads should I show?", "lead limit", false)],
-            }),
-            action("get_history", "Load LeadGen session history.", [field("session_id", "session ID", "string", "Which session should I load?")]),
-            action("clear_session", "Clear LeadGen session memory.", [field("session_id", "session ID", "string", "Which session should I clear?")]),
-            action("new_session", "Create a new LeadGen session.", []),
-            action("list_capabilities", "List LeadGen capabilities.", []),
-        ],
-    },
-    "marketing-agent": {
-        agentId: "marketing-agent",
-        purpose: "Product-aware marketing campaigns, posters, social copy, image analysis, and provider switching.",
-        actions: [
-            action("run_marketing_agent", "Run a marketing generation or editing turn.", [FIELDS.prompt], {
-                optional: [
-                    field("session_id", "session ID", "string", "Which marketing session should I use?", "session ID", false),
-                    field("brand_guidelines", "brand guidelines", "string", "What brand voice or constraints should I use?", "brand guidelines", false),
-                    field("provider", "LLM provider", "string", "Which provider should I use?", "LLM provider", false),
-                ],
-            }),
-            action("generate_campaign", "Generate campaign strategy and creative.", [FIELDS.prompt], {
-                optional: [field("session_id", "session ID", "string", "Which session should I use?", "session ID", false), field("brand_guidelines", "brand guidelines", "string", "What brand voice should I follow?", "brand guidelines", false)],
-            }),
-            action("analyze_product", "Analyze a product image or context and create marketing output.", [FIELDS.prompt], {
-                optional: [field("image_base64", "image attachment", "string", "Attach a product image.", "image attachment", false), field("session_id", "session ID", "string", "Which session should I use?", "session ID", false)],
-            }),
-            action("edit_poster", "Edit the latest poster in a session.", [FIELDS.prompt, field("session_id", "session ID", "string", "Which session contains the poster?")]),
-            action("list_sessions", "List recent marketing sessions.", []),
-            action("get_history", "Load marketing session messages and generated content.", [field("session_id", "session ID", "string", "Which session should I load?")]),
-            action("get_product_analysis", "Load saved product analysis.", [field("session_id", "session ID", "string", "Which session should I inspect?")]),
-            action("save_product_analysis", "Save product analysis.", [field("session_id", "session ID", "string", "Which session should I update?"), field("analysis", "analysis", "string", "What analysis should I save?")]),
-            action("list_providers", "List marketing LLM providers.", []),
-            action("switch_provider", "Switch marketing LLM provider.", [field("provider", "LLM provider", "string", "Which provider should I switch to?")]),
-            action("list_capabilities", "List Marketing Agent capabilities.", []),
-        ],
-    },
-    "aria-podcast-agent": {
-        agentId: "aria-podcast-agent",
-        purpose: "Podcast host and creator with modes, memory, voice input, transcription, and TTS.",
-        actions: [
-            action("chat", "Chat with ARIA in the active mode.", [FIELDS.prompt], {
-                optional: [field("session_id", "session ID", "string", "Which ARIA session should I use?", "session ID", false), field("mode", "mode", "string", "Host or creator mode?", "mode", false)],
-            }),
-            action("creator_script", "Create podcast scripts, outlines, show notes, or production guidance.", [FIELDS.prompt]),
-            action("host_conversation", "Run a live podcast host conversation.", [FIELDS.prompt]),
-            action("switch_mode", "Switch between host and creator modes.", [field("mode", "mode", "string", "Should ARIA use host or creator mode?")], {
-                optional: [field("session_id", "session ID", "string", "Which session should I update?", "session ID", false)],
-            }),
-            action("voice_input", "Transcribe an audio attachment and run ARIA.", [], {
-                optional: [field("audio_base64", "audio attachment", "string", "Attach an audio file.", "audio attachment", false), field("session_id", "session ID", "string", "Which session should I use?", "session ID", false), field("mode", "mode", "string", "Host or creator mode?", "mode", false)],
-            }),
-            action("text_to_speech", "Convert text to ARIA audio.", [field("text", "text", "string", "What should ARIA say?")]),
-            action("get_history", "Load ARIA session history.", [field("session_id", "session ID", "string", "Which session should I load?")]),
-            action("clear_history", "Clear ARIA session history.", [field("session_id", "session ID", "string", "Which session should I clear?")]),
-            action("list_sessions", "List recent ARIA sessions.", []),
-            action("list_capabilities", "List ARIA capabilities.", []),
-        ],
-    },
-    "pr-copilot-review-agent": {
-        agentId: "pr-copilot-review-agent",
-        purpose: "GitHub pull request review with static analysis, LLM review, validation, and webhook support.",
-        actions: [
-            action("dry_run_review", "Review a PR without posting comments.", [field("repo", "repository", "string", "Which GitHub repo in owner/name format?"), field("pr_number", "PR number", "number", "Which pull request number?")]),
-            action("review_pr", "Review a PR and allow posting when configured.", [field("repo", "repository", "string", "Which GitHub repo in owner/name format?"), field("pr_number", "PR number", "number", "Which pull request number?")], {
-                optional: [field("dry_run", "dry run", "boolean", "Should this avoid posting comments?", "dry run", false)],
-            }),
-            action("webhook_status", "Check webhook and token readiness.", []),
-            action("list_capabilities", "List PR Copilot capabilities.", []),
-        ],
-    },
-    "pian-labs-alos-agent": {
-        agentId: "pian-labs-alos-agent",
-        purpose: "Logistics workspace onboarding, entity summaries, record operations, and weather-aware route checks.",
-        actions: [
-            action("run_alos", "Route a logistics request to an ALOS tool.", [FIELDS.prompt], {
-                optional: [field("entity", "entity", "string", "Which logistics entity should I use?", "entity", false), FIELDS.origin, FIELDS.destination],
-            }),
-            action("describe_workspace", "Describe logistics entities and fields.", []),
-            action("summarize_entity", "Summarize a logistics entity.", [field("entity", "entity", "string", "Which entity should I summarize?")]),
-            action("list_records", "List logistics records.", [field("entity", "entity", "string", "Which entity should I list?")], {
-                optional: [field("filters", "filters", "object", "What filters should I apply?", "filters", false), field("limit", "limit", "number", "How many records should I show?", "limit", false)],
-            }),
-            action("create_record", "Create one MongoDB-backed logistics record.", [field("entity", "entity", "string", "Which entity should I insert into?"), field("record", "record", "object", "What record should I create?")]),
-            action("update_records", "Update logistics records safely.", [field("entity", "entity", "string", "Which entity should I update?"), field("filters", "filters", "object", "Which records should be updated?"), field("updates", "updates", "object", "What fields should change?")]),
-            action("check_route_weather", "Check weather and route risk.", [FIELDS.origin, FIELDS.destination]),
-            action("onboard_csv", "Import CSV rows into a logistics entity.", [field("entity", "entity", "string", "Which entity should receive this CSV?")], {
-                optional: [field("csv", "CSV text", "string", "Paste CSV text or attach a CSV file.", "CSV text", false)],
-            }),
-            action("onboard_excel", "Import an Excel workbook with one logistics entity per sheet.", [], {
-                optional: [field("file_data_url", "Excel attachment", "string", "Attach an Excel workbook.", "Excel attachment", false)],
-            }),
-            action("pull_rest_api", "Pull logistics records from a REST API.", [FIELDS.url], {
-                optional: [field("json_path", "JSON path", "string", "Where are the records in the API response?", "JSON path", false)],
-            }),
-            action("clone_mongo", "Clone selected collections from a remote MongoDB into ALOS.", [
-                field("source_mongodb_uri", "source MongoDB URI", "string", "What MongoDB URI should I clone from?"),
-                field("source_database", "source database", "string", "Which source database should I clone?"),
-            ], {
-                optional: [field("collections", "collections", "string[]", "Which collections should I clone?", "collections", false), field("limit", "limit", "number", "How many records per collection?", "limit", false)],
-            }),
-            action("start_empty", "Start with the built-in logistics schema.", []),
-            action("ask_user", "Ask for missing logistics details.", [field("question", "question", "string", "What should the operator answer?")]),
-            action("list_capabilities", "List ALOS capabilities.", []),
         ],
     },
     "emergency-response-agent": {
@@ -872,26 +756,6 @@ function validateType(value: unknown, type: FieldType): boolean {
     return true;
 }
 
-function parseJsonObject(text: string): Record<string, unknown> | null {
-    const trimmed = text.trim();
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
-    const source = fenced || trimmed;
-    try {
-        return JSON.parse(source) as Record<string, unknown>;
-    } catch {
-        const start = source.indexOf("{");
-        const end = source.lastIndexOf("}");
-        if (start >= 0 && end > start) {
-            try {
-                return JSON.parse(source.slice(start, end + 1)) as Record<string, unknown>;
-            } catch {
-                return null;
-            }
-        }
-        return null;
-    }
-}
-
 function asStringArray(value: unknown): string[] {
     if (!Array.isArray(value)) return [];
     return value.map((item) => String(item)).filter(Boolean);
@@ -1011,7 +875,7 @@ function fallbackClarification(agentId: string, suggestedAction: string): Worksp
             action: actionSchema.action,
             values: {},
             missingFields: [],
-            reasoningSummary: "Gemini intake unavailable; schema fallback determined no required input.",
+            reasoningSummary: "Structured intake model unavailable; schema fallback determined no required input.",
         };
     }
     const questions = missingFields.map((item, index) => `${index + 1}. ${item.question}`);
@@ -1028,7 +892,7 @@ function fallbackClarification(agentId: string, suggestedAction: string): Worksp
         values: {},
         missingFields,
         content,
-        validationError: "Gemini intake is unavailable; falling back to schema clarification.",
+        validationError: "Structured intake model is unavailable; falling back to schema clarification.",
     };
 }
 
@@ -1123,7 +987,7 @@ function buildLlmPrompt(params: {
         restaurantWorkspaceRule,
         shelfieWorkspaceRule,
         "If this is a repair attempt for wrong keys, wrong JSON shape, or wrong value types, fix the JSON internally. Do not ask the user again unless the actual information is missing or ambiguous.",
-        `Suggested action from deterministic UI context: ${params.suggestedAction}. You may change it only to another action in the locked agent schema.`,
+        `Suggested action from workspace context: ${params.suggestedAction}. You may change it only to another action in the locked agent schema.`,
         `Agent capability summary:\n${renderWorkspaceCapabilitiesText(params.agentId, params.agentName)}`,
         `Agent action schema:\n${stringifyForPrompt(schema)}`,
         `Recent conversation:\n${stringifyForPrompt(recentMessages)}`,
@@ -1135,21 +999,22 @@ function buildLlmPrompt(params: {
     ].filter(Boolean).join("\n\n");
 }
 
-async function callGeminiJson(prompt: string, model?: string): Promise<Record<string, unknown> | null> {
-    const apiKey = process.env.GEMINI_API_KEY?.trim();
-    if (!apiKey) return null;
-
-    const selectedModel = model && model.toLowerCase().includes("gemini") ? model : DEFAULT_INTAKE_MODEL;
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-        model: selectedModel,
-        config: {
+async function callStructuredIntakeJson(
+    prompt: string,
+    model?: string
+): Promise<Record<string, unknown> | null> {
+    try {
+        const selectedModel = model || DEFAULT_INTAKE_MODEL;
+        const response = await generateModelJson({
+            model: selectedModel,
+            llmProvider: selectedModel.toLowerCase().includes("gemini") ? "gemini" : "ollama",
+            messages: [{ role: "user", content: prompt }],
             temperature: 0,
-            responseMimeType: "application/json",
-        },
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-    });
-    return parseJsonObject(response.text || "");
+        });
+        return response.parsed;
+    } catch {
+        return null;
+    }
 }
 
 async function runLlmIntake(params: {
@@ -1172,7 +1037,7 @@ async function runLlmIntake(params: {
         suggestedAction: params.action,
         repair: params.repair,
     });
-    return callGeminiJson(prompt, params.model);
+    return callStructuredIntakeJson(prompt, params.model);
 }
 
 export async function resolveWorkspaceIntakeWithLlm(params: {

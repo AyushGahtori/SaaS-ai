@@ -99,6 +99,8 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
   const genRef = useRef(0)
   const activeChatIdRef = useRef(activeChatId)
   const startListeningRef = useRef<() => void>(() => {})
+  const playRawAudioChunkRef = useRef<(audioBase64: string, mimeType?: string) => void>(() => {})
+  const speakResponseRef = useRef<(text: string, audioBase64?: string, audioMimeType?: string) => void>(() => {})
 
   const onSendMessageRef = useRef(onSendMessage)
   const onCloseRef = useRef(onClose)
@@ -335,6 +337,9 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     speechSynthesis.speak(utter)
   }
 
+  playRawAudioChunkRef.current = playRawAudioChunk
+  speakResponseRef.current = speakResponse
+
   const startListening = () => {
     if (!mountedRef.current || isClosingRef.current || isSpeakingRef.current) return
 
@@ -462,13 +467,22 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
             const unsub = subscribeToTask(taskId, (task) => {
               if (!task) return
 
-              if (task.status === 'success') {
+              const summary =
+                (task.agentOutput?.message ||
+                  task.agentOutput?.summary ||
+                  task.agentOutput?.error ||
+                  '') as string
+
+              if (task.status === 'success' || task.status === 'partial_success') {
                 unsub()
-                const message = (task.agentOutput?.message || 'I have completed the task.') as string
-                speakResponse(message)
-              } else if (task.status === 'failed') {
+                speakResponse(summary || 'I have completed the task.')
+              } else if (
+                task.status === 'failed' ||
+                task.status === 'needs_input' ||
+                task.status === 'action_required'
+              ) {
                 unsub()
-                speakResponse('Sorry, I encountered an error.')
+                speakResponse(summary || 'Sorry, I could not complete that request.')
               }
             })
           } else {
@@ -514,7 +528,7 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
 
       if (!detail?.audioBase64) return
       if (detail.chatId && detail.chatId !== activeChatIdRef.current) return
-      playRawAudioChunk(detail.audioBase64, detail.audioMimeType)
+      playRawAudioChunkRef.current(detail.audioBase64, detail.audioMimeType)
     }
 
     const onReturn = () => {
@@ -583,14 +597,14 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
             setPendingVoiceResponse(null)
             return
           }
-          speakResponse(pendingVoiceResponse)
+          speakResponseRef.current(pendingVoiceResponse)
           setPendingVoiceResponse(null)
         }
       }, 400)
 
       return () => clearTimeout(timer)
     }
-  }, [pendingVoiceResponse])
+  }, [pendingVoiceResponse, setPendingVoiceResponse])
 
   return (
     <div className="relative w-full">

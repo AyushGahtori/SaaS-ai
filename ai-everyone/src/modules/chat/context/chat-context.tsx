@@ -58,6 +58,28 @@ interface StreamPayload {
     meta?: Record<string, unknown>;
 }
 
+const AGENT_TASK_CHAT_FALLBACK_STATUSES = new Set([
+    "failed",
+    "needs_input",
+    "action_required",
+]);
+
+function getAgentTaskFallbackText(payload: StreamPayload): string {
+    const result = payload.result && typeof payload.result === "object"
+        ? (payload.result as Record<string, unknown>)
+        : null;
+    const candidates = [
+        payload.content,
+        typeof result?.summary === "string" ? result.summary : "",
+        typeof result?.message === "string" ? result.message : "",
+        typeof result?.error === "string" ? result.error : "",
+    ]
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean);
+
+    return candidates[0] || "I could not complete that request right now.";
+}
+
 export type ChatWorkspaceScope =
     | { type: "global" }
     | { type: "agent"; agentId: string; agentName: string };
@@ -398,6 +420,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     useEffect(() => {
+        const taskListeners = taskListenersRef.current;
         return () => {
             Object.keys(requestAbortControllersRef.current).forEach((chatId) => {
                 abortByChatRef.current[chatId] = true;
@@ -409,7 +432,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                     controller.abort();
                 }
             });
-            Object.values(taskListenersRef.current).forEach((unsub) => unsub());
+            Object.values(taskListeners).forEach((unsub) => unsub());
         };
     }, []);
 
@@ -936,6 +959,49 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 if (voiceAudioPayload?.audioBase64) {
                     returnPayload.audioBase64 = voiceAudioPayload.audioBase64;
                     returnPayload.audioMimeType = voiceAudioPayload.audioMimeType;
+                }
+
+                const shouldCollapseAgentTaskToChat =
+                    resolvedPayload.type === "agent_task" &&
+                    AGENT_TASK_CHAT_FALLBACK_STATUSES.has(
+                        String(resolvedPayload.status || "").toLowerCase()
+                    );
+
+                if (shouldCollapseAgentTaskToChat) {
+                    const assistantContent = getAgentTaskFallbackText(resolvedPayload);
+                    const assistantMsg = await createMessage(
+                        uid,
+                        resolvedChatIdValue,
+                        "assistant",
+                        assistantContent,
+                        undefined,
+                        undefined,
+                        isVoice,
+                        [],
+                        resolvedPayload.meta && typeof resolvedPayload.meta === "object"
+                            ? {
+                                ...resolvedPayload.meta,
+                                collapsedAgentTask: true,
+                                originalAgentId: resolvedPayload.agentId,
+                                originalTaskStatus: resolvedPayload.status,
+                            }
+                            : {
+                                collapsedAgentTask: true,
+                                originalAgentId: resolvedPayload.agentId,
+                                originalTaskStatus: resolvedPayload.status,
+                            }
+                    );
+                    updateMessagesForChat(resolvedChatIdValue, (prev) =>
+                        prev.map((message) =>
+                            message.id === tempAssistantId ? assistantMsg : message
+                        )
+                    );
+                    await updateChat(uid, resolvedChatIdValue, {});
+                    return {
+                        type: "chat",
+                        content: assistantContent,
+                        meta: assistantMsg.meta as Record<string, unknown> | undefined,
+                    };
                 }
 
                 if (

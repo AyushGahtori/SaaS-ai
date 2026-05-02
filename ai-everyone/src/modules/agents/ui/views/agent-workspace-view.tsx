@@ -151,97 +151,6 @@ const SHELFIE_RUNTIME_NOTES = [
   "Use history and reset controls when you want to branch into a fresh shopping plan without losing other sessions.",
 ];
 
-const NEW_EC2_AGENT_IDS = new Set([
-  "leadgen-agent",
-  "marketing-agent",
-  "aria-podcast-agent",
-  "pr-copilot-review-agent",
-  "pian-labs-alos-agent",
-]);
-
-const NEW_EC2_ACTION_PROMPTS: Record<string, Record<string, string>> = {
-  "leadgen-agent": {
-    run_leadgen: "Find 25 seed-stage SaaS founders in Bengaluru and score the strongest leads.",
-    list_leads: "List the saved leads from my latest LeadGen session.",
-    get_history: "Load LeadGen history for session leadgen-demo-session.",
-    clear_session: "Clear session leadgen-demo-session.",
-    new_session: "Create a fresh LeadGen session.",
-    list_capabilities: "Show LeadGen capabilities.",
-  },
-  "marketing-agent": {
-    run_marketing_agent: "Generate a launch campaign for a new AI scheduling assistant with social copy and poster direction.",
-    generate_campaign: "Create a seven-day launch campaign for a productivity SaaS aimed at founders.",
-    analyze_product: "Analyze this product image and create positioning, audience, and ad copy.",
-    edit_poster: "Edit the latest poster in session marketing-demo-session to make it more concise.",
-    list_sessions: "Show recent marketing sessions.",
-    get_history: "Load marketing history for session marketing-demo-session.",
-    get_product_analysis: "Load saved product analysis for session marketing-demo-session.",
-    save_product_analysis: "Save this product analysis for session marketing-demo-session: premium AI assistant for sales teams.",
-    list_providers: "Show configured marketing providers.",
-    switch_provider: "Switch Marketing Agent to Gemini.",
-    list_capabilities: "Show Marketing Agent capabilities.",
-  },
-  "aria-podcast-agent": {
-    chat: "Brainstorm a warm intro for a podcast episode about autonomous agents.",
-    creator_script: "Creator mode: write a 12-minute podcast script about AI agents in small business operations.",
-    host_conversation: "Host mode: interview me about how AI is changing product teams.",
-    switch_mode: "Switch ARIA to creator mode.",
-    voice_input: "Transcribe this audio and respond as ARIA.",
-    text_to_speech: "Turn this intro into ARIA podcast audio: Welcome back to Agents at Work.",
-    get_history: "Load ARIA history for session aria-demo-session.",
-    clear_history: "Clear ARIA history for session aria-demo-session.",
-    list_sessions: "Show recent ARIA sessions.",
-    list_capabilities: "Show ARIA capabilities.",
-  },
-  "pr-copilot-review-agent": {
-    dry_run_review: "Dry-run review AyushGahtori/SaaS-ai PR #12 and summarize the highest-risk findings.",
-    review_pr: "Review AyushGahtori/SaaS-ai PR #12 with dry run enabled.",
-    webhook_status: "Check whether PR Copilot webhooks and GitHub token are configured.",
-    list_capabilities: "Show PR Copilot capabilities.",
-  },
-  "pian-labs-alos-agent": {
-    run_alos: "Summarize shipments and highlight dispatch risks.",
-    describe_workspace: "Describe the current logistics workspace.",
-    summarize_entity: "Summarize shipments.",
-    list_records: "List shipment records with a limit of 10.",
-    create_record: "Create a shipments record for SHP-2001 from Delhi to Jaipur with planned status.",
-    update_records: "Update shipments where status is planned and set priority to high.",
-    check_route_weather: "Check route weather from Delhi to Mumbai before dispatch.",
-    onboard_csv: "Onboard this CSV into shipments: id,origin,destination,status\\nSHP-3001,Delhi,Pune,planned",
-    pull_rest_api: "Pull logistics records from https://example.com/api/shipments using records as the JSON path.",
-    ask_user: "Ask the operator which warehouse should handle this delayed shipment.",
-    list_capabilities: "Show ALOS capabilities.",
-  },
-};
-
-const NEW_EC2_RUNTIME_NOTES: Record<string, string[]> = {
-  "leadgen-agent": [
-    "Lead discovery, enrichment, email lookup, scoring, storage, history, and session reset all run through the EC2 adapter.",
-    "The normal chat card renders compact lead summaries while this workspace exposes all lead operations.",
-    "Session IDs are optional for discovery and required only for targeted history or cleanup.",
-  ],
-  "marketing-agent": [
-    "Campaign, product analysis, poster editing, provider switching, sessions, and saved product context are all exposed here.",
-    "Image attachments from the composer are forwarded as product analysis inputs when present.",
-    "Provider and session actions return friendly cards instead of raw provider payloads.",
-  ],
-  "aria-podcast-agent": [
-    "ARIA stays locked to podcast hosting, creator scripts, voice input, transcription, TTS, mode switching, and history.",
-    "Audio attachments are forwarded into voice input; text-to-speech returns audio metadata for the UI.",
-    "Host and creator modes persist through the copied source memory service.",
-  ],
-  "pr-copilot-review-agent": [
-    "PR Copilot expects a GitHub repo and PR number for reviews, with dry-run behavior available for safe validation.",
-    "Webhook readiness is exposed as a first-class action so deployment configuration can be checked from the UI.",
-    "Static analysis and LLM review output are summarized into cards without exposing raw stack traces.",
-  ],
-  "pian-labs-alos-agent": [
-    "ALOS handles workspace description, entity summaries, record lists, create/update operations, CSV/REST onboarding, and route weather.",
-    "MongoDB is used when configured, with sample logistics data available for read-only smoke tests.",
-    "Route checks use geocoding, OSRM distance, and weather signals to produce go, caution, or reroute guidance.",
-  ],
-};
-
 function formatActionLabel(action: string): string {
   return action
     .split("_")
@@ -565,30 +474,12 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
     () => (agent?.id === "shelfie-grocery-agent" ? intakeSchema?.actions || [] : []),
     [agent, intakeSchema]
   );
-  const newEc2Actions = useMemo(
-    () => (agent && NEW_EC2_AGENT_IDS.has(agent.id) ? intakeSchema?.actions || [] : []),
-    [agent, intakeSchema]
-  );
-  const newEc2ActionPrompts = useMemo(
-    () => (agent ? NEW_EC2_ACTION_PROMPTS[agent.id] || {} : {}),
-    [agent]
-  );
-  const newEc2RuntimeNotes = useMemo(
-    () => (agent ? NEW_EC2_RUNTIME_NOTES[agent.id] || [] : []),
-    [agent]
-  );
-  const newEc2QuickFlows = useMemo(
-    () => Object.values(newEc2ActionPrompts).slice(0, 6),
-    [newEc2ActionPrompts]
-  );
   const isRestaurantWorkspace = agent?.id === "restaurant-concierge-agent";
   const isShelfieWorkspace = agent?.id === "shelfie-grocery-agent";
   const workspaceNotes = useMemo(
     () =>
       agent?.id === "devika-engineer-agent"
         ? DEVIKA_RUNTIME_NOTES
-        : agent && NEW_EC2_AGENT_IDS.has(agent.id)
-          ? NEW_EC2_RUNTIME_NOTES[agent.id] || []
         : [
             "Recent chats stay scoped to this agent.",
             "The composer calls only this workspace endpoint.",
@@ -1453,24 +1344,6 @@ export function AgentWorkspaceView({ agentId }: AgentWorkspaceViewProps) {
                 actionPrompts={SHELFIE_ACTION_PROMPTS}
                 requiredToneClassName="border-emerald-400/18 bg-emerald-400/10 text-emerald-100/88"
                 sectionClassName="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]"
-              />
-            ) : null}
-
-            {newEc2Actions.length > 0 && agent ? (
-              <AgentActionControlsSection
-                actions={newEc2Actions}
-                title={`${agent.name} controls`}
-                notesTitle="Runtime notes"
-                notes={newEc2RuntimeNotes}
-                quickFlowsTitle="Quick flows"
-                quickFlows={newEc2QuickFlows}
-                isAccessible={isAccessible}
-                sendWorkspacePrompt={sendWorkspacePrompt}
-                formatActionLabel={formatActionLabel}
-                formatFieldLabel={formatFieldLabel}
-                actionPrompts={newEc2ActionPrompts}
-                requiredToneClassName="border-sky-400/18 bg-sky-400/10 text-sky-100/88"
-                sectionClassName="grid gap-4 xl:grid-cols-[1.12fr_0.88fr]"
               />
             ) : null}
           </div>

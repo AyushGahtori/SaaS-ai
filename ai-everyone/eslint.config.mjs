@@ -10,9 +10,6 @@ const reactHooksCompilerRules = {
 const config = [
   ...nextCoreWebVitals,
   {
-    ignores: ["EC2/**", "new_agents/**"],
-  },
-  {
     files: [
       "**/*.test.{js,jsx,ts,tsx}",
       "**/*.spec.{js,jsx,ts,tsx}",

@@ -62,11 +62,6 @@ function isPlaceholder(text) {
     return /__SET_IN_(?:LOCAL|EC2)_RUNTIME__|your[_-]?key|example/i.test(text);
 }
 
-function isConfigReference(text) {
-    return /\b(?:api[_-]?key|secret|token)\s*[:=]\s*['"]?(?:settings|config|process\.env|os\.environ)\./i.test(text) ||
-        /\b(?:api[_-]?key|secret|token)\s*[:=]\s*os\.getenv\(/i.test(text);
-}
-
 const matches = [];
 for (const filePath of walk(ROOT)) {
     const rel = path.relative(ROOT, filePath).replaceAll("\\", "/");
@@ -84,7 +79,6 @@ for (const filePath of walk(ROOT)) {
             const found = pattern.regex.exec(line);
             if (!found) continue;
             if (isPlaceholder(line)) continue;
-            if (isConfigReference(line)) continue;
             matches.push({
                 file: rel,
                 line: index + 1,
