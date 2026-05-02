@@ -431,7 +431,6 @@ function throwIfAborted(signal?: AbortSignal): void {
         throw createAbortError();
     }
 }
-
 function isAbortLikeError(error: unknown): boolean {
     if (!error) return false;
 
@@ -1358,7 +1357,7 @@ export async function POST(req: NextRequest) {
         }
 
         const uid = verifiedUser.uid;
-        await reserveUsageSlot(uid);
+        await reserveUsageSlot(uid, verifiedUser.email);
         cleanupExpiredUploadedDocs(uid).catch((error) => {
             console.error("[UploadedDocsCleanup] failed:", error);
         });
@@ -1479,7 +1478,7 @@ export async function POST(req: NextRequest) {
             });
 
         if (orchestrationResult?.handled) {
-            await commitUsageSlot(uid);
+            await commitUsageSlot(uid, verifiedUser.email);
             const encoder = new TextEncoder();
             const upstreamAbortController = new AbortController();
             let streamClosed = false;
@@ -1714,7 +1713,7 @@ export async function POST(req: NextRequest) {
                                 upstreamAbortController.signal
                             );
                         }
-                        await commitUsageSlot(uid);
+                        await commitUsageSlot(uid, verifiedUser.email);
 
                         const cleanContent = assistantContent
                             .replace(/<AGENT_INTENT>[\s\S]*?<\/AGENT_INTENT>/g, "")

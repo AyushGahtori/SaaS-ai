@@ -98,7 +98,7 @@ export async function POST(
         }
 
         const uid = verifiedUser.uid;
-        await reserveUsageSlot(uid);
+        await reserveUsageSlot(uid, verifiedUser.email);
 
         const [installedAgentIds, accessibleAgentIds] = await Promise.all([
             getInstalledAgentIds(uid),
@@ -113,7 +113,7 @@ export async function POST(
         });
 
         if (!installedAgentIds.includes(agentId)) {
-            await commitUsageSlot(uid);
+            await commitUsageSlot(uid, verifiedUser.email);
             return streamChat(getInstallHintForAgent(agentId), {
                 status: "needs_clarification",
                 selected_agent: agentId,
@@ -122,7 +122,7 @@ export async function POST(
         }
 
         if (!accessibleAgentIds.includes(agentId)) {
-            await commitUsageSlot(uid);
+            await commitUsageSlot(uid, verifiedUser.email);
             return streamChat(getInstallHintForAgent(agentId), {
                 status: "needs_clarification",
                 selected_agent: agentId,
@@ -149,7 +149,7 @@ export async function POST(
         });
 
         if (!resolution.ok) {
-            await commitUsageSlot(uid);
+            await commitUsageSlot(uid, verifiedUser.email);
             console.info("[AgentWorkspaceChat] blocked", {
                 userId: uid,
                 chatId,
@@ -165,7 +165,7 @@ export async function POST(
         }
 
         if (resolution.action === "list_capabilities") {
-            await commitUsageSlot(uid);
+            await commitUsageSlot(uid, verifiedUser.email);
             const content = renderWorkspaceCapabilitiesText(agentId, resolution.agentName);
             return streamChat(content, {
                 status: "success",
@@ -210,7 +210,7 @@ export async function POST(
             agentOutput: refreshedOutputMaybe,
         } = await executeAgentTaskAndReadBack(task);
 
-        await commitUsageSlot(uid);
+        await commitUsageSlot(uid, verifiedUser.email);
 
         const agentSummary =
             typeof refreshedOutputMaybe?.message === "string" && refreshedOutputMaybe.message.trim()

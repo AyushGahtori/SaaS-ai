@@ -12,6 +12,7 @@ import { getMarketplaceAgentById } from "@/lib/agents/marketplace";
 import { loadConversationContext } from "./context";
 import {
     getActionCapability,
+    deterministicRoute,
     getAgentCapability,
 } from "./registry";
 import { resolveContextualEntities, formatEntityChoices } from "./resolver";
@@ -73,6 +74,7 @@ function makeInitialState(input: LangGraphOrchestrationInput): LangGraphOrchestr
         resolved_entities: {
             entity_source: "none",
             message_id: null,
+            file_id: null,
             row_index: null,
             subject: null,
             sender: null,
@@ -245,6 +247,12 @@ function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, u
                 row_index: state.resolved_entities.row_index,
             }
             : {}),
+        ...(state.resolved_entities.file_id && !state.route.parameters.file_id
+            ? {
+                file_id: state.resolved_entities.file_id,
+                row_index: state.resolved_entities.row_index,
+            }
+            : {}),
     };
 
     return {
@@ -305,6 +313,12 @@ function applyEntityResolution(state: LangGraphOrchestrationState): LangGraphOrc
                         row_index: resolved.row_index,
                     }
                     : {}),
+                ...(resolved.file_id && !state.route.parameters.file_id
+                    ? {
+                        file_id: resolved.file_id,
+                        row_index: resolved.row_index,
+                    }
+                    : {}),
             },
         },
     };
@@ -349,6 +363,19 @@ async function runParentRoutePlanning(
     });
 
     if (!decision) {
+        const fallbackRoute = deterministicRoute(state.user_input, state.conversation_context);
+        if (fallbackRoute.is_agent_request) {
+            return {
+                ...state,
+                route: fallbackRoute,
+                status: "success",
+                metadata: {
+                    ...state.metadata,
+                    parent_llm_fallback: "deterministic_route",
+                },
+            };
+        }
+
         return {
             ...state,
             status: "infrastructure_error",
@@ -508,6 +535,39 @@ async function validateRoute(
                     missing_fields: ["message_id"],
                     clarification_needed: true,
                     reason: "No Gmail row matched the reference.",
+                },
+            };
+        }
+    }
+
+    if (
+        agent.id === "google-agent" &&
+        state.route.parameters.agent_type === "drive" &&
+        action.name === "read_file"
+    ) {
+        const candidates = state.resolved_entities.candidate_entities || [];
+        if (!state.resolved_entities.file_id && candidates.length > 1) {
+            return {
+                ...state,
+                status: "multiple_matches_found",
+                validation: {
+                    is_valid: false,
+                    missing_fields: ["file_id"],
+                    clarification_needed: true,
+                    reason: "Multiple Drive files matched the reference.",
+                },
+            };
+        }
+
+        if (!state.resolved_entities.file_id) {
+            return {
+                ...state,
+                status: "no_match_found",
+                validation: {
+                    is_valid: false,
+                    missing_fields: ["file_id"],
+                    clarification_needed: true,
+                    reason: "No Drive file matched the reference.",
                 },
             };
         }

@@ -251,6 +251,24 @@ function mapFirebaseAuthError(
     });
 }
 
+function mapUsageLimitError(surface: ErrorSurface, message: string): UserFacingError | null {
+    const lower = message.toLowerCase();
+    if (
+        !lower.includes("ai message limit") &&
+        !lower.includes("usage limit") &&
+        !lower.includes("limit_reached")
+    ) {
+        return null;
+    }
+
+    return buildError(surface, {
+        code: "usage/monthly-limit",
+        provider: "api",
+        retryable: false,
+        message: "You have reached your AI message limit. Please upgrade to continue.",
+    });
+}
+
 function mapGeminiError(
     code: string | null,
     status: number | null,
@@ -440,6 +458,9 @@ export function normalizeUserFacingError(
     const code = readErrorCode(error, rawMessage);
     const status = readErrorStatus(error, rawMessage);
 
+    const usageLimitMapped = mapUsageLimitError(surface, rawMessage);
+    if (usageLimitMapped) return usageLimitMapped;
+
     const firebaseMapped = code ? mapFirebaseAuthError(code, surface) : null;
     if (firebaseMapped) return firebaseMapped;
 
@@ -484,4 +505,3 @@ export function isRetryableHighTrafficGeminiError(error: UserFacingError): boole
         code === "gemini/deadline_exceeded"
     );
 }
-

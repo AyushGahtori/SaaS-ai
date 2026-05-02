@@ -381,7 +381,14 @@ async function callParentJson(params: {
         llmProvider: params.llmProvider,
         messages: [{ role: "user", content: params.prompt }],
         temperature: 0,
-    }).catch(() => null);
+    }).catch((error) => {
+        console.warn("[ParentRouter] JSON generation failed", {
+            model: params.model,
+            provider: params.llmProvider,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+    });
 
     if (first?.parsed) return first.parsed;
 
@@ -399,7 +406,14 @@ async function callParentJson(params: {
         llmProvider: params.llmProvider,
         messages: [{ role: "user", content: repairPrompt }],
         temperature: 0,
-    }).catch(() => null);
+    }).catch((error) => {
+        console.warn("[ParentRouter] JSON repair generation failed", {
+            model: params.model,
+            provider: params.llmProvider,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+    });
 
     return second?.parsed || null;
 }

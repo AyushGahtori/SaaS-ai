@@ -836,7 +836,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
                 if (!res.ok) {
                     const errData = await res.json().catch(() => ({}));
-                    throw new Error(errData.error || `API returned status ${res.status}`);
+                    const apiError = new Error(errData.error || `API returned status ${res.status}`) as Error & {
+                        status?: number;
+                    };
+                    apiError.status = res.status;
+                    throw apiError;
                 }
 
                 if (!res.body) {

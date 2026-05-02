@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
                 { status: 500 }
             );
         }
-        await reserveUsageSlot(verifiedUser.uid);
+        await reserveUsageSlot(verifiedUser.uid, verifiedUser.email);
 
         const settings = await getBloomSettings(verifiedUser.uid);
         const { conversation, messages } = await loadConversationForPrompt(
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
             ],
             context,
         });
-        await commitUsageSlot(verifiedUser.uid);
+        await commitUsageSlot(verifiedUser.uid, verifiedUser.email);
 
         await upsertConversationMetadata(verifiedUser.uid, conversationId, {
             modelId: activeModel,

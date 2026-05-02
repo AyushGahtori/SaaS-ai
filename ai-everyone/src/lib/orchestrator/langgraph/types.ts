@@ -100,6 +100,7 @@ export interface RouteDecision {
 
 export interface ResolvedEntities {
     message_id?: string | null;
+    file_id?: string | null;
     row_index?: number | null;
     subject?: string | null;
     sender?: string | null;

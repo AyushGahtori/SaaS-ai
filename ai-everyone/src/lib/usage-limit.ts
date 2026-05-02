@@ -1,7 +1,12 @@
 import { adminDb } from "@/lib/firebase-admin";
 
-const DEFAULT_GENERAL_AI_LIMIT = process.env.NODE_ENV === "development" ? 100000 : 100;
+const DEFAULT_GENERAL_AI_LIMIT = 100000;
 const BILLING_CYCLE_MS = 30 * 24 * 60 * 60 * 1000;
+const UNLIMITED_USAGE_EMAILS = new Set(["gahtoriayush24@gmail.com"]);
+
+function hasUnlimitedUsage(email?: string | null): boolean {
+    return UNLIMITED_USAGE_EMAILS.has((email || "").trim().toLowerCase());
+}
 
 function parseMonthlyAiLimit(): number {
     const rawLimit = process.env.MAX_AI_REQUESTS_PER_MONTH;
@@ -104,7 +109,9 @@ function assertWithinLimit(aiMessagesUsed: number): void {
     }
 }
 
-export async function reserveUsageSlot(uid: string): Promise<void> {
+export async function reserveUsageSlot(uid: string, email?: string | null): Promise<void> {
+    if (hasUnlimitedUsage(email)) return;
+
     const userRef = adminDb.collection("users").doc(uid);
     const userDoc = await userRef.get();
     const now = Date.now();
@@ -113,7 +120,9 @@ export async function reserveUsageSlot(uid: string): Promise<void> {
     assertWithinLimit(usage.aiMessagesUsed);
 }
 
-export async function commitUsageSlot(uid: string): Promise<void> {
+export async function commitUsageSlot(uid: string, email?: string | null): Promise<void> {
+    if (hasUnlimitedUsage(email)) return;
+
     const userRef = adminDb.collection("users").doc(uid);
 
     await adminDb.runTransaction(async (transaction) => {
@@ -133,6 +142,6 @@ export async function commitUsageSlot(uid: string): Promise<void> {
     });
 }
 
-export async function enforceUsageLimit(uid: string): Promise<void> {
-    await commitUsageSlot(uid);
+export async function enforceUsageLimit(uid: string, email?: string | null): Promise<void> {
+    await commitUsageSlot(uid, email);
 }
