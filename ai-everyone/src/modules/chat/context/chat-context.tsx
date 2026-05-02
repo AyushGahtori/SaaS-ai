@@ -48,6 +48,9 @@ import {
 interface StreamPayload {
     type: string;
     content?: string;
+    audioBase64?: string;
+    audioMimeType?: string;
+    model?: string;
     taskId?: string;
     agentId?: string;
     status?: string;
@@ -87,7 +90,14 @@ interface ChatContextValue {
             forceNewChat?: boolean;
             modelOverride?: string;
         }
-    ) => Promise<{ type: string; content?: string; taskId?: string } | undefined>;
+    ) => Promise<{
+        type: string;
+        content?: string;
+        taskId?: string;
+        audioBase64?: string;
+        audioMimeType?: string;
+        meta?: Record<string, unknown>;
+    } | undefined>;
     stopGeneration: () => void;
     removeChatById: (chatId: string) => Promise<void>;
     renameChat: (chatId: string, newTitle: string) => Promise<void>;
@@ -342,6 +352,28 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         []
     );
 
+    const closeVoiceSession = useCallback(
+        (abortActiveRequest = false) => {
+            setIsVoiceActive(false);
+            setPendingVoiceResponse(null);
+
+            if (!abortActiveRequest) return;
+            const chatId = activeChatIdRef.current;
+            if (!chatId || !generationStateRef.current[chatId]?.isGenerating) return;
+
+            abortByChatRef.current[chatId] = true;
+            setChatGenerationState(chatId, { isGenerating: true, isStopping: true });
+            try {
+                requestAbortControllersRef.current[chatId]?.abort(
+                    new DOMException("Voice session closed.", "AbortError")
+                );
+            } catch {
+                requestAbortControllersRef.current[chatId]?.abort();
+            }
+        },
+        [setChatGenerationState]
+    );
+
     const updateMessagesForChat = useCallback(
         (chatId: string, updater: (current: ChatMessage[]) => ChatMessage[]) => {
             const current =
@@ -401,12 +433,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }, [uid]);
 
     const createNewChat = useCallback(() => {
+        closeVoiceSession(true);
         activeChatIdRef.current = null;
         messagesRef.current = [];
         setActiveChatId(null);
         setMessages([]);
         setError(null);
-    }, []);
+    }, [closeVoiceSession]);
 
     const ensureActiveChat = useCallback(
         async (options?: { seedTitle?: string }): Promise<string | null> => {
@@ -481,6 +514,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const selectChat = useCallback(
         async (chatId: string) => {
             if (!uid) return;
+            if (activeChatIdRef.current !== chatId) {
+                closeVoiceSession(true);
+            }
             activeChatIdRef.current = chatId;
             setActiveChatId(chatId);
             setError(null);
@@ -509,7 +545,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 }
             }
         },
-        [uid]
+        [uid, closeVoiceSession]
     );
 
     const watchTask = useCallback((taskId: string) => {
@@ -566,7 +602,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 forceNewChat?: boolean;
                 modelOverride?: string;
             } = {}
-        ): Promise<{ type: string; content?: string; taskId?: string } | undefined> => {
+        ): Promise<{
+            type: string;
+            content?: string;
+            taskId?: string;
+            audioBase64?: string;
+            audioMimeType?: string;
+            meta?: Record<string, unknown>;
+        } | undefined> => {
             if (!uid || !content.trim()) return undefined;
 
             setError(null);
@@ -784,6 +827,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 let streamedAssistantContent = "";
                 let finalPayload: StreamPayload | null = null;
                 let agentTaskPayload: StreamPayload | null = null;
+                let sawAudioDelta = false;
+                const voiceAudioPayloadRef: {
+                    current: Pick<StreamPayload, "audioBase64" | "audioMimeType"> | null;
+                } = { current: null };
 
                 const processEvent = (eventName: string, dataLine: string) => {
                     const payload = JSON.parse(dataLine.substring(6)) as StreamPayload & {
@@ -804,6 +851,29 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
                     if (eventName === "agent_task") {
                         agentTaskPayload = payload;
+                        return;
+                    }
+
+                    if (eventName === "audio") {
+                        voiceAudioPayloadRef.current = {
+                            audioBase64: payload.audioBase64,
+                            audioMimeType: payload.audioMimeType,
+                        };
+                        return;
+                    }
+
+                    if (eventName === "audio_delta") {
+                        sawAudioDelta = true;
+                        window.dispatchEvent(
+                            new CustomEvent("pian:voice-audio-delta", {
+                                detail: {
+                                    chatId: resolvedChatIdValue,
+                                    audioBase64: payload.audioBase64,
+                                    audioMimeType: payload.audioMimeType,
+                                    model: payload.model,
+                                },
+                            })
+                        );
                         return;
                     }
 
@@ -855,6 +925,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                         type: "chat",
                         content: streamedAssistantContent || "No response received.",
                     };
+                const returnPayload: StreamPayload = { ...resolvedPayload };
+                if (sawAudioDelta) {
+                    returnPayload.meta = {
+                        ...(returnPayload.meta || {}),
+                        voiceAudioStreamed: true,
+                    };
+                }
+                const voiceAudioPayload = voiceAudioPayloadRef.current;
+                if (voiceAudioPayload?.audioBase64) {
+                    returnPayload.audioBase64 = voiceAudioPayload.audioBase64;
+                    returnPayload.audioMimeType = voiceAudioPayload.audioMimeType;
+                }
 
                 if (
                     resolvedPayload.type === "agent_task" &&
@@ -910,7 +992,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
                 await updateChat(uid, resolvedChatIdValue, {});
 
-                return resolvedPayload;
+                return returnPayload;
             } catch (err: unknown) {
                 console.error("[sendMessage]", err);
                 const aborted =
