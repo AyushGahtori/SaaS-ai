@@ -1,0 +1,13 @@
+[Unit]
+Description=Pian LeadGen Agent
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/pian/EC2/agents/leadgen-agent
+EnvironmentFile=/opt/pian/EC2/.env
+ExecStart=/opt/pian/EC2/venv/bin/uvicorn server:app --host 0.0.0.0 --port 8050
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -33,7 +33,12 @@ type AgentFilterChip =
   | "notion"
   | "location"
   | "calendar"
-  | "reminders";
+  | "reminders"
+  | "sales"
+  | "marketing"
+  | "media"
+  | "development"
+  | "operations";
 
 const FILTER_CHIPS: AgentFilterChip[] = [
   "all",
@@ -44,6 +49,11 @@ const FILTER_CHIPS: AgentFilterChip[] = [
   "location",
   "calendar",
   "reminders",
+  "sales",
+  "marketing",
+  "media",
+  "development",
+  "operations",
 ];
 
 const MAX_SECONDARY_SECTIONS = 4;
@@ -57,6 +67,11 @@ const CHIP_LABELS: Record<AgentFilterChip, string> = {
   location: "Location",
   calendar: "Calendar",
   reminders: "Reminders",
+  sales: "Sales",
+  marketing: "Marketing",
+  media: "Media",
+  development: "Development",
+  operations: "Operations",
 };
 
 interface AgentsCatalogPayload {
