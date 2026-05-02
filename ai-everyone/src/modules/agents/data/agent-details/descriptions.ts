@@ -265,5 +265,39 @@ export const agentDescriptionLines: Record<string, string[]> = {
     "It is strongest for turning vague technical goals into executable plans.",
     "Best for project planning, bug investigation, and production handoff.",
   ],
+  "leadgen-agent": [
+    "Find and qualify B2B prospects with search, enrichment, scoring, and saved lead memory.",
+    "It preserves the copied lead generation flow while fitting the EC2 agent contract.",
+    "Use it when prospecting needs repeatable sessions, lists, history, and cleanup controls.",
+    "The chat card stays compact while the workspace exposes lead actions and logs.",
+    "Best for account research, founder lists, outbound preparation, and saved prospect review.",
+  ],
+  "marketing-agent": [
+    "Create product-aware campaigns, copy, poster drafts, and image-informed launch ideas.",
+    "It supports campaign generation, product analysis, provider switching, and session history.",
+    "Use it when a product photo, brand note, or launch brief needs marketing assets.",
+    "The workspace exposes provider controls, saved product analysis, and creative iteration actions.",
+    "Best for campaign ideation, social copy, product positioning, and poster refinement.",
+  ],
+  "aria-podcast-agent": [
+    "A podcast host and creator workspace with session memory, modes, voice input, and TTS.",
+    "It can switch between host conversation and creator script workflows.",
+    "Use it when spoken content needs transcripts, show notes, scripts, or audio output.",
+    "The dedicated workspace locks ARIA to podcast tasks so the LLM does not drift across agents.",
+    "Best for episode scripting, interview practice, show notes, and voice-to-podcast workflows.",
+  ],
+  "pr-copilot-review-agent": [
+    "Review GitHub pull requests with repository fetches, static checks, LLM review, and webhook status.",
+    "It can run dry reviews or post-ready reviews depending on configuration.",
+    "Use it when a PR needs structured code feedback without dumping raw tool output.",
+    "The workspace exposes repository, PR number, dry-run, and webhook readiness actions.",
+    "Best for pull request triage, static analysis summaries, and review preparation.",
+  ],
+  "pian-labs-alos-agent": [
+    "Operate logistics data with entity summaries, record operations, onboarding, and route weather.",
+    "It supports CSV and REST data intake plus MongoDB-backed create and update flows.",
+    "Use it when logistics operations need a workspace-aware agent rather than one-off analysis.",
+    "The UI exposes route checks, entity registry, record lists, imports, and missing-field prompts.",
+    "Best for shipment summaries, route risk checks, dispatch planning, and logistics data onboarding.",
+  ],
 };
-

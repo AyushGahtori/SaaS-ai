@@ -1,0 +1,47 @@
+[
+  {
+    "id": "leadgen-agent",
+    "name": "LeadGen Agent",
+    "category": "sales",
+    "route": "/leadgen/action",
+    "description": "Autonomous B2B lead generation with search, enrichment, email discovery, scoring, storage, and session memory.",
+    "actions": ["run_leadgen", "list_leads", "get_history", "clear_session", "new_session", "list_capabilities"],
+    "port": 8050
+  },
+  {
+    "id": "marketing-agent",
+    "name": "Marketing Agent",
+    "category": "marketing",
+    "route": "/marketing/action",
+    "description": "Product-aware marketing assistant for image analysis, campaigns, poster HTML, social copy, and provider switching.",
+    "actions": ["run_marketing_agent", "generate_campaign", "analyze_product", "edit_poster", "list_sessions", "get_history", "list_providers", "switch_provider", "list_capabilities"],
+    "port": 8051
+  },
+  {
+    "id": "aria-podcast-agent",
+    "name": "ARIA Podcast Agent",
+    "category": "media",
+    "route": "/aria/action",
+    "description": "Podcast host and creator with host/creator modes, voice input, STT, TTS, and session history.",
+    "actions": ["chat", "creator_script", "host_conversation", "switch_mode", "voice_input", "text_to_speech", "get_history", "clear_history", "list_sessions", "list_capabilities"],
+    "port": 8052
+  },
+  {
+    "id": "pr-copilot-review-agent",
+    "name": "PR Copilot Review Agent",
+    "category": "development",
+    "route": "/pr-copilot/action",
+    "description": "AI PR reviewer with GitHub PR fetch, Bandit, Flake8, chunked LLM review, validation, and webhook support.",
+    "actions": ["review_pr", "dry_run_review", "webhook_status", "list_capabilities"],
+    "port": 8053
+  },
+  {
+    "id": "pian-labs-alos-agent",
+    "name": "Pian Labs ALOS Agent",
+    "category": "operations",
+    "route": "/alos/action",
+    "description": "Autonomous Logistics Operating System for data onboarding, entity summaries, record operations, and weather-aware routing.",
+    "actions": ["run_alos", "describe_workspace", "summarize_entity", "list_records", "create_record", "update_records", "check_route_weather", "onboard_csv", "onboard_excel", "pull_rest_api", "clone_mongo", "start_empty", "ask_user", "list_capabilities"],
+    "port": 8054
+  }
+]

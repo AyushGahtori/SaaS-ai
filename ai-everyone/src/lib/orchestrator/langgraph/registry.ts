@@ -67,6 +67,11 @@ export const AGENT_ENDPOINTS: Record<string, string> = {
     "data-analyst-agent": "/dataanalyst/action",
     "cyber-soc-agent": "/cybersoc/action",
     "shelfie-grocery-agent": "/shelfie/action",
+    "leadgen-agent": "/leadgen/action",
+    "marketing-agent": "/marketing/action",
+    "aria-podcast-agent": "/aria/action",
+    "pr-copilot-review-agent": "/pr-copilot/action",
+    "pian-labs-alos-agent": "/alos/action",
 };
 
 const EXTRA_ACTIONS: Record<string, Record<string, AgentActionCapability>> = {
@@ -109,6 +114,61 @@ const EXTRA_ACTIONS: Record<string, Record<string, AgentActionCapability>> = {
         get_history: { name: "get_history", required: ["session_id"], optional: ["sessionId", "chatId"] },
         list_sessions: { name: "list_sessions", required: [], optional: ["limit"] },
         reset_session: { name: "reset_session", required: ["session_id"], optional: ["sessionId", "chatId"] },
+        list_capabilities: { name: "list_capabilities", required: [], optional: [] },
+    },
+    "leadgen-agent": {
+        run_leadgen: { name: "run_leadgen", required: ["prompt"], optional: ["message", "query", "session_id", "limit"] },
+        list_leads: { name: "list_leads", required: [], optional: ["session_id", "limit", "skip"] },
+        get_history: { name: "get_history", required: ["session_id"], optional: [] },
+        clear_session: { name: "clear_session", required: ["session_id"], optional: [] },
+        new_session: { name: "new_session", required: [], optional: [] },
+        list_capabilities: { name: "list_capabilities", required: [], optional: [] },
+    },
+    "marketing-agent": {
+        run_marketing_agent: { name: "run_marketing_agent", required: ["prompt"], optional: ["message", "session_id", "image_base64", "file_data_url", "product_context", "brand_guidelines", "provider"] },
+        generate_campaign: { name: "generate_campaign", required: ["prompt"], optional: ["session_id", "brand_guidelines", "provider"] },
+        analyze_product: { name: "analyze_product", required: ["prompt"], optional: ["image_base64", "file_data_url", "session_id", "product_context"] },
+        edit_poster: { name: "edit_poster", required: ["prompt", "session_id"], optional: [] },
+        list_sessions: { name: "list_sessions", required: [], optional: ["limit"] },
+        get_history: { name: "get_history", required: ["session_id"], optional: ["limit"] },
+        get_product_analysis: { name: "get_product_analysis", required: ["session_id"], optional: [] },
+        save_product_analysis: { name: "save_product_analysis", required: ["session_id", "analysis"], optional: ["name", "image_id", "image_url"] },
+        list_providers: { name: "list_providers", required: [], optional: [] },
+        switch_provider: { name: "switch_provider", required: ["provider"], optional: [] },
+        list_capabilities: { name: "list_capabilities", required: [], optional: [] },
+    },
+    "aria-podcast-agent": {
+        chat: { name: "chat", required: ["prompt"], optional: ["session_id", "mode"] },
+        creator_script: { name: "creator_script", required: ["prompt"], optional: ["session_id"] },
+        host_conversation: { name: "host_conversation", required: ["prompt"], optional: ["session_id"] },
+        switch_mode: { name: "switch_mode", required: ["mode"], optional: ["session_id"] },
+        voice_input: { name: "voice_input", required: ["audio_base64"], optional: ["file_data_url", "session_id", "mode", "file_name"] },
+        text_to_speech: { name: "text_to_speech", required: ["text"], optional: ["voice"] },
+        get_history: { name: "get_history", required: ["session_id"], optional: [] },
+        clear_history: { name: "clear_history", required: ["session_id"], optional: [] },
+        list_sessions: { name: "list_sessions", required: [], optional: ["limit"] },
+        list_capabilities: { name: "list_capabilities", required: [], optional: [] },
+    },
+    "pr-copilot-review-agent": {
+        review_pr: { name: "review_pr", required: ["repo", "pr_number"], optional: ["dry_run"] },
+        dry_run_review: { name: "dry_run_review", required: ["repo", "pr_number"], optional: [] },
+        webhook_status: { name: "webhook_status", required: [], optional: [] },
+        list_capabilities: { name: "list_capabilities", required: [], optional: [] },
+    },
+    "pian-labs-alos-agent": {
+        run_alos: { name: "run_alos", required: ["prompt"], optional: ["entity", "origin", "destination"] },
+        describe_workspace: { name: "describe_workspace", required: [], optional: [] },
+        summarize_entity: { name: "summarize_entity", required: ["entity"], optional: ["limit"] },
+        list_records: { name: "list_records", required: ["entity"], optional: ["filters", "limit"] },
+        create_record: { name: "create_record", required: ["entity", "record"], optional: [] },
+        update_records: { name: "update_records", required: ["entity", "filters", "updates"], optional: [] },
+        check_route_weather: { name: "check_route_weather", required: ["origin", "destination"], optional: [] },
+        onboard_csv: { name: "onboard_csv", required: ["entity"], optional: ["csv", "file_data_url", "file_name"] },
+        onboard_excel: { name: "onboard_excel", required: ["file_data_url"], optional: ["file_name"] },
+        pull_rest_api: { name: "pull_rest_api", required: ["url"], optional: ["headers", "json_path"] },
+        clone_mongo: { name: "clone_mongo", required: ["source_mongodb_uri", "source_database"], optional: ["collections", "limit"] },
+        start_empty: { name: "start_empty", required: [], optional: [] },
+        ask_user: { name: "ask_user", required: ["question"], optional: ["field"] },
         list_capabilities: { name: "list_capabilities", required: [], optional: [] },
     },
 };
@@ -197,6 +257,32 @@ const DEFAULT_REQUIRED_BY_ACTION: Record<string, string[]> = {
     run_shelfie_grocery_agent: ["prompt"],
     get_history: ["session_id"],
     reset_session: ["session_id"],
+    run_leadgen: ["prompt"],
+    run_marketing_agent: ["prompt"],
+    generate_campaign: ["prompt"],
+    analyze_product: ["prompt"],
+    edit_poster: ["prompt", "session_id"],
+    switch_provider: ["provider"],
+    save_product_analysis: ["session_id", "analysis"],
+    chat: ["prompt"],
+    creator_script: ["prompt"],
+    host_conversation: ["prompt"],
+    switch_mode: ["mode"],
+    voice_input: ["audio_base64"],
+    text_to_speech: ["text"],
+    review_pr: ["repo", "pr_number"],
+    dry_run_review: ["repo", "pr_number"],
+    run_alos: ["prompt"],
+    summarize_entity: ["entity"],
+    list_records: ["entity"],
+    create_record: ["entity", "record"],
+    update_records: ["entity", "filters", "updates"],
+    check_route_weather: ["origin", "destination"],
+    onboard_csv: ["entity"],
+    onboard_excel: ["file_data_url"],
+    pull_rest_api: ["url"],
+    clone_mongo: ["source_mongodb_uri", "source_database"],
+    ask_user: ["question"],
 };
 
 const ACTIONS_WITH_PROMPT_FALLBACK = new Set([
@@ -223,6 +309,15 @@ const ACTIONS_WITH_PROMPT_FALLBACK = new Set([
     "run_restaurant_concierge",
     "suggest_items",
     "run_shelfie_grocery_agent",
+    "run_leadgen",
+    "run_marketing_agent",
+    "generate_campaign",
+    "analyze_product",
+    "edit_poster",
+    "chat",
+    "creator_script",
+    "host_conversation",
+    "run_alos",
 ]);
 
 function makeAliases(agent: AgentCatalogEntry): string[] {
@@ -247,6 +342,11 @@ function makeAliases(agent: AgentCatalogEntry): string[] {
     if (agent.id === "day-planner-agent") base.push("day planner", "daily planner", "planner agent");
     if (agent.id === "dashboard-designer-agent") base.push("dashboard designer", "dashboard designer agent");
     if (agent.id === "cyber-soc-agent") base.push("cyber soc", "cyber soc agent", "soc agent", "security operations center");
+    if (agent.id === "leadgen-agent") base.push("leadgen", "lead gen", "lead generation", "prospecting agent", "sales leads");
+    if (agent.id === "marketing-agent") base.push("marketing", "campaign agent", "poster agent", "ad copy agent", "product marketing");
+    if (agent.id === "aria-podcast-agent") base.push("aria", "podcast agent", "podcast host", "podcast creator", "voice podcast");
+    if (agent.id === "pr-copilot-review-agent") base.push("pr copilot", "pull request review", "pr review", "code review agent");
+    if (agent.id === "pian-labs-alos-agent") base.push("alos", "logistics agent", "logistics operating system", "route weather");
 
     return Array.from(new Set(base.map((alias) => normalizeForMatch(alias)).filter(Boolean)));
 }
@@ -655,6 +755,47 @@ export function chooseActionForAgent(agentId: string, lower: string): string {
             if (/\b(search|find)\b/.test(lower) && /\b(menu|dish|food|item|drink|dessert)\b/.test(lower)) return "search_menu";
             if (/\b(menu|vegetarian|vegan|gluten|dessert|beverage|appetizer|main course|pickup|delivery)\b/.test(lower)) return "browse_menu";
             return "run_restaurant_concierge";
+        case "leadgen-agent":
+            if (/\b(new session|fresh session)\b/.test(lower)) return "new_session";
+            if (/\b(clear|reset)\b/.test(lower)) return "clear_session";
+            if (/\b(history|conversation)\b/.test(lower)) return "get_history";
+            if (/\b(list|show|saved|stored)\b/.test(lower) && /\b(leads?|prospects?)\b/.test(lower)) return "list_leads";
+            return "run_leadgen";
+        case "marketing-agent":
+            if (/\b(provider|model|groq|gemini|openai|anthropic|ollama)\b/.test(lower) && /\b(switch|use|change)\b/.test(lower)) return "switch_provider";
+            if (/\b(provider|model|configured)\b/.test(lower)) return "list_providers";
+            if (/\b(product analysis|saved product|product context)\b/.test(lower) && /\b(get|show|load)\b/.test(lower)) return "get_product_analysis";
+            if (/\b(history|content|session)\b/.test(lower) && /\b(show|load|get)\b/.test(lower)) return "get_history";
+            if (/\b(sessions|recent sessions)\b/.test(lower)) return "list_sessions";
+            if (/\b(edit|revise|change|update)\b/.test(lower) && /\b(poster|creative|html)\b/.test(lower)) return "edit_poster";
+            if (/\b(image|photo|product)\b/.test(lower) && /\b(analy[sz]e|describe|launch)\b/.test(lower)) return "analyze_product";
+            if (/\b(campaign|launch|ad|social|poster|copy)\b/.test(lower)) return "generate_campaign";
+            return "run_marketing_agent";
+        case "aria-podcast-agent":
+            if (/\b(text to speech|tts|speak|audio|voice output)\b/.test(lower)) return "text_to_speech";
+            if (/\b(voice input|transcribe|recording|microphone|audio file)\b/.test(lower)) return "voice_input";
+            if (/\b(host mode|creator mode|switch mode|be my host|script mode)\b/.test(lower)) return "switch_mode";
+            if (/\b(host|interview|talk to me|start the show|podcast mode)\b/.test(lower)) return "host_conversation";
+            if (/\b(script|outline|show notes|episode|creator|production)\b/.test(lower)) return "creator_script";
+            if (/\b(history|session)\b/.test(lower)) return "get_history";
+            return "chat";
+        case "pr-copilot-review-agent":
+            if (/\b(webhook|status|configured|secret)\b/.test(lower)) return "webhook_status";
+            if (/\b(post comments|comment on|publish comments)\b/.test(lower)) return "review_pr";
+            return "dry_run_review";
+        case "pian-labs-alos-agent":
+            if (/\b(route|weather|dispatch|from .+ to )\b/.test(lower)) return "check_route_weather";
+            if (/\b(excel|workbook|xlsx|spreadsheet)\b/.test(lower)) return "onboard_excel";
+            if (/\b(clone|remote mongo|mongodb)\b/.test(lower)) return "clone_mongo";
+            if (/\b(start empty|empty workspace|built[- ]?in schema|seed)\b/.test(lower)) return "start_empty";
+            if (/\b(csv|upload|onboard|import)\b/.test(lower)) return "onboard_csv";
+            if (/\b(api|rest|endpoint)\b/.test(lower)) return "pull_rest_api";
+            if (/\b(create|insert|add record)\b/.test(lower)) return "create_record";
+            if (/\b(update|modify|change records?)\b/.test(lower)) return "update_records";
+            if (/\b(list|show|records)\b/.test(lower)) return "list_records";
+            if (/\b(summarize|summary|overview|totals?)\b/.test(lower)) return "summarize_entity";
+            if (/\b(workspace|entities|schema|registry)\b/.test(lower)) return "describe_workspace";
+            return "run_alos";
         case "data-analyst-agent":
             if (/\b(capabilities|can you do)\b/.test(lower)) return "list_capabilities";
             if (/\b(anomaly|monitor|detect)\b/.test(lower)) return "monitor";
@@ -816,6 +957,54 @@ export function enrichParameters(agentId: string, action: string, text: string, 
             next.session_id = next.session_id || sessionMatch[1];
         }
     }
+    if (agentId === "leadgen-agent") {
+        next.prompt = next.prompt || text;
+        next.message = next.message || text;
+        next.query = next.query || text;
+        if (count) next.limit = next.limit || Math.min(count, 500);
+        const sessionMatch = text.match(/\bsession(?:\s+id)?\s*[:#-]?\s*([A-Za-z0-9._:-]{6,})/i);
+        if (sessionMatch?.[1]) next.session_id = next.session_id || sessionMatch[1];
+    }
+    if (agentId === "marketing-agent") {
+        next.prompt = next.prompt || text;
+        next.message = next.message || text;
+        next.query = next.query || text;
+        if (/\bgroq\b/.test(lower)) next.provider = next.provider || "groq";
+        else if (/\bgemini\b/.test(lower)) next.provider = next.provider || "gemini";
+        else if (/\bopenai|gpt\b/.test(lower)) next.provider = next.provider || "openai";
+        else if (/\banthropic|claude\b/.test(lower)) next.provider = next.provider || "anthropic";
+        else if (/\bollama\b/.test(lower)) next.provider = next.provider || "ollama";
+        if (/\bbrand\b/.test(lower) && !next.brand_guidelines) next.brand_guidelines = text;
+    }
+    if (agentId === "aria-podcast-agent") {
+        next.prompt = next.prompt || text;
+        next.message = next.message || text;
+        next.text = next.text || text;
+        if (/\bhost mode|be my host|interview me|start the show|podcast mode\b/.test(lower)) next.mode = next.mode || "host";
+        if (/\bcreator mode|script mode|production mode|write a script|show notes\b/.test(lower)) next.mode = next.mode || "creator";
+    }
+    if (agentId === "pr-copilot-review-agent") {
+        const repoMatch =
+            text.match(/\b([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\b/) ||
+            url?.match(/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/i);
+        const prMatch = text.match(/\b(?:pr|pull request|#)\s*#?(\d+)\b/i) || text.match(/\/pull\/(\d+)/i);
+        if (repoMatch?.[1]) next.repo = next.repo || repoMatch[1].replace(/\.git$/i, "");
+        if (prMatch?.[1]) next.pr_number = next.pr_number || Number(prMatch[1]);
+        if (action === "dry_run_review") next.dry_run = true;
+    }
+    if (agentId === "pian-labs-alos-agent") {
+        next.prompt = next.prompt || text;
+        next.query = next.query || text;
+        if (/\b(shipments?|loads?|orders?|vehicles?|warehouses?|drivers?|routes?)\b/.test(lower)) {
+            const entityMatch = lower.match(/\b(shipments?|loads?|orders?|vehicles?|warehouses?|drivers?|routes?)\b/);
+            if (entityMatch?.[1]) next.entity = next.entity || entityMatch[1].replace(/s$/, "s");
+        }
+        const routeMatch = text.match(/\bfrom\s+(.+?)\s+to\s+(.+?)(?:[.!?]|$)/i);
+        if (routeMatch) {
+            next.origin = next.origin || routeMatch[1].trim();
+            next.destination = next.destination || routeMatch[2].trim();
+        }
+    }
     if (agentId === "emergency-response-agent") {
         next.description = next.description || text;
     }
@@ -892,6 +1081,31 @@ export function deterministicRoute(userInput: string, context?: ConversationCont
 
     if (/\b(heart attack|stroke|chest pain|breathing|can't breathe|cannot breathe|severe injury|emergency|sos|ambulance|bleeding|unconscious)\b/.test(lower)) {
         return routeEmergencyIntent(text, "Matched an emergency/medical safety request.");
+    }
+
+    if (/\b(leadgen|lead gen|lead generation|sales leads?|prospects?|prospecting|decision makers?)\b/.test(lower)) {
+        const action = chooseActionForAgent("leadgen-agent", lower);
+        return simpleIntent("leadgen-agent", action, text, "Matched a LeadGen prospecting request.", enrichParameters("leadgen-agent", action, text, {}));
+    }
+
+    if (/\b(marketing campaign|campaign|poster|ad copy|social post|hashtags?|product image|launch copy|marketing agent)\b/.test(lower)) {
+        const action = chooseActionForAgent("marketing-agent", lower);
+        return simpleIntent("marketing-agent", action, text, "Matched a marketing content request.", enrichParameters("marketing-agent", action, text, {}));
+    }
+
+    if (/\b(aria|podcast|episode|show notes|podcast script|host mode|creator mode|text to speech|tts|voice input)\b/.test(lower)) {
+        const action = chooseActionForAgent("aria-podcast-agent", lower);
+        return simpleIntent("aria-podcast-agent", action, text, "Matched an ARIA podcast request.", enrichParameters("aria-podcast-agent", action, text, {}));
+    }
+
+    if (/\b(pr copilot|pull request review|review pr|code review agent|bandit|flake8)\b/.test(lower) || /\b[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\b.*\b(?:pr|pull request)\s*#?\d+\b/i.test(text)) {
+        const action = chooseActionForAgent("pr-copilot-review-agent", lower);
+        return simpleIntent("pr-copilot-review-agent", action, text, "Matched a PR Copilot review request.", enrichParameters("pr-copilot-review-agent", action, text, {}));
+    }
+
+    if (/\b(alos|logistics|shipment|shipments|warehouse|warehouses|dispatch|route weather|fleet|delivery route)\b/.test(lower)) {
+        const action = chooseActionForAgent("pian-labs-alos-agent", lower);
+        return simpleIntent("pian-labs-alos-agent", action, text, "Matched an ALOS logistics request.", enrichParameters("pian-labs-alos-agent", action, text, {}));
     }
 
     if (/\b(fundraising|fundraise|funds?|investors?|seed investors?|vc|venture capital|pitch deck|term sheet|outreach email)\b/.test(lower)) {

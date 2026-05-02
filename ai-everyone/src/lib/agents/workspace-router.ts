@@ -77,6 +77,29 @@ function asString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
 }
 
+function firstAttachmentPayload(attachments?: Array<Record<string, unknown>>): Record<string, unknown> {
+    const attachment = attachments?.find((item) => asString(item.dataBase64));
+    if (!attachment) return {};
+    const dataBase64 = asString(attachment.dataBase64);
+    const mimeType = asString(attachment.mimeType);
+    const name = asString(attachment.name);
+    const payload: Record<string, unknown> = {
+        file_data_url: dataBase64,
+        file_name: name,
+        file_type: mimeType,
+    };
+    if (mimeType.startsWith("image/")) {
+        payload.image_base64 = dataBase64;
+    }
+    if (mimeType.startsWith("audio/")) {
+        payload.audio_base64 = dataBase64;
+    }
+    if (mimeType.includes("csv") || name.toLowerCase().endsWith(".csv")) {
+        payload.csv = dataBase64;
+    }
+    return payload;
+}
+
 function getLatestTravelPlan(context: ConversationContext): { planMarkdown: string; threadId?: string } | null {
     for (const task of context.recent_agent_tasks) {
         if (asString(task.agentId) !== "travel-halper-agent") continue;
@@ -305,6 +328,11 @@ function detectExplicitOtherAgentRequest(agentId: string, lower: string): string
         ["seo-agent", /\bseo agent\b/],
         ["cyber-soc-agent", /\b(cyber soc agent|cyber soc|soc agent|cybersoc)\b/],
         ["shelfie-grocery-agent", /\b(shelfie grocery agent|shelfie agent|shelfie|grocery agent)\b/],
+        ["leadgen-agent", /\b(leadgen agent|lead gen agent|lead generation agent|prospecting agent)\b/],
+        ["marketing-agent", /\b(marketing agent|campaign agent|poster agent|product marketing agent)\b/],
+        ["aria-podcast-agent", /\b(aria podcast agent|aria agent|podcast agent|podcast host)\b/],
+        ["pr-copilot-review-agent", /\b(pr copilot|pr review agent|pull request review agent|code review agent)\b/],
+        ["pian-labs-alos-agent", /\b(alos agent|logistics agent|route weather agent)\b/],
     ];
 
     for (const [mentionedAgentId, pattern] of mentions) {
@@ -534,6 +562,7 @@ function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, u
             validation: state.validation,
         },
         ...(state.attachments && state.attachments.length > 0 ? { attachments: state.attachments } : {}),
+        ...firstAttachmentPayload(state.attachments),
     };
 }
 
@@ -689,6 +718,7 @@ export async function resolveAgentWorkspaceRequest(
     route.parameters = {
         ...route.parameters,
         ...(intake.parameters || {}),
+        ...firstAttachmentPayload(input.attachments),
         intake_gate: {
             status: "complete",
             engine: "llm_structured_intake",

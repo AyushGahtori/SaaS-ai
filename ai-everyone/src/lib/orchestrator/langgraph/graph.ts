@@ -102,6 +102,30 @@ function isPresent(value: unknown): boolean {
     return true;
 }
 
+function asString(value: unknown): string {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function firstAttachmentPayload(attachments?: Array<Record<string, unknown>>): Record<string, unknown> {
+    const attachment = attachments?.find((item) => asString(item.dataBase64));
+    if (!attachment) return {};
+
+    const dataBase64 = asString(attachment.dataBase64);
+    const mimeType = asString(attachment.mimeType);
+    const name = asString(attachment.name);
+    const payload: Record<string, unknown> = {
+        file_data_url: dataBase64,
+        file_name: name,
+        file_type: mimeType,
+    };
+
+    if (mimeType.startsWith("image/")) payload.image_base64 = dataBase64;
+    if (mimeType.startsWith("audio/")) payload.audio_base64 = dataBase64;
+    if (mimeType.includes("csv") || name.toLowerCase().endsWith(".csv")) payload.csv = dataBase64;
+
+    return payload;
+}
+
 function inferAgentErrorStatus(
     rawStatus: string,
     result: Record<string, unknown> | undefined
@@ -191,6 +215,7 @@ function buildClarificationForValidation(state: LangGraphOrchestrationState): st
 function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, unknown> {
     const params = {
         ...state.route.parameters,
+        ...firstAttachmentPayload(state.attachments),
         ...(state.resolved_entities.message_id
             ? {
                 message_id: state.resolved_entities.message_id,
@@ -338,20 +363,30 @@ async function deterministicRouterNode(state: GraphState): Promise<Partial<Graph
         state.normalized_input || state.user_input,
         state.conversation_context
     );
+    const attachmentPayload = firstAttachmentPayload(state.attachments);
+    const routeWithAttachments = Object.keys(attachmentPayload).length
+        ? {
+            ...route,
+            parameters: {
+                ...route.parameters,
+                ...attachmentPayload,
+            },
+        }
+        : route;
     console.info("[LangGraphRoute]", {
         chatId: state.chat_id,
         userId: state.user_id,
         userInput: compactString(state.user_input, 500),
-        targetAgent: route.target_agent,
-        targetAction: route.target_action,
-        confidence: route.route_confidence,
-        reason: route.route_reason,
-        explicitAgentMention: route.parameters.explicit_agent_mention || null,
-        correctionAgentMention: route.parameters.correction_agent_mention || null,
+        targetAgent: routeWithAttachments.target_agent,
+        targetAction: routeWithAttachments.target_action,
+        confidence: routeWithAttachments.route_confidence,
+        reason: routeWithAttachments.route_reason,
+        explicitAgentMention: routeWithAttachments.parameters.explicit_agent_mention || null,
+        correctionAgentMention: routeWithAttachments.parameters.correction_agent_mention || null,
     });
     return {
-        route,
-        status: route.is_agent_request ? "success" : "not_agent",
+        route: routeWithAttachments,
+        status: routeWithAttachments.is_agent_request ? "success" : "not_agent",
     };
 }
 
