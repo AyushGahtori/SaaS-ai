@@ -1,0 +1,27 @@
+# Ignore local Python virtual environments and build/cache artifacts
+venv/
+.venv/
+*.venv
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Common Python tools cache
+.mypy_cache/
+.pytest_cache/
+.cache/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Editor/temp files
+*.swp
+*.swo
+*.tmp
+*.temp
