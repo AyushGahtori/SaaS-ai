@@ -28,11 +28,6 @@ import { AGENT_ENDPOINTS } from "@/lib/orchestrator/langgraph/registry";
 const DEFAULT_AGENT_HTTP_TIMEOUT_MS = Number(process.env.AGENT_HTTP_TIMEOUT_MS || 45000);
 const AGENT_HTTP_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
     "seo-agent": Number(process.env.SEO_AGENT_HTTP_TIMEOUT_MS || 120000),
-    "leadgen-agent": Number(process.env.LEADGEN_AGENT_HTTP_TIMEOUT_MS || 120000),
-    "marketing-agent": Number(process.env.MARKETING_AGENT_HTTP_TIMEOUT_MS || 180000),
-    "aria-podcast-agent": Number(process.env.ARIA_PODCAST_AGENT_HTTP_TIMEOUT_MS || 180000),
-    "pr-copilot-review-agent": Number(process.env.PR_COPILOT_REVIEW_AGENT_HTTP_TIMEOUT_MS || 180000),
-    "pian-labs-alos-agent": Number(process.env.PIAN_LABS_ALOS_AGENT_HTTP_TIMEOUT_MS || 120000),
 };
 
 function getAgentHttpTimeoutMs(agentId: string): number {
@@ -404,11 +399,6 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         "data-analyst-agent": process.env.DATA_ANALYST_AGENT_URL,
         "cyber-soc-agent": process.env.CYBER_SOC_AGENT_URL,
         "shelfie-grocery-agent": process.env.SHELFIE_GROCERY_AGENT_URL,
-        "leadgen-agent": process.env.LEADGEN_AGENT_URL,
-        "marketing-agent": process.env.MARKETING_AGENT_URL,
-        "aria-podcast-agent": process.env.ARIA_PODCAST_AGENT_URL,
-        "pr-copilot-review-agent": process.env.PR_COPILOT_REVIEW_AGENT_URL,
-        "pian-labs-alos-agent": process.env.PIAN_LABS_ALOS_AGENT_URL,
     };
     const agentServerUrl =
         resolveAgentServerUrl(ENV_AGENT_URL_MAP[task.agentId], task.agentId);

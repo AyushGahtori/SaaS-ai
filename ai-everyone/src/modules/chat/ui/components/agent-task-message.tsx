@@ -67,11 +67,6 @@ const AGENT_NAMES: Record<string, string> = {
     "data-analyst-agent": "Data Analyst Agent",
     "cyber-soc-agent": "Cyber SOC Agent",
     "shelfie-grocery-agent": "Shelfie Grocery Agent",
-    "leadgen-agent": "LeadGen Agent",
-    "marketing-agent": "Marketing Agent",
-    "aria-podcast-agent": "ARIA Podcast Agent",
-    "pr-copilot-review-agent": "PR Copilot Review Agent",
-    "pian-labs-alos-agent": "Pian Labs ALOS Agent",
 };
 
 interface GmailRow {
@@ -1082,24 +1077,10 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             typeof result.result === "object" && result.result !== null
                 ? (result.result as Record<string, unknown>)
                 : undefined;
-        const uiPayload =
-            typeof result.ui_payload === "object" && result.ui_payload !== null
-                ? (result.ui_payload as Record<string, unknown>)
-                : undefined;
-        const uiCards = Array.isArray(uiPayload?.cards)
-            ? (uiPayload.cards as Array<Record<string, unknown>>)
-            : [];
-        const logs = Array.isArray(uiPayload?.logs)
-            ? uiPayload.logs.map((item) => String(item)).filter(Boolean)
-            : [];
-        const recommendedNextActions = Array.isArray(result.recommended_next_actions)
-            ? result.recommended_next_actions.map((item) => String(item)).filter(Boolean)
-            : [];
         const summary =
             (result.message as string | undefined) ||
             (result.summary as string | undefined) ||
-            (nestedResult?.summary as string | undefined) ||
-            (uiPayload?.summary as string | undefined);
+            (nestedResult?.summary as string | undefined);
 
         const details: Array<{ label: string; value: string }> = [];
         if (typeof result.status === "string") {
@@ -1115,15 +1096,7 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
             details.push({ label: "Code", value: result.error_code });
         }
 
-        return (
-            <GenericAgentResultCard
-                summary={summary || undefined}
-                details={details}
-                uiCards={uiCards}
-                logs={logs}
-                recommendedNextActions={recommendedNextActions}
-            />
-        );
+        return <GenericAgentResultCard summary={summary || undefined} details={details} />;
     };
 
     const EmergencyResponsePanel = ({ result }: { result: Record<string, unknown> }) => {

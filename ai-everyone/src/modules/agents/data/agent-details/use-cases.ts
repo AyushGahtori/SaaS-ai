@@ -37,9 +37,5 @@ export const agentUseCases: Record<string, string[]> = {
   "cyber-soc-agent": ["Threat triage", "Windows log review", "IOC analysis"],
   "building-construction-agent": ["Home layout", "Cost estimate", "Vendor planning"],
   "devika-engineer-agent": ["Architecture plans", "Bug strategy", "Deployment readiness"],
-  "leadgen-agent": ["Prospect discovery", "Lead enrichment", "Outbound list review", "Session history"],
-  "marketing-agent": ["Campaign generation", "Product image analysis", "Poster iteration", "Provider switching"],
-  "aria-podcast-agent": ["Podcast scripts", "Host conversation", "Voice input", "Text to speech"],
-  "pr-copilot-review-agent": ["PR review", "Static analysis", "Webhook readiness", "Dry-run comments"],
-  "pian-labs-alos-agent": ["Logistics onboarding", "Entity summaries", "Route weather", "Record operations"],
 };
+

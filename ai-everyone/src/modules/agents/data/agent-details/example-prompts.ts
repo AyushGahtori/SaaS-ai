@@ -37,9 +37,5 @@ export const agentExamplePrompts: Record<string, string> = {
   "cyber-soc-agent": "Analyze this suspicious Windows security log, identify likely threat behavior, and tell me the risk level.",
   "building-construction-agent": "Plan a 3BHK home on a 30x40 plot with a rough budget and layout recommendations.",
   "devika-engineer-agent": "Plan the architecture for a multi-tenant SaaS billing module and list implementation steps.",
-  "leadgen-agent": "Find 25 seed-stage SaaS founders in Bengaluru and score the strongest leads.",
-  "marketing-agent": "Generate a launch campaign for this product with social copy, poster direction, and brand-safe messaging.",
-  "aria-podcast-agent": "Creator mode: write a 12-minute podcast script about AI agents in small business operations.",
-  "pr-copilot-review-agent": "Dry-run review AyushGahtori/SaaS-ai PR #12 and summarize the highest-risk findings.",
-  "pian-labs-alos-agent": "Check route weather from Delhi to Mumbai and summarize any dispatch risk.",
 };
+

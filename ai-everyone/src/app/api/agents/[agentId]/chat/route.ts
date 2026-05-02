@@ -7,6 +7,7 @@ import {
 import { resolveAgentWorkspaceRequest } from "@/lib/agents/workspace-router";
 import { renderWorkspaceCapabilitiesText } from "@/lib/agents/workspace-intake";
 import { createAgentTask, executeAgentTaskAndReadBack } from "@/lib/firestore-tasks.server";
+import { isGeminiModel } from "@/lib/model-capabilities";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
 import { commitUsageSlot, reserveUsageSlot } from "@/lib/usage-limit";
 
@@ -25,7 +26,7 @@ interface AgentChatBody {
     attachments?: Array<Record<string, unknown>>;
 }
 
-const DEFAULT_WORKSPACE_GEMINI_MODEL =
+const DEFAULT_WORKSPACE_MODEL =
     process.env.GEMINI_MODEL_FLASH ||
     process.env.GEMINI_MODEL_FLASH_LITE ||
     "gemini-3-flash-preview";
@@ -81,9 +82,7 @@ export async function POST(
         const messages = Array.isArray(body.messages) ? body.messages : [];
         const chatId = body.chatId;
         const requestedModel = typeof body.model === "string" ? body.model.trim() : "";
-        const workspaceModel = requestedModel.toLowerCase().includes("gemini")
-            ? requestedModel
-            : DEFAULT_WORKSPACE_GEMINI_MODEL;
+        const workspaceModel = requestedModel || DEFAULT_WORKSPACE_MODEL;
         const lastUserMessage =
             [...messages].reverse().find((message) => message.role === "user")?.content || "";
 
@@ -137,7 +136,7 @@ export async function POST(
             agentId,
             userInput: lastUserMessage,
             model: workspaceModel,
-            llmProvider: "gemini",
+            llmProvider: isGeminiModel(workspaceModel) ? "gemini" : "ollama",
             installedAgentIds,
             accessibleAgentIds,
             recentMessages: messages.map((message) => ({
@@ -206,17 +205,50 @@ export async function POST(
             },
         });
 
-        const { status: refreshedStatus } = await executeAgentTaskAndReadBack(task);
+        const {
+            status: refreshedStatus,
+            agentOutput: refreshedOutputMaybe,
+        } = await executeAgentTaskAndReadBack(task);
 
         await commitUsageSlot(uid);
 
-        const content = [
-            `Delegating to ${resolution.agentName}.`,
-            "",
-            `Action: ${resolution.action}`,
-            "",
-            `Reasoning: ${resolution.reason}`,
-        ].join("\n");
+        const agentSummary =
+            typeof refreshedOutputMaybe?.message === "string" && refreshedOutputMaybe.message.trim()
+                ? refreshedOutputMaybe.message.trim()
+                : typeof refreshedOutputMaybe?.summary === "string" && refreshedOutputMaybe.summary.trim()
+                    ? refreshedOutputMaybe.summary.trim()
+                    : typeof refreshedOutputMaybe?.error === "string" && refreshedOutputMaybe.error.trim()
+                        ? refreshedOutputMaybe.error.trim()
+                        : "";
+
+        if (
+            refreshedStatus === "failed" ||
+            refreshedStatus === "needs_input" ||
+            refreshedStatus === "action_required"
+        ) {
+            return streamChat(
+                agentSummary ||
+                    `I could not finish that with ${resolution.agentName} yet. Please try again in a moment.`,
+                {
+                    status: refreshedStatus,
+                    selected_agent: agentId,
+                    selected_action: resolution.action,
+                    routing_source: "agent_workspace",
+                    validation: "passed",
+                    execution_status: refreshedStatus,
+                }
+            );
+        }
+
+        const content =
+            agentSummary ||
+            [
+                `Delegating to ${resolution.agentName}.`,
+                "",
+                `Action: ${resolution.action}`,
+                "",
+                `Reasoning: ${resolution.reason}`,
+            ].join("\n");
 
         const payload = {
             type: "agent_task",
