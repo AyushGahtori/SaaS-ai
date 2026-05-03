@@ -304,10 +304,50 @@ function splitSummaryLines(value: unknown): string[] {
         .filter(Boolean);
 }
 
+function uniqueTextList(items: string[], maxItems = 30): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const item of items) {
+        const normalized = item.replace(/\s+/g, " ").trim();
+        const key = normalized.toLowerCase();
+        if (!normalized || seen.has(key)) continue;
+        if (/^(none|none needed|n\/a)$/i.test(normalized)) continue;
+        seen.add(key);
+        out.push(normalized);
+        if (out.length >= maxItems) break;
+    }
+    return out;
+}
+
+function getStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value.map((item) => String(item).replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
+}
+
 function extractLabeledValue(lines: string[], label: string): string {
     const lowerLabel = label.toLowerCase();
     const match = lines.find((line) => line.toLowerCase().startsWith(`${lowerLabel}:`));
     return match ? match.slice(match.indexOf(":") + 1).trim() : "";
+}
+
+function extractLabeledBlock(text: string, label: string, nextLabels: string[]): string {
+    const labelPattern = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const nextPattern = nextLabels
+        .map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("|");
+    const pattern = new RegExp(`${labelPattern}:\\s*([\\s\\S]*?)(?=\\s*(?:${nextPattern}):|$)`, "i");
+    const match = text.match(pattern);
+    return match?.[1]?.trim() || "";
+}
+
+function splitKeyPointBlock(value: string): string[] {
+    if (!value.trim()) return [];
+    return value
+        .replace(/\r/g, "")
+        .replace(/[•*]/g, "-")
+        .split(/\n|(?:^|\s)-\s+/)
+        .map((item) => item.replace(/^Key points?:/i, "").replace(/^[-:]\s*/, "").trim())
+        .filter(Boolean);
 }
 
 function getGmailSummaryDetails(result: Record<string, unknown>): GmailSummaryDetails | null {
@@ -318,23 +358,41 @@ function getGmailSummaryDetails(result: Record<string, unknown>): GmailSummaryDe
         typeof payload.body === "string";
     if (!hasMessageShape) return null;
 
+    const rawSummary = String(result.summary || "");
+    const summaryText = rawSummary.replace(/\*\*/g, "").trim();
     const lines = splitSummaryLines(result.summary);
+    const nextLabels = ["Sender", "Subject", "Summary", "Key points", "Key Points", "Follow-up", "Next step", "Next steps"];
     const summaryFromLabels = [
         extractLabeledValue(lines, "Topic"),
         extractLabeledValue(lines, "Summary"),
         extractLabeledValue(lines, "Why it matters"),
+        extractLabeledBlock(summaryText, "Summary", nextLabels),
     ].filter(Boolean);
     const asks = extractLabeledValue(lines, "Asks");
     const deadlines = extractLabeledValue(lines, "Deadlines");
-    const followUp = extractLabeledValue(lines, "Follow-up") || extractLabeledValue(lines, "Next step");
-    const unlabeled = lines.filter((line) => !/^[A-Za-z ]{2,24}:/.test(line));
+    const followUp =
+        extractLabeledValue(lines, "Follow-up") ||
+        extractLabeledValue(lines, "Next step") ||
+        extractLabeledBlock(summaryText, "Follow-up", nextLabels) ||
+        extractLabeledBlock(summaryText, "Next step", nextLabels);
+    const keyPointBlock =
+        extractLabeledBlock(summaryText, "Key points", nextLabels) ||
+        extractLabeledBlock(summaryText, "Key Points", nextLabels);
+    const structuredKeyPoints = [
+        ...getStringArray(result.key_points),
+        ...getStringArray(result.keyPoints),
+        ...getStringArray(payload.key_points),
+        ...getStringArray(payload.keyPoints),
+    ];
+    const unlabeled = lines.filter((line) => !/^[A-Za-z ]{2,24}:/.test(line) && !/^[-•*]?\s*$/.test(line));
 
-    const keyPoints = [
-        ...summaryFromLabels,
+    const keyPoints = uniqueTextList([
+        ...structuredKeyPoints,
+        ...splitKeyPointBlock(keyPointBlock),
         ...unlabeled,
         asks && asks.toLowerCase() !== "none" ? `Ask: ${asks}` : "",
         deadlines && deadlines.toLowerCase() !== "none" ? `Deadline: ${deadlines}` : "",
-    ].filter(Boolean).slice(0, 5);
+    ].filter(Boolean));
 
     const nextSteps = followUp && followUp.toLowerCase() !== "none needed"
         ? [followUp]
@@ -344,7 +402,7 @@ function getGmailSummaryDetails(result: Record<string, unknown>): GmailSummaryDe
         from: normalizeString(payload.from || extractLabeledValue(lines, "Sender")),
         subject: normalizeString(payload.subject),
         date: normalizeString(payload.date),
-        summary: keyPoints[0] || normalizeString(result.summary, "Email summarized."),
+        summary: summaryFromLabels[0] || keyPoints[0] || normalizeString(result.summary, "Email summarized."),
         keyPoints,
         nextSteps,
     };
@@ -397,9 +455,9 @@ function GmailTableCard({ rows, meta }: { rows: GmailRow[]; meta: GmailListMeta 
     );
 }
 
-function GmailSummaryCard({ details }: { details: GmailSummaryDetails }) {
+function GmailSummaryCard({ details, standalone = false }: { details: GmailSummaryDetails; standalone?: boolean }) {
     return (
-        <div className="mt-3 overflow-hidden rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+        <div className={`${standalone ? "" : "mt-3"} overflow-hidden rounded-xl border border-emerald-500/20 bg-emerald-500/5`}>
             <div className="border-b border-white/10 bg-black/25 px-3 py-3">
                 <div className="flex items-start gap-2">
                     <Mail className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-300" />
@@ -415,11 +473,11 @@ function GmailSummaryCard({ details }: { details: GmailSummaryDetails }) {
                 <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-sm leading-6 text-white/85">
                     {details.summary}
                 </div>
-                {details.keyPoints.length > 1 ? (
+                {details.keyPoints.length > 0 ? (
                     <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">Key Points</p>
                         <ul className="space-y-1.5 text-sm text-white/78">
-                            {details.keyPoints.slice(1).map((point, index) => (
+                            {details.keyPoints.map((point, index) => (
                                 <li key={`${point}-${index}`} className="flex gap-2">
                                     <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-emerald-300" />
                                     <span>{point}</span>
@@ -573,6 +631,24 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
     }
 
     // ── Handle action buttons based on agent result ──────────────────────
+    const resultType = typeof result?.type === "string" ? result.type : "";
+    if (status === "success" && resultType === "google_gmail" && result) {
+        const rows = getGmailRows(result);
+        const summaryDetails = rows.length === 0 ? getGmailSummaryDetails(result) : null;
+        if (summaryDetails) {
+            return (
+                <div className="flex gap-3 px-4 py-4 justify-start">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                        <Bot className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <div className="max-w-[80%]">
+                        <GmailSummaryCard details={summaryDetails} standalone />
+                    </div>
+                </div>
+            );
+        }
+    }
+
     const handleAction = () => {
         if (!result) return;
 

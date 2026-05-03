@@ -427,6 +427,9 @@ class GmailAgent(BaseAgent):
                 "Key points:\n"
                 "- <point>\n"
                 "- <point>\n"
+                "Include as many key points as the email actually needs, from 3 up to 30. "
+                "Do not stop at two or three bullets if the email has more meaningful facts, asks, dates, links, "
+                "risks, account details, decisions, or instructions. Keep each bullet specific and non-repetitive.\n"
                 "Follow-up: <action or None needed>"
             ),
             context=context,
@@ -480,7 +483,7 @@ class GmailAgent(BaseAgent):
         sentences = re.split(r"(?<=[.!?])\s+", source_text)
         useful_sentences = [line.strip(" -") for line in sentences if line.strip()]
         summary_line = useful_sentences[0] if useful_sentences else source_text
-        bullet_lines = useful_sentences[1:3]
+        bullet_lines = useful_sentences[1:31]
 
         fallback_lines = [
             f"Sender: {headers.get('From', 'Unknown')}",
@@ -1359,7 +1362,6 @@ class GmailAgent(BaseAgent):
                 return email
 
         return None
-
 
 
 
