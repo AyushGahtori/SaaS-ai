@@ -72,18 +72,7 @@ function isContextualReference(text: string): boolean {
 
 function resolveGmailEmail(state: LangGraphOrchestrationState): ResolvedEntities {
     const existing = String(state.route.parameters.message_id || "").trim();
-    if (existing) {
-        return {
-            ...emptyResolution(),
-            message_id: existing,
-            row_index: Number(state.route.parameters.row_index || 0) || null,
-            entity_source: "direct",
-        };
-    }
-
     const emails = state.conversation_context.entity_index.gmail_emails;
-    if (emails.length === 0) return emptyResolution();
-
     const text = state.normalized_input;
     const lower = normalizeForMatch(text);
     const lastReferenced = state.conversation_context.last_referenced_entity;
@@ -92,9 +81,26 @@ function resolveGmailEmail(state: LangGraphOrchestrationState): ResolvedEntities
         /\b(?:row|item|email|mail|message)\s+#?\d{1,2}\b/.test(lower) ||
         /\b(?:summarize|summarise|read|open|show|mark|select|choose)\s+(?:the\s+)?#?\d{1,2}\b/.test(lower);
 
+    const senderHint = extractSenderHint(text);
+    const subjectHint = extractSubjectHint(text);
+
+    if (emails.length === 0) {
+        if (existing) {
+            return {
+                ...emptyResolution(),
+                message_id: existing,
+                row_index: Number(state.route.parameters.row_index || 0) || null,
+                entity_source: "direct",
+            };
+        }
+        return emptyResolution();
+    }
+
     if (
         isContextualReference(text) &&
         !hasExplicitOrdinal &&
+        !senderHint &&
+        !subjectHint &&
         lastReferenced?.kind === "gmail_email" &&
         (lastReferenced.message_id || lastReferenced.id)
     ) {
@@ -114,7 +120,6 @@ function resolveGmailEmail(state: LangGraphOrchestrationState): ResolvedEntities
         };
     }
 
-    const senderHint = extractSenderHint(text);
     if (senderHint) {
         const candidates = rankEntities(emails, senderHint, ["sender"]);
         if (candidates.length === 1) return toEmailResolution(candidates[0], "context");
@@ -128,7 +133,6 @@ function resolveGmailEmail(state: LangGraphOrchestrationState): ResolvedEntities
         }
     }
 
-    const subjectHint = extractSubjectHint(text);
     if (subjectHint) {
         const candidates = rankEntities(emails, subjectHint, ["subject"]);
         if (candidates.length === 1) return toEmailResolution(candidates[0], "context");
@@ -149,6 +153,19 @@ function resolveGmailEmail(state: LangGraphOrchestrationState): ResolvedEntities
             ...emptyResolution(),
             entity_source: "heuristic",
             candidate_entities: broadCandidates,
+        };
+    }
+
+    if (existing) {
+        const rowIndex = Number(state.route.parameters.row_index || 0) || null;
+        const matchedExisting =
+            emails.find((item) => (item.message_id || item.id) === existing) || null;
+        if (matchedExisting) return toEmailResolution(matchedExisting, "direct");
+        return {
+            ...emptyResolution(),
+            message_id: existing,
+            row_index: rowIndex,
+            entity_source: "direct",
         };
     }
 

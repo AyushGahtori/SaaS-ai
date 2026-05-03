@@ -264,7 +264,7 @@ function buildClarificationForValidation(state: LangGraphOrchestrationState): st
 function buildAgentRequest(state: LangGraphOrchestrationState): Record<string, unknown> {
     const params = {
         ...state.route.parameters,
-        ...(state.resolved_entities.message_id && !state.route.parameters.message_id
+        ...(state.resolved_entities.message_id
             ? {
                 message_id: state.resolved_entities.message_id,
                 row_index: state.resolved_entities.row_index,
@@ -324,7 +324,7 @@ function applyEntityResolution(state: LangGraphOrchestrationState): LangGraphOrc
             ...state.route,
             parameters: {
                 ...state.route.parameters,
-                ...(resolved.message_id && !state.route.parameters.message_id
+                ...(resolved.message_id
                     ? {
                         message_id: resolved.message_id,
                         row_index: resolved.row_index,

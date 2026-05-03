@@ -104,6 +104,33 @@ export function getNumericRequestCount(text: string): number | null {
 
 export function extractOrdinalIndex(text: string): number | null {
     const lower = normalizeForMatch(text);
+    const explicitOrdinalWords: Record<string, number> = {
+        first: 1,
+        "1st": 1,
+        second: 2,
+        "2nd": 2,
+        third: 3,
+        "3rd": 3,
+        fourth: 4,
+        "4th": 4,
+        fifth: 5,
+        "5th": 5,
+        sixth: 6,
+        "6th": 6,
+        seventh: 7,
+        "7th": 7,
+        eighth: 8,
+        "8th": 8,
+        ninth: 9,
+        "9th": 9,
+        tenth: 10,
+        "10th": 10,
+    };
+    for (const [word, index] of Object.entries(explicitOrdinalWords)) {
+        const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp(`\\b${escaped}\\b`).test(lower)) return index;
+    }
+
     for (const [word, index] of Object.entries(ORDINALS)) {
         const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         if (new RegExp(`\\b${escaped}\\b`).test(lower)) return index;
