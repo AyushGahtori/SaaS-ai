@@ -30,6 +30,35 @@ const AGENT_HTTP_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
     "seo-agent": Number(process.env.SEO_AGENT_HTTP_TIMEOUT_MS || 120000),
 };
 
+function elapsedMs(startedAt: number): number {
+    return Date.now() - startedAt;
+}
+
+function previewLogText(value: unknown, maxLength = 420): string | null {
+    if (typeof value !== "string") return null;
+    const compact = value.replace(/\s+/g, " ").trim();
+    if (!compact) return "";
+    return compact.length > maxLength ? `${compact.slice(0, maxLength)}...` : compact;
+}
+
+function getTaskTraceId(task: AgentTask): string {
+    const flowTraceId = task.flow && typeof task.flow.traceId === "string" ? task.flow.traceId : "";
+    const requestTraceId =
+        task.parentLLMRequest && typeof task.parentLLMRequest.traceId === "string"
+            ? task.parentLLMRequest.traceId
+            : "";
+    return flowTraceId || requestTraceId || `agent-${task.taskId.slice(0, 8)}`;
+}
+
+function agentTraceLog(task: AgentTask, stage: string, details: Record<string, unknown> = {}): void {
+    console.log(`[chat:${getTaskTraceId(task)}] ${stage}`, {
+        taskId: task.taskId,
+        agentId: task.agentId,
+        action: task.agentInput?.action || null,
+        ...details,
+    });
+}
+
 function getAgentHttpTimeoutMs(agentId: string): number {
     const override = AGENT_HTTP_TIMEOUT_OVERRIDES_MS[agentId];
     const timeout = Number.isFinite(override) && override > 0 ? override : DEFAULT_AGENT_HTTP_TIMEOUT_MS;
@@ -300,11 +329,20 @@ export async function createAgentTask(data: {
  * is returned immediately while the task runs in the background.
  */
 export async function executeAgentTask(task: AgentTask): Promise<void> {
+    const executionStartedAt = Date.now();
     const taskRef = adminDb.collection("agentTasks").doc(task.taskId);
+    agentTraceLog(task, "agent_task.execution.started", {
+        chatId: task.chatId,
+        inputPreview: previewLogText(task.agentInput?.query || task.agentInput?.prompt || task.agentInput?.message),
+    });
 
     // â”€â”€ 1. Validate agent route â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const agentRoute = AGENT_ROUTES[task.agentId];
     if (!agentRoute) {
+        agentTraceLog(task, "agent_task.execution.failed", {
+            totalMs: elapsedMs(executionStartedAt),
+            reason: `Unknown agent: ${task.agentId}`,
+        });
         console.error(`[executeAgentTask] Unknown agent: ${task.agentId}`);
         await persistInterpretedFailure({
             taskRef,
@@ -318,13 +356,24 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     let installedAgentIds: string[] = [];
     let accessibleAgentIds: string[] = [];
     try {
+        const accessStartedAt = Date.now();
         [installedAgentIds, accessibleAgentIds] = await Promise.all([
             getInstalledAgentIds(task.userId),
             getAccessibleAgentIds(task.userId),
         ]);
+        agentTraceLog(task, "agent_task.access.checked", {
+            durationMs: elapsedMs(accessStartedAt),
+            totalMs: elapsedMs(executionStartedAt),
+            installed: installedAgentIds.includes(task.agentId),
+            accessible: accessibleAgentIds.includes(task.agentId),
+        });
     } catch (error) {
         const errorMessage =
             error instanceof Error ? error.message : "Unknown access-check error";
+        agentTraceLog(task, "agent_task.execution.failed", {
+            totalMs: elapsedMs(executionStartedAt),
+            reason: `Agent execution setup failed: ${errorMessage}`,
+        });
         await persistInterpretedFailure({
             taskRef,
             task,
@@ -335,6 +384,10 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     }
 
     if (!installedAgentIds.includes(task.agentId)) {
+        agentTraceLog(task, "agent_task.execution.failed", {
+            totalMs: elapsedMs(executionStartedAt),
+            reason: "Agent is not installed for this user.",
+        });
         await persistInterpretedFailure({
             taskRef,
             task,
@@ -345,6 +398,10 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     }
 
     if (!accessibleAgentIds.includes(task.agentId)) {
+        agentTraceLog(task, "agent_task.execution.failed", {
+            totalMs: elapsedMs(executionStartedAt),
+            reason: "Agent is not accessible for this user.",
+        });
         await persistInterpretedFailure({
             taskRef,
             task,
@@ -358,6 +415,9 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     await taskRef.update({
         status: "running",
         startedAt: FieldValue.serverTimestamp(),
+    });
+    agentTraceLog(task, "agent_task.status.running", {
+        totalMs: elapsedMs(executionStartedAt),
     });
 
     // â”€â”€ 3. Call the agent's FastAPI server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -408,15 +468,26 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
     const agentServerUrl =
         resolveAgentServerUrl(ENV_AGENT_URL_MAP[task.agentId], task.agentId);
     const agentUrl = `${agentServerUrl}${agentRoute}`;
+    const authStartedAt = Date.now();
     const executionAuth = await getAgentExecutionAuth(task.userId, task.agentId);
+    agentTraceLog(task, "agent_task.execution_auth.ready", {
+        durationMs: elapsedMs(authStartedAt),
+        totalMs: elapsedMs(executionStartedAt),
+        hasAuthPayload: Object.keys(executionAuth).length > 0,
+    });
 
-    console.log(`[executeAgentTask] Calling agent at ${agentUrl}`);
+    agentTraceLog(task, "agent_http.call.started", {
+        totalMs: elapsedMs(executionStartedAt),
+        url: agentUrl,
+        timeoutMs: getAgentHttpTimeoutMs(task.agentId),
+    });
 
     try {
         const controller = new AbortController();
         const agentTimeoutMs = getAgentHttpTimeoutMs(task.agentId);
         const timeout = setTimeout(() => controller.abort(), agentTimeoutMs);
         let response: Response;
+        const httpStartedAt = Date.now();
         try {
             response = await fetch(agentUrl, {
                 method: "POST",
@@ -434,9 +505,20 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
         } finally {
             clearTimeout(timeout);
         }
+        agentTraceLog(task, "agent_http.call.completed", {
+            durationMs: elapsedMs(httpStartedAt),
+            totalMs: elapsedMs(executionStartedAt),
+            status: response.status,
+            ok: response.ok,
+        });
 
         if (!response.ok) {
             const errorText = await response.text();
+            agentTraceLog(task, "agent_task.execution.failed", {
+                totalMs: elapsedMs(executionStartedAt),
+                status: response.status,
+                error: previewLogText(errorText),
+            });
             console.error(
                 `[executeAgentTask] Agent returned ${response.status}`,
                 errorText
@@ -450,14 +532,27 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
             return;
         }
 
+        const parseStartedAt = Date.now();
         const rawResult = (await response.json()) as unknown;
         const result = normalizeAgentExecutionResult(rawResult);
-        console.log(`[executeAgentTask] Agent result`, result);
+        agentTraceLog(task, "agent_result.normalized", {
+            durationMs: elapsedMs(parseStartedAt),
+            totalMs: elapsedMs(executionStartedAt),
+            status: result.status,
+            type: result.type || null,
+            summary: previewLogText(result.summary || result.message || result.error),
+            errorCode: result.error_code || null,
+        });
 
         // â”€â”€ 4. Update task with result â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (result.status === "success" || result.status === "partial_success") {
             const outputValidation = validateAgentSuccessOutput(task, result);
             if (!outputValidation.valid) {
+                agentTraceLog(task, "agent_task.output_validation.failed", {
+                    totalMs: elapsedMs(executionStartedAt),
+                    code: outputValidation.code,
+                    reason: outputValidation.reason,
+                });
                 console.warn("[executeAgentTask] Agent output failed validation", {
                     taskId: task.taskId,
                     agentId: task.agentId,
@@ -491,11 +586,21 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
                 agentOutput: result,
                 finishedAt: FieldValue.serverTimestamp(),
             });
+            agentTraceLog(task, "agent_task.execution.completed", {
+                totalMs: elapsedMs(executionStartedAt),
+                status: result.status,
+                summary: previewLogText(result.summary || result.message),
+            });
         } else if (result.status === "action_required") {
             await taskRef.update({
                 status: result.status,
                 agentOutput: result,
                 finishedAt: null,
+            });
+            agentTraceLog(task, "agent_task.execution.completed", {
+                totalMs: elapsedMs(executionStartedAt),
+                status: result.status,
+                summary: previewLogText(result.summary || result.message),
             });
         } else if (result.status === "needs_input") {
             await taskRef.update({
@@ -503,7 +608,17 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
                 agentOutput: result,
                 finishedAt: null,
             });
+            agentTraceLog(task, "agent_task.execution.completed", {
+                totalMs: elapsedMs(executionStartedAt),
+                status: result.status,
+                summary: previewLogText(result.summary || result.message),
+            });
         } else {
+            agentTraceLog(task, "agent_task.execution.failed", {
+                totalMs: elapsedMs(executionStartedAt),
+                status: result.status,
+                error: previewLogText(extractRawErrorMessage(result)),
+            });
             await persistInterpretedFailure({
                 taskRef,
                 task,
@@ -513,6 +628,10 @@ export async function executeAgentTask(task: AgentTask): Promise<void> {
             });
         }
     } catch (error: unknown) {
+        agentTraceLog(task, "agent_task.execution.failed", {
+            totalMs: elapsedMs(executionStartedAt),
+            error: error instanceof Error ? error.message : String(error),
+        });
         console.error(`[executeAgentTask] Error calling agent`, error);
 
         const errorMessage =

@@ -39,6 +39,31 @@ const emptyValidation: ValidationState = {
     clarification_needed: false,
 };
 
+function elapsedMs(startedAt: number): number {
+    return Date.now() - startedAt;
+}
+
+function previewLogText(value: unknown, maxLength = 420): string | null {
+    if (typeof value !== "string") return null;
+    const compact = value.replace(/\s+/g, " ").trim();
+    if (!compact) return "";
+    return compact.length > maxLength ? `${compact.slice(0, maxLength)}...` : compact;
+}
+
+function orchestrationTraceId(state: LangGraphOrchestrationState): string | null {
+    return typeof state.metadata.trace_id === "string" ? state.metadata.trace_id : null;
+}
+
+function orchestrationLog(
+    state: LangGraphOrchestrationState,
+    stage: string,
+    details: Record<string, unknown> = {}
+): void {
+    const traceId = orchestrationTraceId(state);
+    if (!traceId) return;
+    console.log(`[chat:${traceId}] ${stage}`, details);
+}
+
 function makeInitialState(input: LangGraphOrchestrationInput): LangGraphOrchestrationState {
     return {
         user_input: input.userInput,
@@ -87,7 +112,7 @@ function makeInitialState(input: LangGraphOrchestrationInput): LangGraphOrchestr
         final_response: "",
         status: "not_agent",
         failure: null,
-        metadata: {},
+        metadata: input.traceId ? { trace_id: input.traceId } : {},
         dry_run: input.dryRun,
     };
 }
@@ -313,6 +338,7 @@ function applyEntityResolution(state: LangGraphOrchestrationState): LangGraphOrc
 async function loadStateContext(
     state: LangGraphOrchestrationState
 ): Promise<LangGraphOrchestrationState> {
+    const startedAt = Date.now();
     const [installedAgentIds, accessibleAgentIds, conversationContext] = await Promise.all([
         state.installed_agent_ids.length > 0
             ? Promise.resolve(state.installed_agent_ids)
@@ -327,6 +353,14 @@ async function loadStateContext(
         }),
     ]);
 
+    orchestrationLog(state, "orchestrator.context.loaded", {
+        durationMs: elapsedMs(startedAt),
+        installedAgentCount: installedAgentIds.length,
+        accessibleAgentCount: accessibleAgentIds.length,
+        recentMessageCount: conversationContext.recent_messages.length,
+        recentAgentTaskCount: conversationContext.recent_agent_tasks.length,
+    });
+
     return {
         ...state,
         normalized_input: normalizeInput(state.user_input),
@@ -339,6 +373,13 @@ async function loadStateContext(
 async function runParentRoutePlanning(
     state: LangGraphOrchestrationState
 ): Promise<LangGraphOrchestrationState> {
+    const startedAt = Date.now();
+    orchestrationLog(state, "orchestrator.route_model.started", {
+        model: state.model,
+        provider: state.llm_provider,
+        userQuery: previewLogText(state.user_input),
+    });
+
     const decision = await routeWithParentLlm({
         userInput: state.user_input,
         model: state.model,
@@ -349,6 +390,10 @@ async function runParentRoutePlanning(
     });
 
     if (!decision) {
+        orchestrationLog(state, "orchestrator.route_model.failed", {
+            durationMs: elapsedMs(startedAt),
+            reason: "No decision returned by parent route model.",
+        });
         return {
             ...state,
             status: "infrastructure_error",
@@ -360,6 +405,16 @@ async function runParentRoutePlanning(
                 "I could not start the parent orchestration model right now. Please try again.",
         };
     }
+
+    orchestrationLog(state, "orchestrator.route_model.completed", {
+        durationMs: elapsedMs(startedAt),
+        decision: decision.decision,
+        status: decision.responseStatus || "success",
+        targetAgent: decision.route.target_agent,
+        targetAction: decision.route.target_action,
+        confidence: decision.route.route_confidence,
+        reason: previewLogText(decision.route.route_reason),
+    });
 
     if (decision.decision === "direct_chat") {
         return {
@@ -395,7 +450,13 @@ async function runParentRoutePlanning(
 async function validateRoute(
     state: LangGraphOrchestrationState
 ): Promise<LangGraphOrchestrationState> {
+    const startedAt = Date.now();
     if (!state.route.is_agent_request || !state.route.target_agent || !state.route.target_action) {
+        orchestrationLog(state, "orchestrator.route.validated", {
+            durationMs: elapsedMs(startedAt),
+            valid: false,
+            status: "not_agent",
+        });
         return {
             ...state,
             status: "not_agent",
@@ -410,6 +471,14 @@ async function validateRoute(
 
     const agent = getAgentCapability(state.route.target_agent);
     if (!agent) {
+        orchestrationLog(state, "orchestrator.route.validated", {
+            durationMs: elapsedMs(startedAt),
+            valid: false,
+            status: "validation_error",
+            targetAgent: state.route.target_agent,
+            targetAction: state.route.target_action,
+            reason: `Unknown agent: ${state.route.target_agent}`,
+        });
         return {
             ...state,
             status: "validation_error",
@@ -427,6 +496,14 @@ async function validateRoute(
     }
 
     if (!state.installed_agent_ids.includes(agent.id)) {
+        orchestrationLog(state, "orchestrator.route.validated", {
+            durationMs: elapsedMs(startedAt),
+            valid: false,
+            status: "needs_clarification",
+            targetAgent: agent.id,
+            targetAction: state.route.target_action,
+            reason: "Agent is not installed.",
+        });
         return {
             ...state,
             status: "needs_clarification",
@@ -445,6 +522,14 @@ async function validateRoute(
     }
 
     if (!state.accessible_agent_ids.includes(agent.id)) {
+        orchestrationLog(state, "orchestrator.route.validated", {
+            durationMs: elapsedMs(startedAt),
+            valid: false,
+            status: "needs_clarification",
+            targetAgent: agent.id,
+            targetAction: state.route.target_action,
+            reason: "Agent is installed but not accessible.",
+        });
         return {
             ...state,
             status: "needs_clarification",
@@ -464,6 +549,14 @@ async function validateRoute(
 
     const action = getActionCapability(agent.id, state.route.target_action);
     if (!action) {
+        orchestrationLog(state, "orchestrator.route.validated", {
+            durationMs: elapsedMs(startedAt),
+            valid: false,
+            status: "validation_error",
+            targetAgent: agent.id,
+            targetAction: state.route.target_action,
+            reason: `${agent.id} does not support ${state.route.target_action}.`,
+        });
         return {
             ...state,
             status: "validation_error",
@@ -487,6 +580,14 @@ async function validateRoute(
     ) {
         const candidates = state.resolved_entities.candidate_entities || [];
         if (!state.resolved_entities.message_id && candidates.length > 1) {
+            orchestrationLog(state, "orchestrator.route.validated", {
+                durationMs: elapsedMs(startedAt),
+                valid: false,
+                status: "multiple_matches_found",
+                targetAgent: agent.id,
+                targetAction: action.name,
+                candidateCount: candidates.length,
+            });
             return {
                 ...state,
                 status: "multiple_matches_found",
@@ -500,6 +601,13 @@ async function validateRoute(
         }
 
         if (!state.resolved_entities.message_id) {
+            orchestrationLog(state, "orchestrator.route.validated", {
+                durationMs: elapsedMs(startedAt),
+                valid: false,
+                status: "no_match_found",
+                targetAgent: agent.id,
+                targetAction: action.name,
+            });
             return {
                 ...state,
                 status: "no_match_found",
@@ -515,6 +623,14 @@ async function validateRoute(
 
     const missingFields = action.required.filter((field) => !isPresent(state.route.parameters[field]));
     if (missingFields.length > 0) {
+        orchestrationLog(state, "orchestrator.route.validated", {
+            durationMs: elapsedMs(startedAt),
+            valid: false,
+            status: "needs_clarification",
+            targetAgent: agent.id,
+            targetAction: action.name,
+            missingFields,
+        });
         return {
             ...state,
             status: "needs_clarification",
@@ -533,6 +649,13 @@ async function validateRoute(
         clarification_needed: false,
         reason: "Capability and required parameters validated.",
     };
+
+    orchestrationLog(state, "orchestrator.route.validated", {
+        durationMs: elapsedMs(startedAt),
+        valid: true,
+        targetAgent: agent.id,
+        targetAction: action.name,
+    });
 
     return {
         ...state,
@@ -610,6 +733,7 @@ async function executeCurrentRoute(
 ): Promise<LangGraphOrchestrationState> {
     if (!state.route.target_agent || !state.route.target_action) return state;
 
+    const startedAt = Date.now();
     const agentName = getAgentCatalogEntry(state.route.target_agent)?.name || state.route.target_agent;
     const agentRequest =
         state.agent_request.action ? state.agent_request : buildAgentRequest(state);
@@ -632,12 +756,19 @@ async function executeCurrentRoute(
     }
 
     try {
+        orchestrationLog(state, "orchestrator.agent_task.creating", {
+            targetAgent: state.route.target_agent,
+            targetAction: state.route.target_action,
+            actionParameters: state.route.parameters,
+        });
+
         const parentLLMRequest: Record<string, unknown> = {
             agent_required: state.route.target_agent,
             action: state.route.target_action,
             parameters: state.route.parameters,
             reasoning: state.route.route_reason,
             routing_source: "parent_llm",
+            traceId: orchestrationTraceId(state),
             route: state.route,
             resolved_entities: state.resolved_entities,
         };
@@ -650,10 +781,25 @@ async function executeCurrentRoute(
             agentInput: agentRequest,
             flow: {
                 orchestration: "parent_llm",
+                traceId: orchestrationTraceId(state),
                 route: state.route,
                 resolved_entities: state.resolved_entities,
                 validation: state.validation,
             },
+        });
+
+        orchestrationLog(state, "orchestrator.agent_task.created", {
+            durationMs: elapsedMs(startedAt),
+            taskId: task.taskId,
+            targetAgent: state.route.target_agent,
+            targetAction: state.route.target_action,
+        });
+
+        const agentStartedAt = Date.now();
+        orchestrationLog(state, "orchestrator.agent_call.started", {
+            taskId: task.taskId,
+            targetAgent: state.route.target_agent,
+            targetAction: state.route.target_action,
         });
 
         const { status: refreshedStatus, agentOutput: refreshedOutputMaybe } =
@@ -664,6 +810,16 @@ async function executeCurrentRoute(
                 summary: "The agent finished without a usable response.",
                 error: "AGENT_OUTPUT_MISSING",
             };
+
+        orchestrationLog(state, "orchestrator.agent_call.completed", {
+            durationMs: elapsedMs(agentStartedAt),
+            totalExecutionMs: elapsedMs(startedAt),
+            taskId: task.taskId,
+            targetAgent: state.route.target_agent,
+            targetAction: state.route.target_action,
+            status: refreshedStatus,
+            summary: previewLogText(refreshedOutput.summary || refreshedOutput.message || refreshedOutput.error),
+        });
 
         if (shouldInlineGmailSummaryResponse(state)) {
             return {
@@ -706,6 +862,12 @@ async function executeCurrentRoute(
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown orchestration execution error.";
+        orchestrationLog(state, "orchestrator.agent_call.failed", {
+            durationMs: elapsedMs(startedAt),
+            targetAgent: state.route.target_agent,
+            targetAction: state.route.target_action,
+            error: message,
+        });
         return {
             ...state,
             status: "infrastructure_error",
@@ -851,11 +1013,26 @@ async function persistTaskFlow(state: LangGraphOrchestrationState): Promise<void
 async function orchestrate(
     input: LangGraphOrchestrationInput
 ): Promise<LangGraphOrchestrationState> {
+    const startedAt = Date.now();
     let state = makeInitialState(input);
+    orchestrationLog(state, "orchestrator.started", {
+        chatId: state.chat_id,
+        model: state.model,
+        provider: state.llm_provider,
+        userQuery: previewLogText(state.user_input),
+    });
     state = await loadStateContext(state);
     state = await runParentRoutePlanning(state);
 
     if (state.status !== "success" || !state.route.is_agent_request) {
+        orchestrationLog(state, "orchestrator.completed", {
+            durationMs: elapsedMs(startedAt),
+            handled: state.status !== "not_agent",
+            status: state.status,
+            targetAgent: state.route.target_agent,
+            targetAction: state.route.target_action,
+            finalResponse: previewLogText(state.final_response),
+        });
         return state;
     }
 
@@ -867,6 +1044,14 @@ async function orchestrate(
         if (!state.final_response) {
             state.final_response = buildClarificationForValidation(state);
         }
+        orchestrationLog(state, "orchestrator.completed", {
+            durationMs: elapsedMs(startedAt),
+            handled: true,
+            status: state.status,
+            targetAgent: state.route.target_agent,
+            targetAction: state.route.target_action,
+            finalResponse: previewLogText(state.final_response),
+        });
         return state;
     }
 
@@ -875,6 +1060,15 @@ async function orchestrate(
 
     if (state.metadata.render_as_chat === true && state.agent_response) {
         state.final_response = buildInlineAgentFinalResponse(state);
+        orchestrationLog(state, "orchestrator.completed", {
+            durationMs: elapsedMs(startedAt),
+            handled: true,
+            status: state.status,
+            targetAgent: state.route.target_agent,
+            targetAction: state.route.target_action,
+            taskId: state.created_task?.taskId,
+            finalResponse: previewLogText(state.final_response),
+        });
         return state;
     }
 
@@ -882,6 +1076,15 @@ async function orchestrate(
         if (!state.final_response) {
             state.final_response = deriveUserFacingAgentMessage(state);
         }
+        orchestrationLog(state, "orchestrator.completed", {
+            durationMs: elapsedMs(startedAt),
+            handled: true,
+            status: state.status,
+            targetAgent: state.route.target_agent,
+            targetAction: state.route.target_action,
+            taskId: state.created_task?.taskId,
+            finalResponse: previewLogText(state.final_response),
+        });
         return state;
     }
 
@@ -899,8 +1102,17 @@ async function orchestrate(
             `Action: ${state.route.target_action}`,
             state.route.route_reason ? `\nReasoning: ${state.route.route_reason}` : "",
         ]
-            .join("\n")
-            .trim();
+        .join("\n")
+        .trim();
+    orchestrationLog(state, "orchestrator.completed", {
+        durationMs: elapsedMs(startedAt),
+        handled: true,
+        status: state.status,
+        targetAgent: state.route.target_agent,
+        targetAction: state.route.target_action,
+        taskId: state.created_task?.taskId,
+        finalResponse: previewLogText(state.final_response),
+    });
     return state;
 }
 

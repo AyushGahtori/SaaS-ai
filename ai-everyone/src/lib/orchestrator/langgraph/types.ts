@@ -151,6 +151,7 @@ export interface LangGraphOrchestrationInput {
     userId: string;
     chatId: string;
     userInput: string;
+    traceId?: string;
     model?: string;
     llmProvider?: string;
     installedAgentIds?: string[];

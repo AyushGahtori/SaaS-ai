@@ -96,6 +96,29 @@ const GEMINI_LIVE_VOICE_FALLBACK_MODEL =
     process.env.GEMINI_LIVE_VOICE_FALLBACK_MODEL || "gemini-3.1-flash-live-preview";
 const GEMINI_LIVE_VOICE_NAME = process.env.GEMINI_LIVE_VOICE_NAME || "Zephyr";
 
+function createChatTraceId(): string {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function elapsedMs(startedAt: number): number {
+    return Date.now() - startedAt;
+}
+
+function previewLogText(value: unknown, maxLength = 500): string | null {
+    if (typeof value !== "string") return null;
+    const compact = value.replace(/\s+/g, " ").trim();
+    if (!compact) return "";
+    return compact.length > maxLength ? `${compact.slice(0, maxLength)}...` : compact;
+}
+
+function chatTraceLog(
+    traceId: string,
+    stage: string,
+    details: Record<string, unknown> = {}
+): void {
+    console.log(`[chat:${traceId}] ${stage}`, details);
+}
+
 function normalizeName(value: string): string {
     return value.toLowerCase().replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -1335,6 +1358,8 @@ async function streamGeminiChat(
 }
 
 export async function POST(req: NextRequest) {
+    const traceId = createChatTraceId();
+    const requestStartedAt = Date.now();
     const verifiedUser = await verifyFirebaseRequest(req);
     if (!verifiedUser) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -1373,6 +1398,18 @@ export async function POST(req: NextRequest) {
         const lastUserMessage =
             [...messages].reverse().find((message) => message.role === "user")?.content || "";
         let effectiveAttachments = normalizedAttachments;
+
+        chatTraceLog(traceId, "request.received", {
+            chatId: chatId || null,
+            userId: uid,
+            model,
+            provider: usingGemini ? "gemini" : "ollama",
+            isVoiceTurn,
+            messageCount: messages.length,
+            attachmentCount: normalizedAttachments.length,
+            failedAttachmentCount: normalizedFailedAttachments.length,
+            userQuery: previewLogText(lastUserMessage),
+        });
 
         if (
             usingGemini &&
@@ -1417,6 +1454,10 @@ export async function POST(req: NextRequest) {
             const stream = new ReadableStream({
                 start(controller) {
                     const ack = "Got it. Tell me the next task whenever you're ready.";
+                    chatTraceLog(traceId, "response.acknowledgement", {
+                        totalMs: elapsedMs(requestStartedAt),
+                        content: ack,
+                    });
                     controller.enqueue(
                         encoder.encode(`event: text\ndata: ${JSON.stringify({ content: ack })}\n\n`)
                     );
@@ -1439,11 +1480,19 @@ export async function POST(req: NextRequest) {
             });
         }
 
+        const setupStartedAt = Date.now();
         const [installedAgentIds, accessibleAgentIds, personaContext] = await Promise.all([
             getInstalledAgentIds(uid),
             getAccessibleAgentIds(uid),
             buildPersonaContext(uid, lastUserMessage),
         ]);
+        chatTraceLog(traceId, "request.context.ready", {
+            durationMs: elapsedMs(setupStartedAt),
+            totalMs: elapsedMs(requestStartedAt),
+            installedAgentCount: installedAgentIds.length,
+            accessibleAgentCount: accessibleAgentIds.length,
+            personaChars: personaContext.length,
+        });
 
         if (lastUserMessage) {
             triggerMemoryExtraction(uid, chatId, undefined, lastUserMessage);
@@ -1452,12 +1501,14 @@ export async function POST(req: NextRequest) {
         const shouldForceDirectAttachmentResponse =
             usingGemini &&
             (effectiveAttachments.length > 0 || normalizedFailedAttachments.length > 0);
+        const orchestrationStartedAt = Date.now();
         const orchestrationResult = shouldForceDirectAttachmentResponse || !chatId
             ? null
             : await runLangGraphOrchestration({
                 userId: uid,
                 chatId,
                 userInput: lastUserMessage,
+                traceId,
                 model,
                 llmProvider: usingGemini ? "gemini" : "ollama",
                 installedAgentIds,
@@ -1477,6 +1528,20 @@ export async function POST(req: NextRequest) {
                     storagePath: attachment.storagePath,
                 })),
             });
+        chatTraceLog(traceId, "orchestrator.result", {
+            durationMs: elapsedMs(orchestrationStartedAt),
+            totalMs: elapsedMs(requestStartedAt),
+            skipped: shouldForceDirectAttachmentResponse || !chatId,
+            handled: Boolean(orchestrationResult?.handled),
+            type: orchestrationResult?.type || null,
+            status: orchestrationResult?.status || null,
+            taskId: orchestrationResult?.taskId || null,
+            agentId: orchestrationResult?.agentId || null,
+            targetAgent: orchestrationResult?.state?.route?.target_agent || null,
+            targetAction: orchestrationResult?.state?.route?.target_action || null,
+            confidence: orchestrationResult?.state?.route?.route_confidence || null,
+            responsePreview: previewLogText(orchestrationResult?.content),
+        });
 
         if (orchestrationResult?.handled) {
             await commitUsageSlot(uid);
@@ -1485,6 +1550,7 @@ export async function POST(req: NextRequest) {
             let streamClosed = false;
             const stream = new ReadableStream({
                 start(controller) {
+                    const streamStartedAt = Date.now();
                     const safeClose = () => {
                         if (streamClosed) return;
                         streamClosed = true;
@@ -1515,15 +1581,30 @@ export async function POST(req: NextRequest) {
                         if (!geminiApiKey) return;
 
                         try {
+                            const speechStartedAt = Date.now();
+                            let firstAudioLogged = false;
                             await streamGeminiLiveSpeech(
                                 geminiApiKey,
                                 "You are Pian's voice renderer. Speak the supplied assistant response clearly and naturally.",
                                 orchestrationResult.content,
                                 (delta) => {
+                                    if (!firstAudioLogged) {
+                                        firstAudioLogged = true;
+                                        chatTraceLog(traceId, "voice.first_audio_delta", {
+                                            durationMs: elapsedMs(speechStartedAt),
+                                            totalMs: elapsedMs(requestStartedAt),
+                                            source: "handled_orchestration",
+                                        });
+                                    }
                                     sendEvent("audio_delta", { ...delta });
                                 },
                                 upstreamAbortController.signal
                             );
+                            chatTraceLog(traceId, "voice.speech.completed", {
+                                durationMs: elapsedMs(speechStartedAt),
+                                totalMs: elapsedMs(requestStartedAt),
+                                source: "handled_orchestration",
+                            });
                         } catch (error) {
                             if (!isAbortLikeError(error) && !upstreamAbortController.signal.aborted) {
                                 console.warn("[GeminiLiveSpeech] failed to narrate handled response", error);
@@ -1533,6 +1614,12 @@ export async function POST(req: NextRequest) {
 
                     const run = async () => {
                         if (orchestrationResult.content) {
+                            chatTraceLog(traceId, "response.first_text_sent", {
+                                durationMs: elapsedMs(streamStartedAt),
+                                totalMs: elapsedMs(requestStartedAt),
+                                source: "orchestration",
+                                contentPreview: previewLogText(orchestrationResult.content),
+                            });
                             sendEvent("text", { content: orchestrationResult.content });
                         }
 
@@ -1554,11 +1641,26 @@ export async function POST(req: NextRequest) {
                             };
                             sendEvent("agent_task", payload);
                             sendEvent("done", payload);
+                            chatTraceLog(traceId, "response.done", {
+                                totalMs: elapsedMs(requestStartedAt),
+                                streamMs: elapsedMs(streamStartedAt),
+                                type: "agent_task",
+                                taskId: orchestrationResult.taskId,
+                                agentId: orchestrationResult.agentId,
+                                status: orchestrationResult.status,
+                            });
                         } else {
                             sendEvent("done", {
                                 type: "chat",
                                 content: orchestrationResult.content,
                                 ...(orchestrationResult.meta ? { meta: orchestrationResult.meta } : {}),
+                            });
+                            chatTraceLog(traceId, "response.done", {
+                                totalMs: elapsedMs(requestStartedAt),
+                                streamMs: elapsedMs(streamStartedAt),
+                                type: "chat",
+                                status: orchestrationResult.status,
+                                contentChars: orchestrationResult.content.length,
                             });
                         }
                         safeClose();
@@ -1612,6 +1714,7 @@ export async function POST(req: NextRequest) {
         let streamClosed = false;
         const stream = new ReadableStream({
             start(controller) {
+                const streamStartedAt = Date.now();
                 const abortUpstream = () => {
                     if (!upstreamAbortController.signal.aborted) {
                         upstreamAbortController.abort();
@@ -1644,6 +1747,9 @@ export async function POST(req: NextRequest) {
 
                 const run = async () => {
                     try {
+                        const modelStartedAt = Date.now();
+                        let firstTextLogged = false;
+                        let firstAudioLogged = false;
                         let streamedText = "";
                         let heldBuffer = "";
                         let streamMode: "undecided" | "text" = "undecided";
@@ -1662,6 +1768,16 @@ export async function POST(req: NextRequest) {
 
                                 streamMode = "text";
                                 streamedText += heldBuffer;
+                                if (!firstTextLogged) {
+                                    firstTextLogged = true;
+                                    chatTraceLog(traceId, "model.first_text_delta", {
+                                        durationMs: elapsedMs(modelStartedAt),
+                                        totalMs: elapsedMs(requestStartedAt),
+                                        provider: usingGemini ? "gemini" : "ollama",
+                                        model,
+                                        preview: previewLogText(heldBuffer),
+                                    });
+                                }
                                 sendEvent("text", { content: heldBuffer });
                                 heldBuffer = "";
                                 return;
@@ -1689,8 +1805,17 @@ export async function POST(req: NextRequest) {
                             effectiveAttachments.length === 0 &&
                             attachmentFailuresForResponse.length === 0;
 
+                        chatTraceLog(traceId, "model.call.started", {
+                            totalMs: elapsedMs(requestStartedAt),
+                            provider: usingGemini ? "gemini" : "ollama",
+                            model,
+                            directLiveVoice: Boolean(canUseDirectLiveVoice),
+                            attachmentCount: effectiveAttachments.length,
+                        });
+
                         if (canUseDirectLiveVoice) {
                             try {
+                                const liveVoiceStartedAt = Date.now();
                                 const speechResult = await streamGeminiLiveVoice(
                                     geminiApiKey,
                                     systemPrompt,
@@ -1700,6 +1825,14 @@ export async function POST(req: NextRequest) {
                                     })),
                                     handleDelta,
                                     (delta) => {
+                                        if (!firstAudioLogged) {
+                                            firstAudioLogged = true;
+                                            chatTraceLog(traceId, "voice.first_audio_delta", {
+                                                durationMs: elapsedMs(liveVoiceStartedAt),
+                                                totalMs: elapsedMs(requestStartedAt),
+                                                source: "direct_live_voice",
+                                            });
+                                        }
                                         sendEvent("audio_delta", { ...delta });
                                     },
                                     upstreamAbortController.signal
@@ -1710,11 +1843,23 @@ export async function POST(req: NextRequest) {
                                     audioMimeType: speechResult.audioMimeType,
                                     model: speechResult.model,
                                 };
+                                chatTraceLog(traceId, "model.direct_live_voice.completed", {
+                                    durationMs: elapsedMs(liveVoiceStartedAt),
+                                    totalMs: elapsedMs(requestStartedAt),
+                                    model: speechResult.model,
+                                    contentChars: assistantContent.length,
+                                    audioChars: speechResult.audioBase64.length,
+                                });
                             } catch (error) {
                                 if (isAbortLikeError(error) || upstreamAbortController.signal.aborted) {
                                     throw error;
                                 }
                                 console.warn("[GeminiLiveVoice] direct voice turn failed; falling back to text then speech", error);
+                                chatTraceLog(traceId, "model.direct_live_voice.failed", {
+                                    durationMs: elapsedMs(modelStartedAt),
+                                    totalMs: elapsedMs(requestStartedAt),
+                                    error: error instanceof Error ? error.message : String(error),
+                                });
                                 const result = await streamGeminiChat(
                                     geminiApiKey,
                                     model,
@@ -1738,6 +1883,7 @@ export async function POST(req: NextRequest) {
                             }
                         } else if (usingGemini) {
                             assistantContent = await (async () => {
+                                const geminiStartedAt = Date.now();
                                 const result = await streamGeminiChat(
                                     geminiApiKey,
                                     model,
@@ -1757,9 +1903,17 @@ export async function POST(req: NextRequest) {
                                         ...result.failedAttachments,
                                     ];
                                 }
+                                chatTraceLog(traceId, "model.gemini.completed", {
+                                    durationMs: elapsedMs(geminiStartedAt),
+                                    totalMs: elapsedMs(requestStartedAt),
+                                    model,
+                                    contentChars: result.content.length,
+                                    failedAttachmentCount: result.failedAttachments.length,
+                                });
                                 return result.content;
                             })();
                         } else {
+                            const ollamaStartedAt = Date.now();
                             assistantContent = await streamOllamaChat(
                                 ollamaBaseUrls,
                                 model,
@@ -1767,7 +1921,20 @@ export async function POST(req: NextRequest) {
                                 handleDelta,
                                 upstreamAbortController.signal
                             );
+                            chatTraceLog(traceId, "model.ollama.completed", {
+                                durationMs: elapsedMs(ollamaStartedAt),
+                                totalMs: elapsedMs(requestStartedAt),
+                                model,
+                                contentChars: assistantContent.length,
+                            });
                         }
+                        chatTraceLog(traceId, "model.call.completed", {
+                            durationMs: elapsedMs(modelStartedAt),
+                            totalMs: elapsedMs(requestStartedAt),
+                            provider: usingGemini ? "gemini" : "ollama",
+                            model,
+                            contentPreview: previewLogText(assistantContent),
+                        });
                         await commitUsageSlot(uid);
 
                         const cleanContent = assistantContent
@@ -1782,16 +1949,36 @@ export async function POST(req: NextRequest) {
                             .trim();
 
                         if (!streamedText.trim() && combinedContent) {
+                            if (!firstTextLogged) {
+                                firstTextLogged = true;
+                                chatTraceLog(traceId, "model.first_text_delta", {
+                                    durationMs: elapsedMs(modelStartedAt),
+                                    totalMs: elapsedMs(requestStartedAt),
+                                    provider: usingGemini ? "gemini" : "ollama",
+                                    model,
+                                    preview: previewLogText(combinedContent),
+                                    fallbackBuffered: true,
+                                });
+                            }
                             sendEvent("text", { content: combinedContent });
                         }
 
                         if (isVoiceTurn && geminiApiKey && combinedContent && !voiceAudioPayload) {
                             try {
+                                const speechStartedAt = Date.now();
                                 const speechResult = await streamGeminiLiveSpeech(
                                     geminiApiKey,
                                     "You are Pian's voice renderer. Speak the supplied assistant response clearly and naturally.",
                                     combinedContent,
                                     (delta) => {
+                                        if (!firstAudioLogged) {
+                                            firstAudioLogged = true;
+                                            chatTraceLog(traceId, "voice.first_audio_delta", {
+                                                durationMs: elapsedMs(speechStartedAt),
+                                                totalMs: elapsedMs(requestStartedAt),
+                                                source: "post_text_speech",
+                                            });
+                                        }
                                         sendEvent("audio_delta", { ...delta });
                                     },
                                     upstreamAbortController.signal
@@ -1801,6 +1988,13 @@ export async function POST(req: NextRequest) {
                                     audioMimeType: speechResult.audioMimeType,
                                     model: speechResult.model,
                                 };
+                                chatTraceLog(traceId, "voice.speech.completed", {
+                                    durationMs: elapsedMs(speechStartedAt),
+                                    totalMs: elapsedMs(requestStartedAt),
+                                    source: "post_text_speech",
+                                    model: speechResult.model,
+                                    audioChars: speechResult.audioBase64.length,
+                                });
                             } catch (error) {
                                 if (!isAbortLikeError(error) && !upstreamAbortController.signal.aborted) {
                                     console.warn("[GeminiLiveSpeech] failed to narrate chat response", error);
@@ -1821,9 +2015,22 @@ export async function POST(req: NextRequest) {
                                 }
                                 : {}),
                         });
+                        chatTraceLog(traceId, "response.done", {
+                            totalMs: elapsedMs(requestStartedAt),
+                            streamMs: elapsedMs(streamStartedAt),
+                            type: "chat",
+                            provider: usingGemini ? "gemini" : "ollama",
+                            model,
+                            contentChars: (combinedContent || streamedText || "No response received.").length,
+                            voiceAudio: Boolean(voiceAudioPayload),
+                        });
                         safeClose();
                     } catch (error) {
                         if (streamClosed || isAbortLikeError(error) || upstreamAbortController.signal.aborted) {
+                            chatTraceLog(traceId, "response.aborted", {
+                                totalMs: elapsedMs(requestStartedAt),
+                                streamMs: elapsedMs(streamStartedAt),
+                            });
                             safeClose();
                             return;
                         }
@@ -1835,6 +2042,10 @@ export async function POST(req: NextRequest) {
                             return;
                         }
                         console.error("[Chat API Error]", error);
+                        chatTraceLog(traceId, "response.error", {
+                            totalMs: elapsedMs(requestStartedAt),
+                            error: error instanceof Error ? error.message : String(error),
+                        });
                         const message = normalizeUserFacingError(error, {
                             surface: "chat",
                             fallbackMessage: "Internal server error",
@@ -1867,6 +2078,9 @@ export async function POST(req: NextRequest) {
     } catch (error) {
         // Intercept our custom Bouncer error!
         if (error instanceof UsageLimitError) {
+            chatTraceLog(traceId, "request.usage_limit", {
+                totalMs: elapsedMs(requestStartedAt),
+            });
             return NextResponse.json(
                 { error: "You have reached your AI message limit. Please upgrade to continue." },
                 { status: 429 }
@@ -1874,6 +2088,10 @@ export async function POST(req: NextRequest) {
         }
 
         console.error("[Chat API Error]", error);
+        chatTraceLog(traceId, "request.failed", {
+            totalMs: elapsedMs(requestStartedAt),
+            error: error instanceof Error ? error.message : String(error),
+        });
         const message = normalizeUserFacingError(error, {
             surface: "chat",
             fallbackMessage: "Unknown error occurred",
