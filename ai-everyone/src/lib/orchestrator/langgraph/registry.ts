@@ -497,14 +497,15 @@ function cleanTodoTitle(value: string): string {
         .replace(/^(?:that\s+is|is|named|called|as|the|a|an)\s+/i, "")
         .replace(/\s+\b(?:can you\s+)?(?:delete|remove|mark|complete|finish)\s+(?:that\s+|this\s+|one\s+|the\s+)?(?:task|one)\b.*$/i, "")
         .replace(/\s+\b(?:that|this)\s+(?:one\s+)?task\b.*$/i, "")
-        .replace(/[.!?]+$/g, "")
+        .replace(/[!?]+$/g, "")
         .trim();
 }
 
 function extractTodoTitle(text: string, action: string): string | null {
     const normalized = normalizeInput(text);
     const patterns = [
-        /\btask\s+(?:name|title)\s+(?:is|as)\s+(.+?)$/i,
+        /\btask\s+(?:name|title)\s+(?:(?:is|as)\s+)?(.+?)$/i,
+        /\b(?:name|title)\s+(?:is|as)\s+(.+?)$/i,
         /\btask\s+(?:named|called)\s+(.+?)$/i,
         /\bnamed\s+(.+?)$/i,
         /\bcalled\s+(.+?)$/i,
@@ -520,7 +521,7 @@ function extractTodoTitle(text: string, action: string): string | null {
 
     if (action === "add_task") {
         const fallback = cleanTodoTitle(
-            normalized.replace(/^(?:ok\s+)?(?:can you\s+)?(?:please\s+)?(?:add|create|make)\s+(?:a\s+|one\s+|new\s+)?task\s*(?:in\s+the\s+to\s+do\s+agent\s*)?/i, "")
+            normalized.replace(/^(?:ok\s+)?(?:can you\s+)?(?:please\s+)?(?:add|create|make)\s+(?:a\s+|one\s+|new\s+)?task\s*(?:in\s+(?:the|that)\s+to[-\s]?do\s+agent\s*)?/i, "")
         );
         return fallback || null;
     }
