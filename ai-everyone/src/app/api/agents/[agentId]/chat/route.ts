@@ -10,6 +10,7 @@ import { createAgentTask, executeAgentTaskAndReadBack } from "@/lib/firestore-ta
 import { isGeminiModel } from "@/lib/model-capabilities";
 import { verifyFirebaseRequest } from "@/lib/server-auth";
 import { commitUsageSlot, reserveUsageSlot } from "@/lib/usage-limit";
+import { normalizeVoiceInputForRouting } from "@/lib/orchestrator/langgraph/text";
 
 interface ChatRequestMessage {
     role: string;
@@ -61,6 +62,17 @@ function streamChat(content: string, meta?: Record<string, unknown>) {
     ]);
 }
 
+function replaceLatestUserMessage(
+    messages: ChatRequestMessage[],
+    content: string
+): ChatRequestMessage[] {
+    const lastUserIndex = messages.map((message) => message.role).lastIndexOf("user");
+    if (lastUserIndex < 0) return messages;
+    return messages.map((message, index) =>
+        index === lastUserIndex ? { ...message, content } : message
+    );
+}
+
 export async function POST(
     req: NextRequest,
     context: { params: Promise<{ agentId: string }> }
@@ -83,8 +95,15 @@ export async function POST(
         const chatId = body.chatId;
         const requestedModel = typeof body.model === "string" ? body.model.trim() : "";
         const workspaceModel = requestedModel || DEFAULT_WORKSPACE_MODEL;
-        const lastUserMessage =
-            [...messages].reverse().find((message) => message.role === "user")?.content || "";
+        const lastUserTurn = [...messages].reverse().find((message) => message.role === "user");
+        const lastUserMessage = lastUserTurn?.content || "";
+        const isVoiceTurn = Boolean(lastUserTurn?.isVoice);
+        const routingUserMessage =
+            isVoiceTurn ? normalizeVoiceInputForRouting(lastUserMessage) : lastUserMessage;
+        const effectiveMessages =
+            routingUserMessage !== lastUserMessage
+                ? replaceLatestUserMessage(messages, routingUserMessage)
+                : messages;
 
         if (!chatId) {
             return NextResponse.json({ error: "chatId is required for agent workspace chat." }, { status: 400 });
@@ -110,6 +129,9 @@ export async function POST(
             chatId,
             agentId,
             message: lastUserMessage.slice(0, 300),
+            ...(routingUserMessage !== lastUserMessage
+                ? { normalizedVoiceMessage: routingUserMessage.slice(0, 300) }
+                : {}),
         });
 
         if (!installedAgentIds.includes(agentId)) {
@@ -134,12 +156,12 @@ export async function POST(
             userId: uid,
             chatId,
             agentId,
-            userInput: lastUserMessage,
+            userInput: routingUserMessage,
             model: workspaceModel,
             llmProvider: isGeminiModel(workspaceModel) ? "gemini" : "ollama",
             installedAgentIds,
             accessibleAgentIds,
-            recentMessages: messages.map((message) => ({
+            recentMessages: effectiveMessages.map((message) => ({
                 role: message.role,
                 content: message.content,
                 taskId: message.taskId,

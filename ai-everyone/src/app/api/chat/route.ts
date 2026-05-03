@@ -50,6 +50,7 @@ import { commitUsageSlot, reserveUsageSlot, UsageLimitError } from "@/lib/usage-
 import {
     runLangGraphOrchestration,
 } from "@/lib/orchestrator/langgraph";
+import { normalizeVoiceInputForRouting } from "@/lib/orchestrator/langgraph/text";
 
 interface ChatRequestMessage {
     role: string;
@@ -942,6 +943,17 @@ function getLastUserVoiceTurn(messages: ChatRequestMessage[]): ChatRequestMessag
     );
 }
 
+function replaceLatestUserMessage(
+    messages: ChatRequestMessage[],
+    content: string
+): ChatRequestMessage[] {
+    const lastUserIndex = messages.map((message) => message.role).lastIndexOf("user");
+    if (lastUserIndex < 0) return messages;
+    return messages.map((message, index) =>
+        index === lastUserIndex ? { ...message, content } : message
+    );
+}
+
 function buildLiveVoicePrompt(messages: { role: string; content: string }[]): string {
     const recentMessages = messages
         .filter((message) => message.content?.trim())
@@ -1397,6 +1409,12 @@ export async function POST(req: NextRequest) {
         const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || "";
         const lastUserMessage =
             [...messages].reverse().find((message) => message.role === "user")?.content || "";
+        const routingUserMessage =
+            isVoiceTurn ? normalizeVoiceInputForRouting(lastUserMessage) : lastUserMessage;
+        const effectiveMessages =
+            routingUserMessage !== lastUserMessage
+                ? replaceLatestUserMessage(messages, routingUserMessage)
+                : messages;
         let effectiveAttachments = normalizedAttachments;
 
         chatTraceLog(traceId, "request.received", {
@@ -1409,16 +1427,19 @@ export async function POST(req: NextRequest) {
             attachmentCount: normalizedAttachments.length,
             failedAttachmentCount: normalizedFailedAttachments.length,
             userQuery: previewLogText(lastUserMessage),
+            ...(routingUserMessage !== lastUserMessage
+                ? { normalizedVoiceQuery: previewLogText(routingUserMessage) }
+                : {}),
         });
 
         if (
             usingGemini &&
             effectiveAttachments.length === 0 &&
-            lastUserMessage &&
-            isUploadFollowupMessage(lastUserMessage)
+            routingUserMessage &&
+            isUploadFollowupMessage(routingUserMessage)
         ) {
             const recentUploadedDocs = await listRecentUploadedDocs(uid, 10);
-            let matchedDocs = matchDocsByHint(lastUserMessage, recentUploadedDocs);
+            let matchedDocs = matchDocsByHint(routingUserMessage, recentUploadedDocs);
             if (matchedDocs.length === 0 && recentUploadedDocs.length > 0) {
                 matchedDocs = [recentUploadedDocs[0] as UploadedDocRecord];
             }
@@ -1449,7 +1470,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Avoid re-triggering agent tasks when user only sends an acknowledgement.
-        if (isAcknowledgementOnlyMessage(lastUserMessage)) {
+        if (isAcknowledgementOnlyMessage(routingUserMessage)) {
             const encoder = new TextEncoder();
             const stream = new ReadableStream({
                 start(controller) {
@@ -1484,7 +1505,7 @@ export async function POST(req: NextRequest) {
         const [installedAgentIds, accessibleAgentIds, personaContext] = await Promise.all([
             getInstalledAgentIds(uid),
             getAccessibleAgentIds(uid),
-            buildPersonaContext(uid, lastUserMessage),
+            buildPersonaContext(uid, routingUserMessage),
         ]);
         chatTraceLog(traceId, "request.context.ready", {
             durationMs: elapsedMs(setupStartedAt),
@@ -1494,8 +1515,8 @@ export async function POST(req: NextRequest) {
             personaChars: personaContext.length,
         });
 
-        if (lastUserMessage) {
-            triggerMemoryExtraction(uid, chatId, undefined, lastUserMessage);
+        if (routingUserMessage) {
+            triggerMemoryExtraction(uid, chatId, undefined, routingUserMessage);
         }
 
         const shouldForceDirectAttachmentResponse =
@@ -1507,13 +1528,13 @@ export async function POST(req: NextRequest) {
             : await runLangGraphOrchestration({
                 userId: uid,
                 chatId,
-                userInput: lastUserMessage,
+                userInput: routingUserMessage,
                 traceId,
                 model,
                 llmProvider: usingGemini ? "gemini" : "ollama",
                 installedAgentIds,
                 accessibleAgentIds,
-                recentMessages: messages.map((message) => ({
+                recentMessages: effectiveMessages.map((message) => ({
                     role: message.role,
                     content: message.content,
                     taskId: message.taskId,
@@ -1703,7 +1724,7 @@ export async function POST(req: NextRequest) {
                 .filter(Boolean)
                 .join("\n\n");
 
-        const conversationMessagesForModel = await buildConversationMessagesForModel(uid, messages);
+        const conversationMessagesForModel = await buildConversationMessagesForModel(uid, effectiveMessages);
         const messagesForModel = [
             { role: "system", content: systemPrompt },
             ...conversationMessagesForModel,

@@ -77,6 +77,16 @@ function WaveformBars({ state }: { state: VoiceBarState }) {
 }
 
 const CLOSE_INTENT = /\b(close|close voice|close assistant|stop listening|exit|goodbye|that'?s? all|finish|end session|quit)\b/i
+const FINAL_TRANSCRIPT_GRACE_MS = 1700
+
+function getPreferredRecognitionLanguage() {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+  if (/Asia\/(Kolkata|Calcutta)/i.test(timezone)) return 'en-IN'
+
+  const preferredEnglish = (navigator.languages || [navigator.language])
+    .find((language) => /^en-(IN|US|GB|AU|CA)\b/i.test(language))
+  return preferredEnglish || 'en-US'
+}
 
 export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: VoiceBarProps) {
   const [state, setState] = useState<VoiceBarState>('connecting')
@@ -414,8 +424,8 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     submittedTranscriptRef.current = false
 
     const rec = new SR()
-    rec.lang = 'en-US'
-    rec.continuous = false
+    rec.lang = getPreferredRecognitionLanguage()
+    rec.continuous = true
     rec.interimResults = true
     recognitionRef.current = rec
 
@@ -436,6 +446,10 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
 
     rec.onresult = (event: any) => {
       if (genRef.current !== myGen) return
+      if (finalTranscriptStopTimerRef.current) {
+        clearTimeout(finalTranscriptStopTimerRef.current)
+        finalTranscriptStopTimerRef.current = null
+      }
 
       let fullTranscript = ''
       let finalTranscript = ''
@@ -459,7 +473,7 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
           try {
             rec.stop()
           } catch {}
-        }, 120)
+        }, FINAL_TRANSCRIPT_GRACE_MS)
       }
     }
 

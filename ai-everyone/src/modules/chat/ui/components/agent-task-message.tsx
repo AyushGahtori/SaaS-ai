@@ -425,9 +425,9 @@ function DriveTypeIcon({ typeLabel }: { typeLabel: string }) {
     return <FileText className="w-3.5 h-3.5 text-blue-300" />;
 }
 
-function GmailTableCard({ rows, meta }: { rows: GmailRow[]; meta: GmailListMeta }) {
+function GmailTableCard({ rows, meta, standalone = false }: { rows: GmailRow[]; meta: GmailListMeta; standalone?: boolean }) {
     return (
-        <div className="mt-3 rounded-xl border border-white/10 bg-black/35 overflow-hidden">
+        <div className={`${standalone ? "" : "mt-3"} rounded-xl border border-white/10 bg-black/35 overflow-hidden`}>
             <div className="grid grid-cols-[1.3fr_2.2fr_1fr_1fr] gap-3 px-3 py-2.5 text-[11px] uppercase tracking-wide text-white/50 border-b border-white/10">
                 <span>From</span>
                 <span>Subject</span>
@@ -634,6 +634,22 @@ export const AgentTaskMessage: React.FC<AgentTaskMessageProps> = ({ message }) =
     const resultType = typeof result?.type === "string" ? result.type : "";
     if (status === "success" && resultType === "google_gmail" && result) {
         const rows = getGmailRows(result);
+        if (rows.length > 0) {
+            const meta = getGmailListMeta(result, rows);
+            return (
+                <div className="flex gap-3 px-4 py-4 justify-start">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                        <Bot className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <div className="max-w-[80%] space-y-3">
+                        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-sm leading-6 text-white/85">
+                            These are your last {meta.returnedCount} emails.
+                        </div>
+                        <GmailTableCard rows={rows} meta={meta} standalone />
+                    </div>
+                </div>
+            );
+        }
         const summaryDetails = rows.length === 0 ? getGmailSummaryDetails(result) : null;
         if (summaryDetails) {
             return (

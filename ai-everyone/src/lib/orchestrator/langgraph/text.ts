@@ -54,20 +54,43 @@ export function normalizeForMatch(value: unknown): string {
         .trim();
 }
 
+export function normalizeVoiceInputForRouting(value: string): string {
+    let next = normalizeInput(value);
+    if (!next) return next;
+
+    next = next
+        .replace(/\b(?:steroid|steroids|stared|tara|star|stara|strata)\s+agent\b/gi, "stara agent")
+        .replace(/\b(?:steroid|steroids|tara)\b(?=\s+(?:stock|stocks|price|market|portfolio|share|shares|apple|tesla|microsoft|google|nvidia|meta)\b)/gi, "stara")
+        .replace(/\b(?:to do|todo)\s+agent\b/gi, "todo agent")
+        .replace(/\bgoogle\s+(?:workspaces|workspace|mail|gmail)\s+agent\b/gi, "google workspace agent");
+
+    const mailContext =
+        /\b(last|latest|recent|show|list|read|get|fetch|retrieve|inbox|gmail|email|emails|mail|mails|message|messages)\b/i.test(next);
+    if (mailContext) {
+        next = next
+            .replace(/\bnails\b/gi, "mails")
+            .replace(/\bnail\b/gi, "mail")
+            .replace(/\bmales\b/gi, "mails")
+            .replace(/\bmale\b/gi, "mail");
+    }
+
+    return normalizeInput(next);
+}
+
 export function includesAny(text: string, patterns: RegExp[]): boolean {
     return patterns.some((pattern) => pattern.test(text));
 }
 
 export function getNumericRequestCount(text: string): number | null {
     const lower = normalizeForMatch(text);
-    if (/\b(all|every)\s+(emails?|mails?|files?|documents?|docs?|messages?|repos?|repositories|tasks?)\b/.test(lower)) {
+    if (/\b(all|every)\s+(emails?|mails?|nails?|files?|documents?|docs?|messages?|repos?|repositories|tasks?)\b/.test(lower)) {
         return 999;
     }
 
     const patterns = [
-        /\b(?:last|latest|recent|show|list|retrieve|retrive|retreive|get|fetch|read)\s+(\d{1,4})\s+(?:emails?|mails?|files?|documents?|docs?|messages?|repos?|repositories|tasks?)\b/,
-        /\b(\d{1,4})\s+(?:latest\s+|recent\s+|last\s+)?(?:emails?|mails?|files?|documents?|docs?|messages?|repos?|repositories|tasks?)\b/,
-        /\b(?:top|first)\s+(\d{1,4})\s+(?:emails?|mails?|files?|documents?|docs?|messages?|repos?|repositories|tasks?)\b/,
+        /\b(?:last|latest|recent|show|list|retrieve|retrive|retreive|get|fetch|read)\s+(\d{1,4})\s+(?:emails?|mails?|nails?|files?|documents?|docs?|messages?|repos?|repositories|tasks?)\b/,
+        /\b(\d{1,4})\s+(?:latest\s+|recent\s+|last\s+)?(?:emails?|mails?|nails?|files?|documents?|docs?|messages?|repos?|repositories|tasks?)\b/,
+        /\b(?:top|first)\s+(\d{1,4})\s+(?:emails?|mails?|nails?|files?|documents?|docs?|messages?|repos?|repositories|tasks?)\b/,
     ];
 
     for (const pattern of patterns) {

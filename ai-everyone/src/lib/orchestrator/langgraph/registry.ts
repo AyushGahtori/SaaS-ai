@@ -8,6 +8,7 @@ import {
     getNumericRequestCount,
     includesAny,
     normalizeForMatch,
+    normalizeInput,
 } from "./text";
 import type { ConversationContext, RouteDecision } from "./types";
 
@@ -326,8 +327,8 @@ function makeAliases(agent: AgentCatalogEntry): string[] {
         agent.name.replace(/\s+agent$/i, ""),
     ];
 
-    if (agent.id === "strata-agent") base.push("stara", "strata", "finance analytics");
-    if (agent.id === "google-agent") base.push("gmail", "google mail", "google drive", "google calendar", "google meet", "google tasks");
+    if (agent.id === "strata-agent") base.push("stara", "strata", "star", "tara", "steroid", "finance analytics");
+    if (agent.id === "google-agent") base.push("gmail", "mail agent", "email agent", "gmail agent", "google mail", "google drive", "google calendar", "google meet", "google tasks");
     if (agent.id === "travel-halper-agent") base.push("travel helper", "travel halper", "travel planner", "trip planner");
     if (agent.id === "restaurant-concierge-agent") base.push("restaurant concierge", "restaurant agent", "food ordering", "menu ordering");
     if (agent.id === "shelfie-grocery-agent") base.push("shelfie", "grocery agent", "grocery assistant", "shopping list agent");
@@ -491,6 +492,42 @@ function extractUrl(text: string): string | undefined {
     return text.match(/https?:\/\/[^\s)]+/i)?.[0];
 }
 
+function cleanTodoTitle(value: string): string {
+    return normalizeInput(value)
+        .replace(/^(?:that\s+is|is|named|called|as|the|a|an)\s+/i, "")
+        .replace(/\s+\b(?:can you\s+)?(?:delete|remove|mark|complete|finish)\s+(?:that\s+|this\s+|one\s+|the\s+)?(?:task|one)\b.*$/i, "")
+        .replace(/\s+\b(?:that|this)\s+(?:one\s+)?task\b.*$/i, "")
+        .replace(/[.!?]+$/g, "")
+        .trim();
+}
+
+function extractTodoTitle(text: string, action: string): string | null {
+    const normalized = normalizeInput(text);
+    const patterns = [
+        /\btask\s+(?:name|title)\s+(?:is|as)\s+(.+?)$/i,
+        /\btask\s+(?:named|called)\s+(.+?)$/i,
+        /\bnamed\s+(.+?)$/i,
+        /\bcalled\s+(.+?)$/i,
+        /\b(?:add|create|make)\s+(?:a\s+|one\s+|new\s+)?task\s+(?:to\s+)?(.+?)$/i,
+        /\b(?:delete|remove|mark|complete|finish)\s+(?:the\s+|that\s+|this\s+)?task\s+(?:named\s+|called\s+|that\s+is\s+|is\s+)?(.+?)$/i,
+    ];
+
+    for (const pattern of patterns) {
+        const match = normalized.match(pattern);
+        const title = cleanTodoTitle(match?.[1] || "");
+        if (title && !/^(?:task|todo|to do)$/i.test(title)) return title;
+    }
+
+    if (action === "add_task") {
+        const fallback = cleanTodoTitle(
+            normalized.replace(/^(?:ok\s+)?(?:can you\s+)?(?:please\s+)?(?:add|create|make)\s+(?:a\s+|one\s+|new\s+)?task\s*(?:in\s+the\s+to\s+do\s+agent\s*)?/i, "")
+        );
+        return fallback || null;
+    }
+
+    return null;
+}
+
 function aliasRegex(alias: string): RegExp {
     const escaped = alias
         .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -557,7 +594,7 @@ function routeByExplicitAgentMention(text: string, lower: string): RouteDecision
 
     if (capability.id === "google-agent") {
         const routingText = taskText || text;
-        if (/\b(gmail|email|emails|mail|mails|inbox|message|messages)\b/.test(lower)) {
+        if (/\b(gmail|email|emails|mail|mails|nails|inbox|message|messages)\b/.test(lower)) {
             return googleIntent("gmail", inferGmailAction(lower), routingText, `Matched explicit ${capability.name} mention.`);
         }
         if (/\b(drive|docs?|documents?|files?|folder|folders|pdf|pdfs)\b/.test(lower)) {
@@ -1016,8 +1053,10 @@ export function enrichParameters(agentId: string, action: string, text: string, 
     if (agentId === "maps-agent" && action === "search_places") {
         next.query = next.query || text;
     }
-    if (agentId === "todo-agent" && action === "add_task") {
-        next.title = next.title || text;
+    if (agentId === "todo-agent" && ["add_task", "delete_task", "mark_done"].includes(action)) {
+        const title = extractTodoTitle(text, action);
+        if (title) next.title = next.title || title;
+        else if (action === "add_task") next.title = next.title || text;
     }
     if (agentId === "github-agent" && action === "list_repositories") {
         next.limit = next.limit || 10;
@@ -1033,7 +1072,7 @@ function inferContextualGmailRoute(text: string, lower: string, context?: Conver
 
     const hasFollowUpAction = /\b(summarize|summarise|summary|read|open|mark|reply|respond)\b/.test(lower);
     const hasReferenceHint =
-        /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|latest|top|this|that|same|one|it|mail|email|sender|from|subject|above|previous|list)\b/.test(lower);
+        /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|latest|top|this|that|same|one|it|mail|mails|nail|nails|email|sender|from|subject|above|previous|list)\b/.test(lower);
 
     if (!hasFollowUpAction || !hasReferenceHint) return null;
     return googleIntent(
@@ -1095,7 +1134,7 @@ export function deterministicRoute(userInput: string, context?: ConversationCont
     const contextualGmailRoute = inferContextualGmailRoute(text, lower, context);
     if (contextualGmailRoute) return contextualGmailRoute;
 
-    if (/\b(gmail|gamil|gmial|email|emails|mail|mails|inbox|message|messages)\b/.test(lower)) {
+    if (/\b(gmail|gamil|gmial|email|emails|mail|mails|nails|inbox|message|messages)\b/.test(lower)) {
         return googleIntent("gmail", inferGmailAction(lower), text, "Matched a Gmail/email request.");
     }
 

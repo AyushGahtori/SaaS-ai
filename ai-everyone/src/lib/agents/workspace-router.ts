@@ -294,13 +294,14 @@ function chooseWorkspaceRoute(agentId: string, text: string, context: Conversati
 
 function detectExplicitOtherAgentRequest(agentId: string, lower: string): string | null {
     const mentions: Array<[string, RegExp]> = [
-        ["google-agent", /\b(gmail|google workspace|google agent)\b/],
+        ["google-agent", /\b(gmail|gmail agent|mail agent|email agent|google workspace|google agent)\b/],
+        ["todo-agent", /\b(todo agent|to do agent|task agent|reminder agent)\b/],
         ["startup-fundraising-agent", /\b(funds? agent|fundraising agent|investor agent)\b/],
         ["smart-gtm-agent", /\b(smart gtm agent|gtm agent|go[-\s]?to[-\s]?market agent)\b/],
         ["shopgenie-agent", /\b(shopgenie agent|shop genie agent)\b/],
         ["dia-helper-agent", /\b(dia helper|diagram helper)\b/],
         ["emergency-response-agent", /\b(emergency agent|emergency response agent)\b/],
-        ["strata-agent", /\b(stara agent|strata agent)\b/],
+        ["strata-agent", /\b(stara agent|strata agent|star agent|tara agent|steroid agent)\b/],
         ["dashboard-designer-agent", /\bdashboard designer\b/],
         ["seo-agent", /\bseo agent\b/],
         ["cyber-soc-agent", /\b(cyber soc agent|cyber soc|soc agent|cybersoc)\b/],
@@ -323,7 +324,8 @@ function detectOutOfScope(agent: AgentCapability, text: string): WorkspaceRouteB
         return {
             ok: false,
             status: "out_of_scope",
-            content: `This chat is locked to ${agent.name}. Open the ${otherName} workspace to use that agent.`,
+            content: `It sounds like you want ${otherName}. This workspace is for ${agent.name}, so ${agent.name} cannot safely run that request here. Switch to ${otherName} and I can continue there.`,
+            meta: { suggested_agent: explicitOtherAgent, suggested_agent_name: otherName },
         };
     }
 
@@ -340,12 +342,13 @@ function detectOutOfScope(agent: AgentCapability, text: string): WorkspaceRouteB
 
     if (
         agent.id !== "google-agent" &&
-        /\b(gmail|inbox|last emails?|latest emails?|last mails?|latest mails?|read my emails?|retrieve my emails?)\b/.test(lower)
+        /\b(gmail|inbox|last emails?|latest emails?|last mails?|latest mails?|last nails?|latest nails?|read my emails?|retrieve my emails?)\b/.test(lower)
     ) {
         return {
             ok: false,
             status: "out_of_scope",
-            content: `This chat is locked to ${agent.name}. Email inbox work belongs in the Google Workspace Agent workspace.`,
+            content: `It sounds like you want email inbox work. ${agent.name} cannot read mail, but Google Workspace Agent can retrieve or summarize those emails. Switch to Google Workspace Agent and I can continue there.`,
+            meta: { suggested_agent: "google-agent", suggested_agent_name: "Google Workspace Agent" },
         };
     }
 
