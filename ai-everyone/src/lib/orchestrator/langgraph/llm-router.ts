@@ -5,6 +5,7 @@ import {
 } from "@/lib/agents/catalog";
 import { generateModelJson } from "@/lib/llm/server-model";
 import {
+    deterministicRoute,
     enrichParameters,
     getActionCapability,
     getAgentCapability,
@@ -371,6 +372,31 @@ function buildDetailedManifest(
     };
 }
 
+function fallbackParentRouteDecision(
+    input: ParentRouterInput,
+    reason: string
+): ParentRouteDecision {
+    const route = deterministicRoute(input.userInput, input.conversationContext);
+    if (route.is_agent_request && route.target_agent && route.target_action) {
+        return {
+            decision: "agent_request",
+            responseStatus: "success",
+            assistantResponse: "",
+            route: {
+                ...route,
+                route_reason: `${route.route_reason} ${reason}`.trim(),
+            },
+        };
+    }
+
+    return {
+        decision: "direct_chat",
+        responseStatus: "not_agent",
+        assistantResponse: "",
+        route: noRoute(reason),
+    };
+}
+
 async function callParentJson(params: {
     model?: string;
     llmProvider?: string;
@@ -441,7 +467,12 @@ export async function routeWithParentLlm(
     input: ParentRouterInput
 ): Promise<ParentRouteDecision | null> {
     const candidateAgentIds = await selectCandidateAgentIds(input);
-    if (candidateAgentIds === null) return null;
+    if (candidateAgentIds === null) {
+        return fallbackParentRouteDecision(
+            input,
+            "Parent LLM route selection failed; used deterministic fallback."
+        );
+    }
     if (candidateAgentIds.length === 0) {
         return {
             decision: "direct_chat",
@@ -473,7 +504,12 @@ export async function routeWithParentLlm(
         llmProvider: input.llmProvider,
         prompt,
     });
-    if (!parsed) return null;
+    if (!parsed) {
+        return fallbackParentRouteDecision(
+            input,
+            "Parent LLM detailed route planning failed; used deterministic fallback."
+        );
+    }
 
     const decision = asString(parsed.decision);
     if (decision === "direct_chat") {
