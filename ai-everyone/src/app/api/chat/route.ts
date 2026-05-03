@@ -1682,7 +1682,61 @@ export async function POST(req: NextRequest) {
                         } | null = null;
 
                         let assistantContent: string;
-                        if (usingGemini) {
+                        const canUseDirectLiveVoice =
+                            isVoiceTurn &&
+                            usingGemini &&
+                            geminiApiKey &&
+                            effectiveAttachments.length === 0 &&
+                            attachmentFailuresForResponse.length === 0;
+
+                        if (canUseDirectLiveVoice) {
+                            try {
+                                const speechResult = await streamGeminiLiveVoice(
+                                    geminiApiKey,
+                                    systemPrompt,
+                                    messages.map((message) => ({
+                                        role: message.role === "agent" ? "assistant" : message.role,
+                                        content: message.content,
+                                    })),
+                                    handleDelta,
+                                    (delta) => {
+                                        sendEvent("audio_delta", { ...delta });
+                                    },
+                                    upstreamAbortController.signal
+                                );
+                                assistantContent = speechResult.content;
+                                voiceAudioPayload = {
+                                    audioBase64: speechResult.audioBase64,
+                                    audioMimeType: speechResult.audioMimeType,
+                                    model: speechResult.model,
+                                };
+                            } catch (error) {
+                                if (isAbortLikeError(error) || upstreamAbortController.signal.aborted) {
+                                    throw error;
+                                }
+                                console.warn("[GeminiLiveVoice] direct voice turn failed; falling back to text then speech", error);
+                                const result = await streamGeminiChat(
+                                    geminiApiKey,
+                                    model,
+                                    systemPrompt,
+                                    messages.map((message) => ({
+                                        role: message.role === "agent" ? "assistant" : message.role,
+                                        content: message.content,
+                                    })),
+                                    effectiveAttachments,
+                                    uid,
+                                    handleDelta,
+                                    upstreamAbortController.signal
+                                );
+                                if (result.failedAttachments.length > 0) {
+                                    attachmentFailuresForResponse = [
+                                        ...attachmentFailuresForResponse,
+                                        ...result.failedAttachments,
+                                    ];
+                                }
+                                assistantContent = result.content;
+                            }
+                        } else if (usingGemini) {
                             assistantContent = await (async () => {
                                 const result = await streamGeminiChat(
                                     geminiApiKey,
@@ -1731,7 +1785,7 @@ export async function POST(req: NextRequest) {
                             sendEvent("text", { content: combinedContent });
                         }
 
-                        if (isVoiceTurn && geminiApiKey && combinedContent) {
+                        if (isVoiceTurn && geminiApiKey && combinedContent && !voiceAudioPayload) {
                             try {
                                 const speechResult = await streamGeminiLiveSpeech(
                                     geminiApiKey,

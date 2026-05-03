@@ -98,6 +98,7 @@ interface ChatContextValue {
     availableModels: { id: string; label: string }[];
     isVoiceActive: boolean;
     pendingVoiceResponse: string | null;
+    liveVoiceTranscript: string;
     loadChats: (scopeOverride?: ChatWorkspaceScope) => Promise<void>;
     setWorkspaceScope: (scope: ChatWorkspaceScope) => void;
     createNewChat: () => void;
@@ -127,6 +128,7 @@ interface ChatContextValue {
     sendAgentTrialPrompt: (prompt: string) => Promise<{ type: string; content?: string; taskId?: string } | undefined>;
     setIsVoiceActive: (active: boolean) => void;
     setPendingVoiceResponse: (text: string | null) => void;
+    setLiveVoiceTranscript: (text: string) => void;
     clearError: () => void;
 }
 
@@ -318,6 +320,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     });
     const [isVoiceActive, setIsVoiceActive] = useState(false);
     const [pendingVoiceResponse, setPendingVoiceResponse] = useState<string | null>(null);
+    const [liveVoiceTranscript, setLiveVoiceTranscript] = useState("");
 
     const activeChatIdRef = useRef<string | null>(activeChatId);
     const workspaceScopeRef = useRef<ChatWorkspaceScope>(workspaceScope);
@@ -378,6 +381,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         (abortActiveRequest = false) => {
             setIsVoiceActive(false);
             setPendingVoiceResponse(null);
+            setLiveVoiceTranscript("");
 
             if (!abortActiveRequest) return;
             const chatId = activeChatIdRef.current;
@@ -1211,6 +1215,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         availableModels: AVAILABLE_MODELS,
         isVoiceActive,
         pendingVoiceResponse,
+        liveVoiceTranscript,
         loadChats,
         setWorkspaceScope,
         createNewChat,
@@ -1224,6 +1229,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         sendAgentTrialPrompt,
         setIsVoiceActive,
         setPendingVoiceResponse,
+        setLiveVoiceTranscript,
         clearError,
     };
 

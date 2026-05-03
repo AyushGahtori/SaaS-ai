@@ -82,19 +82,23 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
   const [state, setState] = useState<VoiceBarState>('connecting')
   const [statusText, setStatusText] = useState('Starting...')
 
-  const { activeChatId, pendingVoiceResponse, setPendingVoiceResponse } = useChatContext()
+  const { activeChatId, pendingVoiceResponse, setPendingVoiceResponse, setLiveVoiceTranscript } = useChatContext()
 
   const recognitionRef = useRef<any>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const audioSourcesRef = useRef<AudioBufferSourceNode[]>([])
   const nextAudioTimeRef = useRef(0)
   const playbackFinishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const finalTranscriptStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const heardStreamAudioRef = useRef(false)
   const streamedVoiceTurnRef = useRef(false)
   const lastStreamAudioAtRef = useRef(0)
   const isSpeakingRef = useRef(false)
   const isClosingRef = useRef(false)
   const interimTextRef = useRef('')
+  const submittedTranscriptRef = useRef(false)
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null)
+  const currentAudioUrlRef = useRef<string | null>(null)
   const mountedRef = useRef(true)
   const genRef = useRef(0)
   const activeChatIdRef = useRef(activeChatId)
@@ -135,15 +139,29 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
   const restartListeningAfterSpeech = () => {
     if (!mountedRef.current || isClosingRef.current) return
     isSpeakingRef.current = false
+    setLiveVoiceTranscript('')
     setTimeout(() => {
       if (mountedRef.current && !isClosingRef.current) startListening()
     }, 500)
   }
 
   const stopQueuedAudio = () => {
+    if (finalTranscriptStopTimerRef.current) {
+      clearTimeout(finalTranscriptStopTimerRef.current)
+      finalTranscriptStopTimerRef.current = null
+    }
     if (playbackFinishTimerRef.current) {
       clearTimeout(playbackFinishTimerRef.current)
       playbackFinishTimerRef.current = null
+    }
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause()
+      currentAudioRef.current.src = ''
+      currentAudioRef.current = null
+    }
+    if (currentAudioUrlRef.current) {
+      URL.revokeObjectURL(currentAudioUrlRef.current)
+      currentAudioUrlRef.current = null
     }
     for (const source of audioSourcesRef.current) {
       try {
@@ -270,16 +288,23 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
 
     const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }))
     const audio = new Audio(url)
-    audio.onended = () => {
+    currentAudioRef.current = audio
+    currentAudioUrlRef.current = url
+    const cleanup = () => {
+      if (currentAudioRef.current === audio) currentAudioRef.current = null
+      if (currentAudioUrlRef.current === url) currentAudioUrlRef.current = null
       URL.revokeObjectURL(url)
+    }
+    audio.onended = () => {
+      cleanup()
       restartListeningAfterSpeech()
     }
     audio.onerror = () => {
-      URL.revokeObjectURL(url)
+      cleanup()
       restartListeningAfterSpeech()
     }
     void audio.play().catch(() => {
-      URL.revokeObjectURL(url)
+      cleanup()
       restartListeningAfterSpeech()
     })
   }
@@ -294,6 +319,7 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     } catch {}
     stopQueuedAudio()
     speechSynthesis.cancel()
+    setLiveVoiceTranscript('')
     onCloseRef.current()
   }
 
@@ -326,11 +352,35 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     utter.pitch = 1.05
     utter.volume = 1
 
+    let keepAliveTimer: ReturnType<typeof setInterval> | null = null
+    const clearKeepAlive = () => {
+      if (keepAliveTimer) {
+        clearInterval(keepAliveTimer)
+        keepAliveTimer = null
+      }
+    }
+
+    utter.onstart = () => {
+      clearKeepAlive()
+      keepAliveTimer = setInterval(() => {
+        if (!mountedRef.current || isClosingRef.current) {
+          clearKeepAlive()
+          return
+        }
+        if (speechSynthesis.speaking && !speechSynthesis.paused) {
+          speechSynthesis.pause()
+          speechSynthesis.resume()
+        }
+      }, 7000)
+    }
+
     utter.onend = () => {
+      clearKeepAlive()
       restartListeningAfterSpeech()
     }
 
     utter.onerror = () => {
+      clearKeepAlive()
       restartListeningAfterSpeech()
     }
 
@@ -361,6 +411,7 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
     } catch {}
 
     const myGen = ++genRef.current
+    submittedTranscriptRef.current = false
 
     const rec = new SR()
     rec.lang = 'en-US'
@@ -378,6 +429,7 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
       }
 
       interimTextRef.current = ''
+      setLiveVoiceTranscript('')
       setState('listening')
       setStatusText('Listening...')
     }
@@ -395,7 +447,20 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
         }
       }
 
-      interimTextRef.current = (finalTranscript || fullTranscript).trim()
+      const currentTranscript = (finalTranscript || fullTranscript).trim()
+      interimTextRef.current = currentTranscript
+      setLiveVoiceTranscript(currentTranscript)
+
+      if (finalTranscript.trim() && !submittedTranscriptRef.current) {
+        if (finalTranscriptStopTimerRef.current) clearTimeout(finalTranscriptStopTimerRef.current)
+        finalTranscriptStopTimerRef.current = setTimeout(() => {
+          finalTranscriptStopTimerRef.current = null
+          if (genRef.current !== myGen || submittedTranscriptRef.current) return
+          try {
+            rec.stop()
+          } catch {}
+        }, 120)
+      }
     }
 
     rec.onerror = (event: any) => {
@@ -418,6 +483,7 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
       interimTextRef.current = ''
 
       if (!said) {
+        setLiveVoiceTranscript('')
         if (!isSpeakingRef.current) {
           setTimeout(() => {
             if (mountedRef.current) startListening()
@@ -427,11 +493,14 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
       }
 
       if (CLOSE_INTENT.test(said)) {
+        setLiveVoiceTranscript('')
         hardClose()
         return
       }
 
       if (isSpeakingRef.current) return
+      if (submittedTranscriptRef.current) return
+      submittedTranscriptRef.current = true
 
       setState('thinking')
       setStatusText('Processing...')
@@ -445,13 +514,6 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
       onSendMessageRef.current(said, true)
         .then((responseData) => {
           if (!mountedRef.current || isClosingRef.current) {
-            if (responseData) {
-              const textToSpeak =
-                responseData.type === 'agent_task'
-                  ? 'Task has been submitted. Please wait.'
-                  : responseData.content || "I'm not sure what to say."
-              setPendingVoiceResponse(textToSpeak)
-            }
             return
           }
 
@@ -510,6 +572,9 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
           if (mountedRef.current) {
             speakResponse('Sorry, there was a connection problem.')
           }
+        })
+        .finally(() => {
+          setLiveVoiceTranscript('')
         })
     }
 
@@ -579,15 +644,20 @@ export default function VoiceBar({ onSendMessage, onClose, onFirstMessage }: Voi
       isClosingRef.current = true
       genRef.current++
       clearTimeout(timer)
+      if (finalTranscriptStopTimerRef.current) {
+        clearTimeout(finalTranscriptStopTimerRef.current)
+        finalTranscriptStopTimerRef.current = null
+      }
       try {
         recognitionRef.current?.abort()
       } catch {}
       stopQueuedAudio()
       speechSynthesis.cancel()
+      setLiveVoiceTranscript('')
       void audioContextRef.current?.close().catch(() => {})
       audioContextRef.current = null
     }
-  }, [])
+  }, [setLiveVoiceTranscript])
 
   useEffect(() => {
     if (pendingVoiceResponse && mountedRef.current && !isClosingRef.current) {

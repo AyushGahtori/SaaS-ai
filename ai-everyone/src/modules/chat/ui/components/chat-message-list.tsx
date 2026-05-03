@@ -20,7 +20,7 @@ const INITIAL_WINDOW_SIZE = 10;
 const WINDOW_STEP = 10;
 
 export const ChatMessageList: React.FC = () => {
-    const { activeChatId, messages, isGenerating, error } = useChatContext();
+    const { activeChatId, messages, isGenerating, error, liveVoiceTranscript } = useChatContext();
     const bottomRef = useRef<HTMLDivElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
     const shouldStickToBottomRef = useRef(true);
@@ -63,10 +63,27 @@ export const ChatMessageList: React.FC = () => {
         });
     }, [activeChatId, messages.length]);
 
-    const visibleMessages = useMemo(
-        () => messages.slice(visibleStartIndex),
-        [messages, visibleStartIndex]
-    );
+    const visibleMessages = useMemo(() => {
+        const visible = messages.slice(visibleStartIndex);
+        const transcript = liveVoiceTranscript.trim();
+        if (!transcript) return visible;
+
+        const lastUser = [...messages].reverse().find((message) => message.role === "user");
+        if (lastUser?.isVoice && lastUser.content.trim() === transcript) return visible;
+
+        return [
+            ...visible,
+            {
+                id: "voice_draft",
+                chatId: activeChatId || "voice_draft",
+                role: "user" as const,
+                content: transcript,
+                createdAt: new Date().toISOString(),
+                isVoice: true,
+                meta: { isVoiceDraft: true },
+            },
+        ];
+    }, [activeChatId, liveVoiceTranscript, messages, visibleStartIndex]);
 
     const loadOlderMessages = () => {
         if (visibleStartIndex <= 0) return;
