@@ -11,6 +11,11 @@ import { generateBloomReply, resolveBloomModel } from "@/modules/bloom-ai/lib/ge
 import { normalizeUserFacingError } from "@/lib/errors/user-facing-errors";
 import { commitUsageSlot, reserveUsageSlot, UsageLimitError } from "@/lib/usage-limit";
 
+const BLOOM_USAGE_LIMIT = {
+    envVarName: "BLOOM_AI_REQUESTS_PER_MONTH",
+    fallbackLimit: 1000000,
+};
+
 export async function POST(req: NextRequest) {
     const verifiedUser = await verifyFirebaseRequest(req);
     if (!verifiedUser) {
@@ -38,7 +43,7 @@ export async function POST(req: NextRequest) {
                 { status: 500 }
             );
         }
-        await reserveUsageSlot(verifiedUser.uid);
+        await reserveUsageSlot(verifiedUser.uid, BLOOM_USAGE_LIMIT);
 
         const settings = await getBloomSettings(verifiedUser.uid);
         const { conversation, messages } = await loadConversationForPrompt(
@@ -63,7 +68,7 @@ export async function POST(req: NextRequest) {
             ],
             context,
         });
-        await commitUsageSlot(verifiedUser.uid);
+        await commitUsageSlot(verifiedUser.uid, BLOOM_USAGE_LIMIT);
 
         await upsertConversationMetadata(verifiedUser.uid, conversationId, {
             modelId: activeModel,

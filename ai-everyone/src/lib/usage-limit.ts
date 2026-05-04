@@ -3,26 +3,33 @@ import { adminDb } from "@/lib/firebase-admin";
 const DEFAULT_GENERAL_AI_LIMIT = process.env.NODE_ENV === "development" ? 100000 : 100;
 const BILLING_CYCLE_MS = 30 * 24 * 60 * 60 * 1000;
 
-function parseMonthlyAiLimit(): number {
-    const rawLimit = process.env.MAX_AI_REQUESTS_PER_MONTH;
+interface UsageLimitOptions {
+    envVarName?: string;
+    fallbackLimit?: number;
+}
+
+function parseMonthlyAiLimit(options: UsageLimitOptions = {}): number {
+    const envVarName = options.envVarName || "MAX_AI_REQUESTS_PER_MONTH";
+    const fallbackLimit = options.fallbackLimit ?? DEFAULT_GENERAL_AI_LIMIT;
+    const rawLimit = process.env[envVarName];
     if (!rawLimit || rawLimit.trim() === "") {
-        return DEFAULT_GENERAL_AI_LIMIT;
+        return fallbackLimit;
     }
 
     const normalized = rawLimit.trim();
     if (!/^-?\d+$/.test(normalized)) {
         console.error(
-            `[usage-limit] Invalid MAX_AI_REQUESTS_PER_MONTH="${rawLimit}". Falling back to ${DEFAULT_GENERAL_AI_LIMIT}.`
+            `[usage-limit] Invalid ${envVarName}="${rawLimit}". Falling back to ${fallbackLimit}.`
         );
-        return DEFAULT_GENERAL_AI_LIMIT;
+        return fallbackLimit;
     }
 
     const parsed = Number.parseInt(normalized, 10);
     if (!Number.isFinite(parsed)) {
         console.error(
-            `[usage-limit] Failed to parse MAX_AI_REQUESTS_PER_MONTH="${rawLimit}". Falling back to ${DEFAULT_GENERAL_AI_LIMIT}.`
+            `[usage-limit] Failed to parse ${envVarName}="${rawLimit}". Falling back to ${fallbackLimit}.`
         );
-        return DEFAULT_GENERAL_AI_LIMIT;
+        return fallbackLimit;
     }
 
     return Math.max(0, parsed);
@@ -98,22 +105,22 @@ function resetIfExpired(
     return usage;
 }
 
-function assertWithinLimit(aiMessagesUsed: number): void {
-    if (aiMessagesUsed >= parseMonthlyAiLimit()) {
+function assertWithinLimit(aiMessagesUsed: number, options?: UsageLimitOptions): void {
+    if (aiMessagesUsed >= parseMonthlyAiLimit(options)) {
         throw new UsageLimitError();
     }
 }
 
-export async function reserveUsageSlot(uid: string): Promise<void> {
+export async function reserveUsageSlot(uid: string, options?: UsageLimitOptions): Promise<void> {
     const userRef = adminDb.collection("users").doc(uid);
     const userDoc = await userRef.get();
     const now = Date.now();
     const data = (userDoc.data() || {}) as Record<string, unknown>;
     const usage = resetIfExpired(normalizeUsage(data, now), now);
-    assertWithinLimit(usage.aiMessagesUsed);
+    assertWithinLimit(usage.aiMessagesUsed, options);
 }
 
-export async function commitUsageSlot(uid: string): Promise<void> {
+export async function commitUsageSlot(uid: string, options?: UsageLimitOptions): Promise<void> {
     const userRef = adminDb.collection("users").doc(uid);
 
     await adminDb.runTransaction(async (transaction) => {
@@ -122,7 +129,7 @@ export async function commitUsageSlot(uid: string): Promise<void> {
         const data = (userDoc.data() || {}) as Record<string, unknown>;
         let usage = resetIfExpired(normalizeUsage(data, now), now);
 
-        assertWithinLimit(usage.aiMessagesUsed);
+        assertWithinLimit(usage.aiMessagesUsed, options);
 
         usage = {
             ...usage,
@@ -133,6 +140,6 @@ export async function commitUsageSlot(uid: string): Promise<void> {
     });
 }
 
-export async function enforceUsageLimit(uid: string): Promise<void> {
-    await commitUsageSlot(uid);
+export async function enforceUsageLimit(uid: string, options?: UsageLimitOptions): Promise<void> {
+    await commitUsageSlot(uid, options);
 }
